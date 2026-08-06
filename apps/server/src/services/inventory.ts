@@ -331,8 +331,37 @@ export class InventoryService {
         this.repos.inventory.savePolicy({ ...policy, trackMode: defaultTrackMode(parsed.tag) });
       }
 
-      const row = this.repos.inventory.findImage(normalizedRef);
+      let row = this.repos.inventory.findImage(normalizedRef);
       if (!row) continue;
+
+      /**
+       * Reconciliacion del estado tras una actualizacion.
+       *
+       * El estado lo escribe el comprobador, asi que despues de actualizar una
+       * imagen seguiria diciendo "actualizacion disponible" y el boton no
+       * desapareceria hasta la siguiente comprobacion programada, que puede
+       * tardar horas.
+       *
+       * Si el digest remoto que motivo el aviso ya esta entre los locales, la
+       * actualizacion se aplico y no hay nada pendiente. Es una conclusion
+       * exacta, no una suposicion, y no cuesta ninguna peticion al registry.
+       */
+      if (
+        row.status === 'update-available' &&
+        row.remote_digest &&
+        localDigests.includes(row.remote_digest)
+      ) {
+        this.repos.inventory.recordCheck({
+          ref: normalizedRef,
+          status: 'up-to-date',
+          remoteDigest: row.remote_digest,
+          // El candidato de version deja de aplicar: si lo hubiera, la etiqueta
+          // habria cambiado y esta seria otra referencia distinta.
+          candidateTag: null,
+          error: null,
+        });
+        row = this.repos.inventory.findImage(normalizedRef) ?? row;
+      }
 
       result.push({
         ref: row.normalized_ref,

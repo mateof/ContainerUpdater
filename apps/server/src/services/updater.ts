@@ -348,20 +348,35 @@ export class UpdaterService {
         await this.#runRecreate(request, plan, policy, progress, targetTag);
       }
 
+      // El inventario se refresca ANTES de dar el trabajo por terminado.
+      //
+      // El orden importa: al marcar el trabajo como acabado se emite el evento
+      // que hace que la interfaz recargue las imagenes. Si el refresco viniera
+      // despues, esa recarga leeria el estado anterior y la imagen seguiria
+      // apareciendo con actualizacion pendiente hasta la siguiente consulta.
+      //
+      // Aqui es donde el estado se reconcilia: el inventario compara los
+      // digests locales nuevos con el remoto y marca la imagen al dia, con lo
+      // que el boton de actualizar desaparece solo.
+      await this.inventory.refresh().catch((error: Error) => {
+        this.log.warn('No se ha podido refrescar el inventario tras actualizar', error);
+      });
+
       this.repos.history.finishJob(jobId, {
         status: 'success',
         toTag: targetTag,
         toDigest: imageRow?.remote_digest ?? null,
       });
       progress('Actualizacion completada');
-
-      // Tras actualizar, el inventario cambia: hay contenedor e imagen nuevos.
-      await this.inventory.refresh().catch((error: Error) => {
-        this.log.warn('No se ha podido refrescar el inventario tras actualizar', error);
-      });
     } catch (error) {
       const rolledBack = (error as { rolledBack?: boolean }).rolledBack === true;
       const message = describeError(error);
+
+      // Tambien tras un fallo: puede haberse descargado la imagen, o el
+      // rollback haber dejado el contenedor en otro estado. La interfaz debe
+      // mostrar lo que hay de verdad, no lo que habia antes de intentarlo.
+      await this.inventory.refresh().catch(() => undefined);
+
       this.repos.history.finishJob(jobId, {
         status: rolledBack ? 'rolled-back' : 'failed',
         error: message,

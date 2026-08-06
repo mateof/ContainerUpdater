@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { RecreateScope, TrackedImage } from '@cu/shared';
 import { api, ApiError } from '@/api/client';
@@ -28,7 +27,6 @@ export function UpdateDialog({
   onDone: (message: string, tone: 'ok' | 'danger' | 'info') => void;
 }): ReactNode {
   const { t } = useTranslation();
-  const navigate = useNavigate();
 
   const [scope, setScope] = useState<RecreateScope>(image.policy.recreateScope);
   const [removeFirst, setRemoveFirst] = useState(false);
@@ -54,16 +52,12 @@ export function UpdateDialog({
       setError(null);
     },
     // El servidor responde en cuanto encola, no cuando termina. Se cierra el
-    // dialogo y se manda al usuario a Actualizaciones, donde puede seguir el
-    // progreso y la salida sin quedarse mirando un modal bloqueado.
+    // dialogo y se sigue trabajando donde se estaba: quien quiera ver el
+    // progreso entra en Actualizaciones cuando le apetezca.
     onSuccess: (result) => {
       setRunning(false);
-      onDone(
-        result.queued > 0 ? t('updates.queued') : t('images.updateStarted'),
-        'info',
-      );
+      onDone(result.queued > 0 ? t('updates.queued') : t('images.updateStarted'), 'info');
       onClose();
-      navigate('/updates');
     },
     onError: (caught) => {
       setRunning(false);
