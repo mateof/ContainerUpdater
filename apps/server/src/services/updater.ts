@@ -323,6 +323,51 @@ export class UpdaterService {
     return done;
   }
 
+  /**
+   * Cancela un trabajo.
+   *
+   * Si todavia espera turno, se saca de la cola y ya esta. Si esta corriendo,
+   * se mata el proceso de compose; el recreate por API no se puede interrumpir
+   * a mitad sin arriesgarse a dejar el contenedor en un estado peor que el
+   * inicial, asi que en ese caso se rechaza y se dice por que.
+   */
+  cancel(jobId: number): { cancelled: boolean; reason?: string } {
+    const queuedIndex = this.#queue.findIndex((entry) => entry.jobId === jobId);
+    if (queuedIndex >= 0) {
+      const [entry] = this.#queue.splice(queuedIndex, 1);
+      this.repos.history.finishJob(jobId, {
+        status: 'skipped',
+        error: 'Cancelado antes de empezar',
+      });
+      entry?.reject(new Error('Cancelado'));
+      this.#emit(jobId);
+      return { cancelled: true };
+    }
+
+    if (this.#currentJobId !== jobId) {
+      return { cancelled: false, reason: 'El trabajo ya no esta activo' };
+    }
+
+    const job = this.repos.history.getJob(jobId);
+    if (job?.strategy === 'compose') {
+      const killed = this.compose.cancel(jobId);
+      if (killed) {
+        this.repos.history.appendJobLog(jobId, 'Cancelado por el usuario');
+        this.#emit(jobId);
+        // El estado final lo pone el flujo normal cuando el proceso muera.
+        return { cancelled: true };
+      }
+      return { cancelled: false, reason: 'El proceso ya habia terminado' };
+    }
+
+    return {
+      cancelled: false,
+      reason:
+        'Una recreacion por API no se puede interrumpir a mitad sin dejar el contenedor peor ' +
+        'de lo que estaba. Espera a que termine o la restaure sola.',
+    };
+  }
+
   async #execute(
     jobId: number,
     request: UpdateRequest,
@@ -343,7 +388,7 @@ export class UpdaterService {
       const targetTag = request.targetTag ?? imageRow?.candidate_tag ?? null;
 
       if (plan.strategy === 'compose') {
-        await this.#runCompose(request, plan, progress, targetTag);
+        await this.#runCompose(request, plan, progress, targetTag, jobId);
       } else {
         await this.#runRecreate(request, plan, policy, progress, targetTag);
       }
@@ -400,6 +445,7 @@ export class UpdaterService {
     plan: Awaited<ReturnType<UpdaterService['planFor']>>,
     progress: (line: string) => void,
     targetTag: string | null,
+    jobId: number,
   ): Promise<void> {
     const project = this.inventory.snapshot.projects.find((p) => p.key === plan.projectKey);
     if (!project) throw new Error('No se encuentra el proyecto del contenedor');

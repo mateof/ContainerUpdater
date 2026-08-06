@@ -1,17 +1,14 @@
 /**
  * Ejecucion de Docker Compose.
  *
- * Regla absoluta: `execFile` con `shell: false`, nunca `exec` ni plantillas de
+ * Regla absoluta: `spawn` con `shell: false`, nunca `exec` ni plantillas de
  * cadena. Los nombres de proyecto y servicio vienen de labels que controla
  * quien haya creado el contenedor, asi que se tratan como entrada no confiable.
  */
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn, type ChildProcess } from 'node:child_process';
 import type { RecreateScope } from '@cu/shared';
 import { checkComposeAccessibility } from './projects.js';
 import type { Logger } from '../logger.js';
-
-const execFileAsync = promisify(execFile);
 
 /**
  * Nombres validos de proyecto y servicio.
@@ -51,9 +48,14 @@ export interface ComposeOptions {
   serviceName?: string;
   forceRecreate?: boolean;
   onOutput?: (line: string) => void;
+  /** Identifica el trabajo para poder cancelar su proceso. */
+  jobId?: number;
 }
 
 export class ComposeRunner {
+  /** Procesos de compose vivos, por trabajo, para poder cancelarlos. */
+  readonly #running = new Map<number, ChildProcess>();
+
   constructor(
     private readonly dockerBin: string,
     private readonly allowedRoots: string[],
@@ -99,7 +101,7 @@ export class ComposeRunner {
       assertSafeName(options.serviceName);
       args.push(options.serviceName);
     }
-    await this.#run(args, cwd, options.onOutput);
+    await this.#run(args, cwd, options.onOutput, options.jobId);
   }
 
   async up(target: ComposeTarget, options: ComposeOptions): Promise<void> {
@@ -128,7 +130,7 @@ export class ComposeRunner {
       args.push('--no-deps', options.serviceName);
     }
 
-    await this.#run(args, cwd, options.onOutput);
+    await this.#run(args, cwd, options.onOutput, options.jobId);
   }
 
   async restart(target: ComposeTarget, options: ComposeOptions): Promise<void> {
@@ -145,7 +147,7 @@ export class ComposeRunner {
       assertSafeName(options.serviceName);
       args.push(options.serviceName);
     }
-    await this.#run(args, cwd, options.onOutput);
+    await this.#run(args, cwd, options.onOutput, options.jobId);
   }
 
   async #resolveTarget(target: ComposeTarget): Promise<{ files: string[]; cwd: string }> {
@@ -161,12 +163,28 @@ export class ComposeRunner {
     return { files: check.resolvedFiles, cwd: check.resolvedWorkingDir };
   }
 
-  async #run(args: string[], cwd: string, onOutput?: (line: string) => void): Promise<string> {
+  /**
+   * Ejecuta compose con la salida en directo.
+   *
+   * Se usa `spawn` y no `execFile` por dos motivos que resultaron ser el mismo
+   * problema: `execFile` acumula toda la salida y solo la entrega al terminar,
+   * asi que durante una descarga larga el registro se ve vacio y parece que no
+   * pasa nada; y ademas no deja acceso al proceso, con lo que un trabajo
+   * atascado no se podia cancelar.
+   *
+   * El proceso se registra en `#running` para poder matarlo desde fuera.
+   */
+  async #run(
+    args: string[],
+    cwd: string,
+    onOutput?: (line: string) => void,
+    jobId?: number,
+  ): Promise<string> {
     const full = ['compose', ...args];
     this.log.debug(`Ejecutando: ${this.dockerBin} ${full.join(' ')}`);
 
-    try {
-      const { stdout, stderr } = await execFileAsync(this.dockerBin, full, {
+    return new Promise<string>((resolve, reject) => {
+      const child = spawn(this.dockerBin, full, {
         cwd,
         // Entorno explicito y minimo. Heredar `process.env` filtraria
         // CU_ENCRYPTION_KEY y el token de Telegram a un subproceso que
@@ -176,43 +194,117 @@ export class ComposeRunner {
           HOME: '/tmp',
           DOCKER_HOST: this.dockerHost,
           COMPOSE_PROGRESS: 'plain',
-          // Sin esto compose escribe secuencias ANSI que ensucian el log del
-          // trabajo que luego se muestra en la interfaz.
           NO_COLOR: '1',
           TZ: process.env.TZ ?? 'UTC',
         },
-        timeout: this.timeoutMs,
-        maxBuffer: 16 * 1024 * 1024,
         shell: false,
       });
 
-      // Compose escribe su progreso por stderr aunque todo vaya bien.
-      for (const line of splitLines(stderr)) onOutput?.(line);
-      for (const line of splitLines(stdout)) onOutput?.(line);
-      return stdout;
-    } catch (error) {
-      const err = error as Error & { stdout?: string; stderr?: string; killed?: boolean };
-      const stdout = err.stdout ?? '';
-      const stderr = err.stderr ?? '';
-      for (const line of splitLines(stderr)) onOutput?.(line);
+      if (jobId !== undefined) this.#running.set(jobId, child);
 
-      if (err.killed) {
-        throw new ComposeError(
-          `Docker Compose ha excedido el tiempo limite de ${Math.round(this.timeoutMs / 60000)} minutos`,
-          stdout,
-          stderr,
+      let stdout = '';
+      let stderr = '';
+      let settled = false;
+
+      // Se acumula por trozos y se emite por lineas completas: los trozos no
+      // respetan los saltos de linea y partirian los mensajes por la mitad.
+      const makeReader = (collect: (text: string) => void) => {
+        let buffer = '';
+        return (chunk: Buffer): void => {
+          const text = chunk.toString('utf8');
+          collect(text);
+          buffer += text;
+          let index: number;
+          while ((index = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, index).trimEnd();
+            buffer = buffer.slice(index + 1);
+            if (line) onOutput?.(line);
+          }
+        };
+      };
+
+      child.stdout?.on('data', makeReader((text) => (stdout += text)));
+      // Compose escribe su progreso por stderr aunque todo vaya bien.
+      child.stderr?.on('data', makeReader((text) => (stderr += text)));
+
+      /**
+       * Corte por tiempo, en dos fases.
+       *
+       * Un SIGTERM a secas no siempre basta: si el CLI esta bloqueado en una
+       * descarga puede ignorarlo y el trabajo se queda colgado indefinidamente,
+       * que es exactamente lo que hay que evitar. Se le da margen para salir
+       * bien y, si no lo hace, SIGKILL.
+       */
+      const timer = setTimeout(() => {
+        onOutput?.(
+          `Tiempo limite de ${Math.round(this.timeoutMs / 60000)} minutos superado, deteniendo`,
         );
-      }
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new ComposeError(
-          `No se encuentra el binario "${this.dockerBin}". La imagen debe incluir el CLI de Docker y el plugin de Compose.`,
-          stdout,
-          stderr,
-        );
-      }
-      throw new ComposeError(firstMeaningfulLine(stderr) || err.message, stdout, stderr);
-    }
+        child.kill('SIGTERM');
+        setTimeout(() => {
+          if (!child.killed) child.kill('SIGKILL');
+        }, 10_000).unref();
+      }, this.timeoutMs);
+
+      const finish = (fn: () => void): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (jobId !== undefined) this.#running.delete(jobId);
+        fn();
+      };
+
+      child.on('error', (error: NodeJS.ErrnoException) => {
+        finish(() => {
+          if (error.code === 'ENOENT') {
+            reject(
+              new ComposeError(
+                `No se encuentra el binario "${this.dockerBin}". La imagen debe incluir el CLI de Docker y el plugin de Compose.`,
+                stdout,
+                stderr,
+              ),
+            );
+            return;
+          }
+          reject(new ComposeError(error.message, stdout, stderr));
+        });
+      });
+
+      child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+        finish(() => {
+          if (signal) {
+            reject(
+              new ComposeError(
+                signal === 'SIGTERM' || signal === 'SIGKILL'
+                  ? 'Docker Compose se ha detenido (cancelado o tiempo limite superado)'
+                  : `Docker Compose ha terminado por la senal ${signal}`,
+                stdout,
+                stderr,
+              ),
+            );
+            return;
+          }
+          if (code !== 0) {
+            reject(new ComposeError(firstMeaningfulLine(stderr) || `codigo ${code}`, stdout, stderr));
+            return;
+          }
+          resolve(stdout);
+        });
+      });
+    });
   }
+
+  /** Mata el proceso de compose de un trabajo. Devuelve false si ya no corria. */
+  cancel(jobId: number): boolean {
+    const child = this.#running.get(jobId);
+    if (!child) return false;
+    child.kill('SIGTERM');
+    // Red de seguridad: si no se va por las buenas, se fuerza.
+    setTimeout(() => {
+      if (!child.killed) child.kill('SIGKILL');
+    }, 5000).unref();
+    return true;
+  }
+
 }
 
 function flagFiles(files: string[]): string[] {

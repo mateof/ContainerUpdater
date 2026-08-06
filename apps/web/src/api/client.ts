@@ -95,6 +95,49 @@ export interface SystemStatusResponse {
   telegram: { configured: boolean; running: boolean };
 }
 
+/**
+ * Forma del `inspect` de Docker, solo con lo que muestra la interfaz.
+ *
+ * Todo opcional: los campos varian entre versiones del daemon y entre Docker y
+ * Podman, y una pantalla de detalle no puede reventar porque falte uno.
+ */
+export interface ContainerInspectLike {
+  Name?: string;
+  Image?: string;
+  Created?: string;
+  RestartCount?: number;
+  State?: {
+    Status?: string;
+    StartedAt?: string;
+    Health?: { Status?: string; FailingStreak?: number };
+  };
+  Config?: {
+    Env?: string[] | null;
+    Cmd?: string[] | null;
+    Entrypoint?: string[] | null;
+    Labels?: Record<string, string> | null;
+    WorkingDir?: string;
+    User?: string;
+  };
+  HostConfig?: {
+    NetworkMode?: string;
+    RestartPolicy?: { Name?: string };
+  };
+  NetworkSettings?: {
+    Networks?: Record<
+      string,
+      { IPAddress?: string; MacAddress?: string; Aliases?: string[] | null }
+    >;
+  };
+  Mounts?: Array<{
+    Type?: string;
+    Name?: string;
+    Source?: string;
+    Destination?: string;
+    RW?: boolean;
+  }>;
+}
+
 export interface UpdatePlan {
   strategy: UpdateStrategy;
   containerId: string | null;
@@ -118,6 +161,8 @@ export const api = {
 
   status: () => get<SystemStatusResponse>('/status'),
   containers: () => get<{ containers: ContainerSummary[] }>('/containers'),
+  /** Inspect completo del daemon. Tipado laxo a proposito: son decenas de campos. */
+  container: (id: string) => get<{ container: ContainerInspectLike }>(`/containers/${id}`),
   containerLogs: (id: string, tail = 200) =>
     get<{ logs: string }>(`/containers/${id}/logs?tail=${tail}`),
   containerAction: (id: string, action: 'start' | 'stop' | 'restart') =>
@@ -166,6 +211,8 @@ export const api = {
   checkRuns: () => get<{ runs: CheckRun[] }>('/checks/runs'),
   jobs: () => get<{ jobs: UpdateJob[] }>('/updates/jobs'),
   job: (id: number) => get<{ job: UpdateJob }>(`/updates/jobs/${id}`),
+  cancelJob: (id: number) => post<{ cancelled: true }>(`/updates/jobs/${id}/cancel`),
+  retryJob: (id: number) => post<{ job: UpdateJob }>(`/updates/jobs/${id}/retry`),
 
   settings: () => get<{ settings: AppSettings }>('/settings'),
   saveSettings: (patch: Partial<AppSettings>) =>

@@ -176,4 +176,71 @@ export async function registerUpdateRoutes(
     if (!job) return reply.code(404).send({ error: 'not-found' });
     return { job };
   });
+
+  /** Detiene un trabajo atascado o que ya no interesa. */
+  fastify.post(
+    '/api/updates/jobs/:id/cancel',
+    { onRequest: [fastify.requireOperator] },
+    async (request, reply) => {
+      const id = Number((request.params as { id: string }).id);
+      const job = app.repos.history.getJob(id);
+      if (!job) return reply.code(404).send({ error: 'not-found' });
+
+      const result = app.updater.cancel(id);
+      app.repos.history.audit({
+        actorType: 'user',
+        actorId: String(request.currentUser!.id),
+        action: 'update.cancelled',
+        target: job.imageRef,
+        detail: result.cancelled ? 'ok' : (result.reason ?? 'no'),
+        ip: request.ip,
+      });
+
+      if (!result.cancelled) {
+        return reply.code(409).send({ error: 'cannot-cancel', reason: result.reason });
+      }
+      return { cancelled: true };
+    },
+  );
+
+  /**
+   * Vuelve a lanzar un trabajo que fallo o se cancelo.
+   *
+   * Se crea uno nuevo en vez de reabrir el anterior: el historial tiene que
+   * conservar que hubo un intento fallido y por que.
+   */
+  fastify.post(
+    '/api/updates/jobs/:id/retry',
+    { onRequest: [fastify.requireOperator] },
+    async (request, reply) => {
+      const id = Number((request.params as { id: string }).id);
+      const previous = app.repos.history.getJob(id);
+      if (!previous) return reply.code(404).send({ error: 'not-found' });
+
+      if (previous.status === 'running' || previous.status === 'queued') {
+        return reply.code(409).send({ error: 'still-active' });
+      }
+
+      try {
+        const { job } = await app.updater.enqueue({
+          imageRef: previous.imageRef,
+          mode: previous.mode,
+          trigger: 'manual',
+          actorUserId: request.currentUser!.id,
+        });
+        return reply.code(202).send({ job });
+      } catch (error) {
+        if (error instanceof SelfUpdateRejectedError) {
+          return reply.code(409).send({ error: 'self-update-rejected' });
+        }
+        if (error instanceof UpdateInProgressError) {
+          return reply.code(409).send({ error: 'update-in-progress' });
+        }
+        if (error instanceof RecreateUnsupportedError) {
+          return reply.code(422).send({ error: 'recreate-unsupported', reason: error.reason });
+        }
+        return reply.code(500).send({ error: 'retry-failed', message: (error as Error).message });
+      }
+    },
+  );
 }

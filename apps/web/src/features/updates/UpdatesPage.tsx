@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { UpdateJob } from '@cu/shared';
-import { api } from '@/api/client';
+import { api, ApiError } from '@/api/client';
 import { useLive } from '@/hooks/LiveContext';
-import { Badge, Card, EmptyState, Modal, Skeleton, Button } from '@/components/ui';
-import { IconUpdates } from '@/components/icons';
+import { Badge, Card, EmptyState, Modal, Skeleton, Button, useToast } from '@/components/ui';
+import { IconRefresh, IconUpdates } from '@/components/icons';
 import { displayImage, formatDateTime, formatDuration, formatRelative } from '@/lib/format';
 import { JOB_STATUS_LABEL, JOB_STATUS_TONE } from '@/lib/labels';
 import { ActiveJobCard } from './ActiveJobCard';
@@ -21,6 +21,26 @@ export function UpdatesPage(): ReactNode {
   // llevar al usuario a ESE trabajo y no dejarlo buscandolo en la lista.
   const [params, setParams] = useSearchParams();
   const focusId = Number(params.get('job')) || null;
+
+  const queryClient = useQueryClient();
+  const notify = useToast();
+
+  const retry = useMutation({
+    mutationFn: (id: number) => api.retryJob(id),
+    onSuccess: () => {
+      notify(t('images.updateStarted'), 'info');
+      void queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+    onError: (error) => {
+      const code = error instanceof ApiError ? error.code : '';
+      const messages: Record<string, string> = {
+        'update-in-progress': t('errors.updateInProgress'),
+        'self-update-rejected': t('errors.selfUpdateRejected'),
+        'recreate-unsupported': t('projects.strategyUnsupportedHelp'),
+      };
+      notify(messages[code] ?? t('common.error'), 'danger');
+    },
+  });
 
   const { data: jobsData, isLoading } = useQuery({ queryKey: ['jobs'], queryFn: () => api.jobs() });
   const { data: runsData } = useQuery({ queryKey: ['runs'], queryFn: () => api.checkRuns() });
@@ -152,6 +172,24 @@ export function UpdatesPage(): ReactNode {
                     <p className="mt-2 rounded-[var(--radius-sm)] bg-[var(--warn-soft)] px-2.5 py-1.5 text-[0.6875rem] text-[var(--warn)]">
                       {t('updates.rolledBackNotice')}
                     </p>
+                  ) : null}
+
+                  {/* Reintentar solo donde tiene sentido: un trabajo correcto
+                      no hay que repetirlo, y para eso ya esta forzar. */}
+                  {job.status === 'failed' ||
+                  job.status === 'rolled-back' ||
+                  job.status === 'skipped' ? (
+                    <div className="mt-2 flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon={<IconRefresh size={14} />}
+                        loading={retry.isPending && retry.variables === job.id}
+                        onClick={() => retry.mutate(job.id)}
+                      >
+                        {t('updates.retry')}
+                      </Button>
+                    </div>
                   ) : null}
                 </Card>
               </li>

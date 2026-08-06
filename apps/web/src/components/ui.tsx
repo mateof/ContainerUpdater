@@ -331,6 +331,8 @@ export function Modal({
   children,
   footer,
   wide,
+  resizable,
+  storageKey,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -339,12 +341,23 @@ export function Modal({
   children?: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Permite arrastrar la esquina para agrandarlo. Util con registros largos. */
+  resizable?: boolean;
+  /** Recuerda el tamano elegido entre aperturas. */
+  storageKey?: string;
 }): ReactNode {
+  const [size, setSize] = useResizableSize(storageKey, resizable);
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 cu-animate-in" />
         <Dialog.Content
+          style={
+            resizable && size
+              ? { width: `${size.width}px`, height: `${size.height}px`, maxWidth: 'none', maxHeight: 'none' }
+              : undefined
+          }
           className={cx(
             'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2 cu-scale-in',
             'w-[calc(100vw-2rem)] max-h-[85vh] overflow-hidden flex flex-col',
@@ -354,6 +367,7 @@ export function Modal({
             wide ? 'max-w-3xl' : 'max-w-lg',
           )}
         >
+          {resizable ? <ResizeHandle onResize={setSize} /> : null}
           <div className="px-5 pt-5 pb-3">
             <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
             {description ? (
@@ -371,6 +385,109 @@ export function Modal({
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+interface Size {
+  width: number;
+  height: number;
+}
+
+/**
+ * Tamano del modal, recordado entre aperturas.
+ *
+ * Quien agranda el modal de registros lo hace porque su pantalla da para mas;
+ * volver al tamano por defecto cada vez obligaria a repetir el gesto en cada
+ * contenedor que abra.
+ */
+function useResizableSize(
+  storageKey: string | undefined,
+  enabled: boolean | undefined,
+): [Size | null, (size: Size) => void] {
+  const [size, setSizeState] = useState<Size | null>(() => {
+    if (!enabled || !storageKey) return null;
+    try {
+      const stored = localStorage.getItem(`cu-modal-${storageKey}`);
+      if (!stored) return null;
+      const parsed = JSON.parse(stored) as Size;
+      // Un tamano guardado en un monitor grande no puede desbordar una pantalla
+      // pequena: se acota a lo que quepa ahora.
+      return {
+        width: Math.min(parsed.width, window.innerWidth - 32),
+        height: Math.min(parsed.height, window.innerHeight - 32),
+      };
+    } catch {
+      return null;
+    }
+  });
+
+  const setSize = useCallback(
+    (next: Size) => {
+      setSizeState(next);
+      if (!storageKey) return;
+      try {
+        localStorage.setItem(`cu-modal-${storageKey}`, JSON.stringify(next));
+      } catch {
+        // Sin persistencia el tamano dura lo que la sesion.
+      }
+    },
+    [storageKey],
+  );
+
+  return [size, setSize];
+}
+
+/**
+ * Tirador de redimension en la esquina inferior derecha.
+ *
+ * Se escucha en `window` y no en el propio tirador: si el puntero se adelanta
+ * al arrastrar, sale del elemento y el gesto se cortaria a medias.
+ */
+function ResizeHandle({ onResize }: { onResize: (size: Size) => void }): ReactNode {
+  return (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      aria-label="Redimensionar"
+      onPointerDown={(event) => {
+        event.preventDefault();
+        const content = event.currentTarget.parentElement;
+        if (!content) return;
+
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const rect = content.getBoundingClientRect();
+
+        const onMove = (move: PointerEvent): void => {
+          // Se multiplica por 2 porque el modal esta centrado: crece por los
+          // dos lados a la vez, asi que el borde solo avanza la mitad de lo que
+          // se arrastra.
+          onResize({
+            width: Math.max(360, Math.min(rect.width + (move.clientX - startX) * 2, window.innerWidth - 32)),
+            height: Math.max(240, Math.min(rect.height + (move.clientY - startY) * 2, window.innerHeight - 32)),
+          });
+        };
+
+        const onUp = (): void => {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          document.body.style.userSelect = '';
+        };
+
+        // Sin esto, arrastrar selecciona el texto del modal.
+        document.body.style.userSelect = 'none';
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+      }}
+      className={cx(
+        'absolute bottom-0 right-0 z-10 size-5 cursor-nwse-resize',
+        'text-[var(--text-faint)] hover:text-[var(--text-muted)]',
+      )}
+    >
+      <svg viewBox="0 0 16 16" className="size-full p-1" aria-hidden="true">
+        <path d="M14 6 6 14M14 11l-3 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+      </svg>
+    </div>
   );
 }
 

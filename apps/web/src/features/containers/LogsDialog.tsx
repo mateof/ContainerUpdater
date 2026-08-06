@@ -38,6 +38,10 @@ export function LogsDialog({
       open
       onOpenChange={(open) => !open && onClose()}
       wide
+      // Los registros se quedan cortos en cuanto hay stack traces: se puede
+      // agrandar arrastrando la esquina, y el tamano se recuerda.
+      resizable
+      storageKey="logs"
       title={t('containers.logsTitle', { name: container.name })}
       footer={
         <>
@@ -78,7 +82,10 @@ export function LogsDialog({
               element.scrollHeight - element.scrollTop - element.clientHeight < 40;
             if (!atBottom && follow) setFollow(false);
           }}
-          className="max-h-[55vh] overflow-auto rounded-[var(--radius-sm)] bg-[var(--bg-inset)] p-3 font-mono text-[0.6875rem] leading-relaxed whitespace-pre-wrap break-all"
+          // Altura flexible en vez de fija: con una altura en vh, agrandar el
+          // modal dejaria un hueco vacio debajo del texto en lugar de mostrar
+          // mas lineas, que es justo para lo que se agranda.
+          className="h-full min-h-[40vh] overflow-auto rounded-[var(--radius-sm)] bg-[var(--bg-inset)] p-3 font-mono text-[0.6875rem] leading-relaxed whitespace-pre-wrap break-all"
         >
           {data?.logs?.trim() || t('containers.logsEmpty')}
         </pre>

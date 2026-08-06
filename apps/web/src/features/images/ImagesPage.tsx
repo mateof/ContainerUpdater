@@ -370,9 +370,12 @@ function ImageRow({
               },
               {
                 key: 'auto',
+                // Se enuncia la ACCION, no el estado. "Auto-actualizar: Si"
+                // se leia como "esta activada" cuando en realidad significaba
+                // "pulsa para activarla", justo lo contrario.
                 label: image.policy.autoUpdate
-                  ? `${t('images.autoUpdate')}: ${t('common.no')}`
-                  : `${t('images.autoUpdate')}: ${t('common.yes')}`,
+                  ? t('images.autoUpdateDisable')
+                  : t('images.autoUpdateEnable'),
                 disabled: !actionable,
                 onSelect: () => onToggleAuto(!image.policy.autoUpdate),
               },

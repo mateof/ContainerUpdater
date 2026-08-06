@@ -33,6 +33,7 @@ import { displayImage, formatBytes, formatPercent, formatRate, formatRelative } 
 import { CONTAINER_STATE_LABEL, CONTAINER_STATE_TONE, HEALTH_LABEL } from '@/lib/labels';
 import { JobIndicator } from '@/components/JobIndicator';
 import { LogsDialog } from './LogsDialog';
+import { ContainerDetailDialog } from './ContainerDetailDialog';
 
 type Filter = 'all' | 'running' | 'stopped' | 'unhealthy';
 
@@ -45,6 +46,7 @@ export function ContainersPage(): ReactNode {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [logsFor, setLogsFor] = useState<ContainerSummary | null>(null);
+  const [detailFor, setDetailFor] = useState<ContainerSummary | null>(null);
   const [confirm, setConfirm] = useState<{
     container: ContainerSummary;
     action: 'stop' | 'restart';
@@ -161,7 +163,13 @@ export function ContainersPage(): ReactNode {
                       }
                     />
 
-                    <div className="min-w-0 flex-1">
+                    {/* La fila entera abre el detalle. Es donde el usuario
+                        pulsa por instinto cuando quiere saber mas. */}
+                    <button
+                      type="button"
+                      onClick={() => setDetailFor(container)}
+                      className="min-w-0 flex-1 text-left"
+                    >
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="truncate text-[0.8125rem] font-medium">{container.name}</span>
                         <Badge tone={CONTAINER_STATE_TONE[container.state]}>
@@ -192,7 +200,7 @@ export function ContainersPage(): ReactNode {
                         ) : null}
                         <span>{formatRelative(container.createdAt)}</span>
                       </div>
-                    </div>
+                    </button>
 
                     {/* Metricas en vivo, solo si el contenedor esta activo. */}
                     {running && metrics ? (
@@ -295,6 +303,17 @@ export function ContainersPage(): ReactNode {
       )}
 
       {logsFor ? <LogsDialog container={logsFor} onClose={() => setLogsFor(null)} /> : null}
+
+      {detailFor ? (
+        <ContainerDetailDialog
+          container={detailFor}
+          onClose={() => setDetailFor(null)}
+          onShowLogs={() => {
+            setLogsFor(detailFor);
+            setDetailFor(null);
+          }}
+        />
+      ) : null}
 
       {confirm ? (
         <ConfirmDialog
