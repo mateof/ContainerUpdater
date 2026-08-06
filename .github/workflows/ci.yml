@@ -59,23 +59,42 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Avisa en el PR de si la version cambia o no. No falla: hay cambios que no
-  # merecen version nueva y forzarlo llevaria a subirla sin criterio.
+  # Avisa en el PR de si la version cambia o no.
+  #
+  # Es puramente informativo y NO debe fallar nunca: hay cambios que no merecen
+  # version nueva, y ademas un aviso que tumba el CI acaba ignorandose. Por eso
+  # `continue-on-error` ademas del manejo explicito de errores: la primera
+  # version de este job reventaba cuando la rama base todavia no tenia
+  # package.json, que es justo el caso de un repositorio recien creado.
   version:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Comparar la version con main
+      - name: Comparar la version con la rama base
         run: |
-          set -euo pipefail
-          CURRENT="$(node -p "require('./package.json').version")"
-          BASE="$(git show origin/${{ github.base_ref }}:package.json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")"
+          # Sin `set -e` a proposito: aqui ningun fallo debe abortar el job.
+          set -uo pipefail
 
-          if [ "$CURRENT" = "$BASE" ]; then
+          CURRENT="$(node -p "require('./package.json').version" 2>/dev/null || echo '')"
+          if [ -z "$CURRENT" ]; then
+            echo "::notice::No se ha podido leer la version actual."
+            exit 0
+          fi
+
+          BASE=''
+          if git cat-file -e "origin/${{ github.base_ref }}:package.json" 2>/dev/null; then
+            BASE="$(git show "origin/${{ github.base_ref }}:package.json" \
+              | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).version" 2>/dev/null || echo '')"
+          fi
+
+          if [ -z "$BASE" ]; then
+            echo "::notice::La rama base aun no tiene package.json. Al mergear se publicara la version $CURRENT."
+          elif [ "$CURRENT" = "$BASE" ]; then
             echo "::notice::La version sigue en $CURRENT. Si este PR cambia el comportamiento, subela antes de mergear o no se publicara imagen nueva."
           else
             echo "::notice::Version: $BASE -> $CURRENT. Al mergear se publicara la imagen."
