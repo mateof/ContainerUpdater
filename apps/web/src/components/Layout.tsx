@@ -9,6 +9,7 @@ import { useEvents } from '@/hooks/useEvents';
 import { LiveContext } from '@/hooks/LiveContext';
 import { setLocale, currentLocale } from '@/i18n';
 import { Badge, Button, Menu, Spinner, Tooltip, cx, useTheme } from './ui';
+import { MadeBy, REPO_URL } from './MadeBy';
 import {
   IconContainer,
   IconDashboard,
@@ -20,6 +21,8 @@ import {
   IconSettings,
   IconSun,
   IconUpdates,
+  IconGithub,
+  IconStar,
 } from './icons';
 
 interface NavEntry {
@@ -111,6 +114,24 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
           </nav>
 
           <div className="mt-auto space-y-2 pt-3">
+            {/* Enlace al repositorio. Discreto y al fondo: esta ahi para quien
+                lo busque, sin robar atencion al panel. */}
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              className={cx(
+                'flex items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-1.5',
+                'text-[0.75rem] text-[var(--text-muted)]',
+                'transition-colors duration-[var(--dur-fast)]',
+                'hover:bg-[var(--bg-hover)] hover:text-[var(--text)]',
+              )}
+            >
+              <IconGithub size={15} />
+              <span className="flex-1">GitHub</span>
+              <IconStar size={13} className="text-[var(--warn)]" />
+            </a>
+
             <ConnectionIndicator connected={live.connected} dockerOk={status?.dockerConnected} />
             <div className="flex items-center gap-1 px-1">
               <Tooltip content={t('nav.theme')}>
@@ -177,6 +198,8 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
                 ]}
               />
             </div>
+
+            <MadeBy className="pb-1" />
           </div>
         </aside>
 

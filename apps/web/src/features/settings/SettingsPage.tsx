@@ -13,11 +13,14 @@ import {
   Input,
   SectionTitle,
   Select,
+  cx,
   Skeleton,
   Switch,
   useToast,
 } from '@/components/ui';
 import { formatDateTime } from '@/lib/format';
+import { IconGithub, IconStar } from '@/components/icons';
+import { MadeBy, REPO_URL } from '@/components/MadeBy';
 import { RegistriesSection } from './RegistriesSection';
 import { TelegramSection } from './TelegramSection';
 
@@ -215,6 +218,42 @@ export function SettingsPage(): ReactNode {
           </Row>
           <Row label={t('dashboard.lastCheck')}>{formatDateTime(status?.lastCheckAt)}</Row>
         </dl>
+      </Card>
+
+      {/* Acerca de. Va al final a proposito: es lo ultimo que se mira, no lo
+          que estorba mientras se configura algo. */}
+      <Card className="p-5">
+        <SectionTitle title={t('settings.about')} description={t('settings.aboutDescription')} />
+
+        <div className="flex flex-wrap gap-2">
+          {/* rel="noreferrer noopener" en todos: sin noopener la pagina abierta
+              puede manipular la nuestra por window.opener. */}
+          <a href={REPO_URL} target="_blank" rel="noreferrer noopener">
+            <Button variant="secondary" icon={<IconGithub size={16} />}>
+              {t('settings.viewOnGithub')}
+            </Button>
+          </a>
+
+          <a href={`${REPO_URL}/issues/new`} target="_blank" rel="noreferrer noopener">
+            <Button variant="ghost">{t('settings.reportIssue')}</Button>
+          </a>
+        </div>
+
+        <a
+          href={`${REPO_URL}/stargazers`}
+          target="_blank"
+          rel="noreferrer noopener"
+          className={cx(
+            'mt-4 flex items-center gap-2.5 rounded-[var(--radius-sm)] px-3 py-2.5',
+            'bg-[var(--warn-soft)] text-[var(--warn)]',
+            'transition-transform duration-[var(--dur-fast)] hover:-translate-y-0.5',
+          )}
+        >
+          <IconStar size={17} />
+          <span className="text-[0.8125rem]">{t('settings.starPrompt')}</span>
+        </a>
+
+        <MadeBy className="mt-5" />
       </Card>
     </div>
   );

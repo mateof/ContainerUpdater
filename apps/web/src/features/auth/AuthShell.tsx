@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
 import { Button, Menu, useTheme } from '@/components/ui';
 import { IconMoon, IconSun } from '@/components/icons';
+import { MadeBy } from '@/components/MadeBy';
 import { currentLocale, setLocale } from '@/i18n';
 import { useState } from 'react';
 
@@ -103,6 +104,8 @@ export function AuthShell({
         <div className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)] p-5 shadow-[var(--shadow-lg)]">
           {children}
         </div>
+
+        <MadeBy className="mt-5" />
       </div>
     </div>
   );
