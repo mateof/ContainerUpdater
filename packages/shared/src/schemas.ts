@@ -75,6 +75,22 @@ export const updateRequestSchema = z.object({
   targetTag: z.string().max(128).optional(),
 });
 
+/**
+ * La clave del proyecto viaja en el cuerpo y no en la ruta: es `nombre +
+ * directorio`, y las rutas de un NAS son lo bastante largas como para que la
+ * URL codificada supere el limite y el servidor devuelva 414.
+ */
+export const serviceActionSchema = z.object({
+  projectKey: z.string().min(1).max(1024),
+  serviceName: z.string().min(1).max(255),
+  action: z.enum(['recreate', 'restart', 'stop', 'start', 'pull']),
+});
+
+export const projectApplySchema = z.object({
+  projectKey: z.string().min(1).max(1024),
+  restartOnly: z.boolean().default(false),
+});
+
 // ---------------------------------------------------------------------------
 // Registries
 // ---------------------------------------------------------------------------

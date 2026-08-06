@@ -13,6 +13,7 @@ import type {
   ImagePolicy,
   MetricsSnapshot,
   RegistryConfig,
+  ServiceAction,
   TelegramUser,
   TrackedImage,
   UpdateJob,
@@ -190,8 +191,16 @@ export const api = {
     },
   ) => post<{ job: UpdateJob; queued: number }>(`/images/${encodeRef(ref)}/update`, body),
 
-  applyProject: (key: string, restartOnly: boolean) =>
-    post<{ ok: true }>(`/projects/${encodeRef(key)}/apply`, { restartOnly }),
+  applyProject: (projectKey: string, restartOnly: boolean) =>
+    post<{ ok: true }>('/projects/apply', { projectKey, restartOnly }),
+
+  /** Accion de Compose sobre un servicio. Devuelve 202: corre en segundo plano. */
+  serviceAction: (projectKey: string, serviceName: string, action: ServiceAction) =>
+    post<{ job: UpdateJob; queued: number }>('/projects/service-action', {
+      projectKey,
+      serviceName,
+      action,
+    }),
 
   selfUpdatePlan: () =>
     get<{

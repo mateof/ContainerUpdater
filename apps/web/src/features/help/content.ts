@@ -1,0 +1,515 @@
+/**
+ * Contenido de la ayuda dentro de la aplicacion.
+ *
+ * Va aparte del catalogo i18n general a proposito: son parrafos largos, y
+ * mezclarlos con las etiquetas de botones haria ese fichero inmanejable. Aqui
+ * cada seccion es una unidad que se traduce entera.
+ *
+ * El formato es deliberadamente pobre (parrafos, listas, bloques de codigo y
+ * avisos) para poder pintarlo sin traer un renderizador de Markdown al bundle.
+ */
+import type { Locale } from '@cu/shared';
+
+export type Block =
+  | { type: 'p'; text: string }
+  | { type: 'ul'; items: string[] }
+  | { type: 'code'; text: string }
+  | { type: 'note'; tone: 'info' | 'warn'; title: string; text: string }
+  | { type: 'h'; text: string };
+
+export interface HelpSection {
+  id: string;
+  title: string;
+  blocks: Block[];
+}
+
+const es: HelpSection[] = [
+  {
+    id: 'intro',
+    title: 'Que hace esta aplicacion',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Vigila las imagenes de Docker que tienes desplegadas y avisa cuando sale una version nueva. Desde aqui puedes actualizarlas, recrear servicios, ver el rendimiento del NAS y manejarlo todo desde Telegram.',
+      },
+      {
+        type: 'p',
+        text: 'La idea es no tener que entrar por SSH para las tareas del dia a dia.',
+      },
+      { type: 'h', text: 'Las cuatro pantallas' },
+      {
+        type: 'ul',
+        items: [
+          'Panel: rendimiento del sistema y resumen de lo que hay.',
+          'Contenedores: estado, metricas en vivo, registros y detalle de cada uno.',
+          'Imagenes: que version tienes, si hay una nueva y como quieres vigilarla.',
+          'Proyectos: tus stacks de Compose, con acciones por servicio.',
+        ],
+      },
+    ],
+  },
+  {
+    id: 'deteccion',
+    title: 'Como detecta las actualizaciones',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Compara el identificador (digest) de la imagen que tienes con el que publica el registry. Si no coinciden, hay version nueva. Es exacto: no se fia de fechas ni de numeros de version.',
+      },
+      { type: 'h', text: 'Dos formas de vigilar' },
+      {
+        type: 'ul',
+        items: [
+          'Por digest: detecta que una etiqueta movil como latest apunta ahora a otra imagen. Es lo adecuado para latest, stable o alpine.',
+          'Por version: busca etiquetas con un numero mas alto. Es lo adecuado si has fijado algo como 1.4.2.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'Las etiquetas parciales como 8.2 se vigilan de las dos formas, porque son a la vez fijas (dentro de 8.2) y moviles (puede salir 8.3), y son cosas distintas.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Al comparar versiones no se mezclan sabores',
+        text: 'Una etiqueta 20-alpine solo se compara con otras NN-alpine, nunca con 20-bookworm ni con 20 a secas: son imagenes distintas aunque el numero se parezca.',
+      },
+      { type: 'h', text: 'Imagenes que no se pueden comprobar' },
+      {
+        type: 'p',
+        text: 'Si construiste una imagen en el propio NAS, no existe en ningun registry con el que compararla. La aplicacion lo detecta sola y deja de consultarla, en vez de dar un error cada vez.',
+      },
+    ],
+  },
+  {
+    id: 'actualizar',
+    title: 'Actualizar una imagen',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Pulsa Actualizar en la imagen. El trabajo corre en segundo plano: puedes cerrar el dialogo y seguir a lo tuyo. En Actualizaciones ves el progreso y la salida del terminal en directo.',
+      },
+      { type: 'h', text: 'Actualizar frente a forzar' },
+      {
+        type: 'ul',
+        items: [
+          'Actualizar: solo actua si hay una version nueva.',
+          'Forzar: vuelve a descargar y recrea aunque no haya novedad. Util cuando algo se ha quedado en mal estado.',
+        ],
+      },
+      { type: 'h', text: 'Alcance' },
+      {
+        type: 'p',
+        text: 'Por defecto solo se recrea el servicio de esa imagen. Casi nunca quieres tumbar la base de datos del stack para actualizar el frontal, asi que recrear el proyecto entero es una opcion aparte que hay que elegir a mano.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Si algo sale mal se deshace solo',
+        text: 'Cuando la aplicacion recrea un contenedor por su cuenta, si la version nueva no arranca restaura la anterior automaticamente. Con Docker Compose no puede: Compose borra el contenedor anterior y no hay a donde volver.',
+      },
+    ],
+  },
+  {
+    id: 'auto',
+    title: 'Actualizacion automatica',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Cada imagen decide si quiere actualizarse sola, desde su menu o desde su ficha. Hay ademas un interruptor general en Ajustes que las desactiva todas de golpe.',
+      },
+      {
+        type: 'p',
+        text: 'En las que vigilas por version puedes limitar hasta donde salta sola: solo parches, hasta version menor, o sin limite.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Con criterio',
+        text: 'Actualizar sola una base de datos puede requerir migrar los datos. Para esos servicios conviene dejar solo el aviso y aplicarlo tu cuando puedas mirarlo.',
+      },
+    ],
+  },
+  {
+    id: 'servicios',
+    title: 'Acciones sobre un servicio',
+    blocks: [
+      {
+        type: 'p',
+        text: 'En Proyectos, cada servicio tiene un menu con las operaciones que normalmente harias por SSH. Solo aparece si el fichero del proyecto es accesible.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Recrear: elimina el contenedor y lo crea de nuevo con la misma configuracion.',
+          'Reiniciar: para y arranca, sin recrear nada.',
+          'Parar y arrancar: lo que esperas.',
+          'Descargar imagen: la baja sin tocar el contenedor.',
+        ],
+      },
+      { type: 'h', text: 'Recrear equivale a esto' },
+      {
+        type: 'p',
+        text: 'Si un servicio se queda en mal estado y lo arreglabas asi por consola:',
+      },
+      {
+        type: 'code',
+        text: 'cd /volume1/docker/medios\ndocker compose rm -f -s reproductor\ndocker compose up -d reproductor',
+      },
+      {
+        type: 'p',
+        text: 'Eso es exactamente lo que hace Recrear, con los mismos dos pasos.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Las dependencias no se tocan',
+        text: 'Se usa esa secuencia y no "up --force-recreate" precisamente por esto: --force-recreate tambien recrearia las dependencias. Si tu servicio va detras de una VPN o depende de una base de datos, esas siguen intactas y solo se arrancan si estaban paradas.',
+      },
+    ],
+  },
+  {
+    id: 'proyectos',
+    title: 'Proyectos y como se actualizan',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Cada proyecto muestra el metodo que usara para actualizarse, y son dos:',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Docker Compose: el fichero del proyecto es accesible. Se actualiza igual que lo harias tu, y Container Manager lo sigue viendo bien.',
+          'Recreacion directa: el fichero no es accesible. Se recrea el contenedor copiando su configuracion actual.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Si todo sale como Recreacion directa',
+        text: 'Es que falta el montaje de la carpeta de proyectos, o no esta con la misma ruta a ambos lados. Las etiquetas de Compose guardan rutas del NAS y solo funcionan si coinciden exactamente. Lo tienes en el fichero de ejemplo del repositorio.',
+      },
+    ],
+  },
+  {
+    id: 'registries',
+    title: 'Imagenes privadas',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Para las imagenes que requieren autenticacion, anade las credenciales del registry en Ajustes. Se guardan cifradas.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'GHCR: usa un token personal de GitHub con permiso read:packages.',
+          'Docker Hub: tu usuario y un token de acceso, no la contrasena de la cuenta.',
+          'Registry propio: usuario y contrasena normales.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'El boton Probar conexion verifica contra una imagen real de ese servidor, no solo que el servidor responda.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'La clave de cifrado',
+        text: 'Las credenciales se cifran con CU_ENCRYPTION_KEY. Guarda una copia fuera del NAS: si la pierdes, la aplicacion sigue funcionando y avisando de los registries publicos, pero tendras que volver a introducir las privadas.',
+      },
+    ],
+  },
+  {
+    id: 'telegram',
+    title: 'Bot de Telegram',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Crea un bot con @BotFather, pon su token en la variable CU_TELEGRAM_BOT_TOKEN y reinicia. Luego, en Ajustes, pulsa Vincular una cuenta.',
+      },
+      {
+        type: 'p',
+        text: 'Se genera un codigo de un solo uso que caduca en diez minutos. Solo las cuentas de esa lista pueden usar el bot; a cualquier otra le contesta que no tiene acceso.',
+      },
+      { type: 'h', text: 'Comandos' },
+      {
+        type: 'code',
+        text: '/imagenes      lista tus imagenes y su estado\n/estado        rendimiento y resumen\n/comprobar     busca actualizaciones ahora\n/actualizar <imagen>\n/forzar <imagen>\n/auto <imagen> on|off\n/proyectos\n/logs <contenedor> [lineas]\n/idioma es|en',
+      },
+      {
+        type: 'p',
+        text: 'Los avisos no se repiten: mientras una etiqueta apunte a la misma imagen no se vuelve a notificar, pero en cuanto apunte a otra el aviso sale solo.',
+      },
+    ],
+  },
+  {
+    id: 'problemas',
+    title: 'Cuando algo va mal',
+    blocks: [
+      { type: 'h', text: 'Una actualizacion se queda atascada' },
+      {
+        type: 'p',
+        text: 'En Actualizaciones, mira la salida en vivo. Si lleva un rato sin escribir nada, pulsa Detener y reintentalo. Puede ser simplemente una imagen grande con una conexion lenta.',
+      },
+      { type: 'h', text: 'No hay rangos de IP disponibles' },
+      {
+        type: 'p',
+        text: 'Cada proyecto crea su propia red y Docker las reparte de un conjunto limitado. Ademas, al bajar un proyecto su red se queda ahi. Se limpia asi:',
+      },
+      { type: 'code', text: 'docker network prune -f' },
+      { type: 'h', text: 'El registry pide autenticacion' },
+      {
+        type: 'p',
+        text: 'O la imagen es privada y faltan credenciales, o el repositorio no existe. Si la construiste en el NAS, la aplicacion lo detectara sola y dejara de consultarla.',
+      },
+      { type: 'h', text: 'Las metricas del sistema son aproximadas' },
+      {
+        type: 'p',
+        text: 'Falta el montaje de solo lectura de /proc. Sin el se muestran datos derivados de Docker, y la propia interfaz lo indica.',
+      },
+    ],
+  },
+];
+
+const en: HelpSection[] = [
+  {
+    id: 'intro',
+    title: 'What this app does',
+    blocks: [
+      {
+        type: 'p',
+        text: 'It watches the Docker images you have deployed and tells you when a new version is out. From here you can update them, recreate services, see how the NAS is doing, and drive it all from Telegram.',
+      },
+      { type: 'p', text: 'The point is not having to SSH in for day-to-day tasks.' },
+      { type: 'h', text: 'The four screens' },
+      {
+        type: 'ul',
+        items: [
+          'Dashboard: system performance and a summary of what is there.',
+          'Containers: state, live metrics, logs and per-container detail.',
+          'Images: which version you have, whether a new one exists, and how you want it watched.',
+          'Projects: your Compose stacks, with per-service actions.',
+        ],
+      },
+    ],
+  },
+  {
+    id: 'deteccion',
+    title: 'How updates are detected',
+    blocks: [
+      {
+        type: 'p',
+        text: 'It compares the identifier (digest) of the image you have with the one the registry publishes. If they differ, there is a new version. That is exact: it does not rely on dates or version numbers.',
+      },
+      { type: 'h', text: 'Two ways to watch' },
+      {
+        type: 'ul',
+        items: [
+          'By digest: catches a moving tag like latest now pointing at a different image. Right for latest, stable or alpine.',
+          'By version: looks for tags with a higher number. Right if you pinned something like 1.4.2.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'Partial tags such as 8.2 are watched both ways, because they are pinned (within 8.2) and moving (8.3 may appear) at the same time, and those are different things.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Version comparison does not mix flavours',
+        text: 'A 20-alpine tag is only compared against other NN-alpine tags, never against 20-bookworm or plain 20: those are different images even though the number looks alike.',
+      },
+      { type: 'h', text: 'Images that cannot be checked' },
+      {
+        type: 'p',
+        text: 'If you built an image on the NAS itself, there is nothing in any registry to compare it against. The app works that out by itself and stops querying it, rather than erroring every time.',
+      },
+    ],
+  },
+  {
+    id: 'actualizar',
+    title: 'Updating an image',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Press Update on the image. The job runs in the background: you can close the dialog and carry on. Under Updates you see the progress and the terminal output live.',
+      },
+      { type: 'h', text: 'Update versus force' },
+      {
+        type: 'ul',
+        items: [
+          'Update: only acts when there is a new version.',
+          'Force: pulls again and recreates even with no changes. Useful when something ended up in a bad state.',
+        ],
+      },
+      { type: 'h', text: 'Scope' },
+      {
+        type: 'p',
+        text: 'By default only the service using that image is recreated. You rarely want to take the stack database down to update the frontend, so recreating the whole project is a separate choice you make on purpose.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'It rolls back on its own',
+        text: 'When the app recreates a container itself and the new version does not start, it restores the previous one automatically. With Docker Compose it cannot: Compose deletes the previous container and there is nothing to go back to.',
+      },
+    ],
+  },
+  {
+    id: 'auto',
+    title: 'Automatic updates',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Each image decides whether it updates itself, from its menu or its detail sheet. There is also a master switch in Settings that turns them all off at once.',
+      },
+      {
+        type: 'p',
+        text: 'For images watched by version you can cap how far it jumps on its own: patches only, up to minor, or no limit.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Use judgement',
+        text: 'Auto-updating a database may require migrating data. For those services it is better to keep only the notification and apply it yourself when you can watch it.',
+      },
+    ],
+  },
+  {
+    id: 'servicios',
+    title: 'Per-service actions',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Under Projects, each service has a menu with the operations you would normally do over SSH. It only shows up when the project file is reachable.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Recreate: removes the container and creates it again with the same configuration.',
+          'Restart: stops and starts, without recreating anything.',
+          'Stop and start: what you would expect.',
+          'Pull image: downloads it without touching the container.',
+        ],
+      },
+      { type: 'h', text: 'Recreate is equivalent to this' },
+      {
+        type: 'p',
+        text: 'If a service ended up in a bad state and you used to fix it from a shell like this:',
+      },
+      {
+        type: 'code',
+        text: 'cd /volume1/docker/media\ndocker compose rm -f -s player\ndocker compose up -d player',
+      },
+      { type: 'p', text: 'That is exactly what Recreate does, in the same two steps.' },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Dependencies are left alone',
+        text: 'That sequence is used instead of "up --force-recreate" precisely for this: --force-recreate would recreate the dependencies too. If your service sits behind a VPN or depends on a database, those stay untouched and are only started if they were down.',
+      },
+    ],
+  },
+  {
+    id: 'proyectos',
+    title: 'Projects and how they update',
+    blocks: [
+      { type: 'p', text: 'Each project shows the method it will use, and there are two:' },
+      {
+        type: 'ul',
+        items: [
+          'Docker Compose: the project file is reachable. It updates the same way you would, and Container Manager keeps seeing it correctly.',
+          'Direct recreate: the file is not reachable. The container is recreated by copying its current configuration.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'If everything says Direct recreate',
+        text: 'The projects folder mount is missing, or it is not mounted at the same path on both sides. Compose labels store NAS paths and only resolve when they match exactly. The example file in the repository has it.',
+      },
+    ],
+  },
+  {
+    id: 'registries',
+    title: 'Private images',
+    blocks: [
+      {
+        type: 'p',
+        text: 'For images that need authentication, add the registry credentials under Settings. They are stored encrypted.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'GHCR: use a GitHub personal access token with read:packages.',
+          'Docker Hub: your username and an access token, not the account password.',
+          'Own registry: plain username and password.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'The Test connection button checks against a real image from that host, not just that the host answers.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'The encryption key',
+        text: 'Credentials are encrypted with CU_ENCRYPTION_KEY. Keep a copy off the NAS: if you lose it the app keeps working and watching public registries, but you will have to enter the private ones again.',
+      },
+    ],
+  },
+  {
+    id: 'telegram',
+    title: 'Telegram bot',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Create a bot with @BotFather, put its token in CU_TELEGRAM_BOT_TOKEN and restart. Then, under Settings, press Link an account.',
+      },
+      {
+        type: 'p',
+        text: 'A single-use code is generated and expires in ten minutes. Only accounts on that list can use the bot; anyone else is told they have no access.',
+      },
+      { type: 'h', text: 'Commands' },
+      {
+        type: 'code',
+        text: '/images        list your images and their status\n/status        performance and summary\n/check         look for updates now\n/update <image>\n/force <image>\n/auto <image> on|off\n/projects\n/logs <container> [lines]\n/language es|en',
+      },
+      {
+        type: 'p',
+        text: 'Notifications do not repeat: while a tag points at the same image nothing is sent again, but as soon as it points at a different one the notification goes out by itself.',
+      },
+    ],
+  },
+  {
+    id: 'problemas',
+    title: 'When something goes wrong',
+    blocks: [
+      { type: 'h', text: 'An update is stuck' },
+      {
+        type: 'p',
+        text: 'Under Updates, check the live output. If nothing has been written for a while, press Stop and try again. It may simply be a large image over a slow link.',
+      },
+      { type: 'h', text: 'No IP address pools available' },
+      {
+        type: 'p',
+        text: 'Each project creates its own network and Docker hands them out from a limited set. On top of that, taking a project down leaves its network behind. Clean them up with:',
+      },
+      { type: 'code', text: 'docker network prune -f' },
+      { type: 'h', text: 'The registry asks for authentication' },
+      {
+        type: 'p',
+        text: 'Either the image is private and credentials are missing, or the repository does not exist. If you built it on the NAS, the app will work that out and stop querying it.',
+      },
+      { type: 'h', text: 'System metrics are approximate' },
+      {
+        type: 'p',
+        text: 'The read-only /proc mount is missing. Without it, figures derived from Docker are shown, and the interface says so.',
+      },
+    ],
+  },
+];
+
+export function helpSections(locale: Locale): HelpSection[] {
+  return locale === 'en' ? en : es;
+}

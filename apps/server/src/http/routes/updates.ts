@@ -1,5 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import { imagePolicySchema, updateRequestSchema } from '@cu/shared';
+import {
+  imagePolicySchema,
+  projectApplySchema,
+  serviceActionSchema,
+  updateRequestSchema,
+} from '@cu/shared';
 import type { AppContext } from '../../app.js';
 import {
   RecreateUnsupportedError,
@@ -89,12 +94,13 @@ export async function registerUpdateRoutes(
     }
   });
 
-  fastify.post('/api/projects/:key/apply', { onRequest: [fastify.requireOperator] }, async (request, reply) => {
-    const key = decodeURIComponent((request.params as { key: string }).key);
-    const { restartOnly } = (request.body ?? {}) as { restartOnly?: boolean };
+  // Mismo motivo que en service-action: la clave va en el cuerpo para no
+  // desbordar la URL con la ruta del proyecto.
+  fastify.post('/api/projects/apply', { onRequest: [fastify.requireOperator] }, async (request, reply) => {
+    const { projectKey: key, restartOnly } = projectApplySchema.parse(request.body);
 
     try {
-      await app.updater.applyProject(key, restartOnly === true);
+      await app.updater.applyProject(key, restartOnly);
       app.repos.history.audit({
         actorType: 'user',
         actorId: String(request.currentUser!.id),
@@ -153,6 +159,53 @@ export async function registerUpdateRoutes(
         .send({ error: 'self-update-failed', message: (error as Error).message });
     }
   });
+
+  /**
+   * Acciones de Compose sobre un servicio concreto.
+   *
+   * Cubre lo que si no habria que hacer por SSH: recrear un servicio, pararlo,
+   * arrancarlo o descargar su imagen sin tocar el resto del proyecto.
+   */
+  fastify.post(
+    // La clave del proyecto y el servicio van en el cuerpo, no en la ruta.
+    // Aquella clave es `nombre + directorio de trabajo`, y en un NAS esas rutas
+    // son largas: al codificarlas en la URL se supera el limite y el servidor
+    // responde 414 sin llegar al codigo. Verificado.
+    '/api/projects/service-action',
+    { onRequest: [fastify.requireOperator] },
+    async (request, reply) => {
+      const body = serviceActionSchema.parse(request.body);
+
+      try {
+        const { job } = await app.updater.enqueueServiceAction({
+          projectKey: body.projectKey,
+          serviceName: body.serviceName,
+          action: body.action,
+          actorUserId: request.currentUser!.id,
+        });
+
+        app.repos.history.audit({
+          actorType: 'user',
+          actorId: String(request.currentUser!.id),
+          action: `service.${body.action}`,
+          target: `${body.projectKey} / ${body.serviceName}`,
+          ip: request.ip,
+        });
+
+        return reply.code(202).send({ job, queued: app.updater.queued });
+      } catch (error) {
+        if (error instanceof SelfUpdateRejectedError) {
+          return reply.code(409).send({ error: 'self-update-rejected' });
+        }
+        if (error instanceof UpdateInProgressError) {
+          return reply.code(409).send({ error: 'update-in-progress' });
+        }
+        return reply
+          .code(422)
+          .send({ error: 'service-action-failed', message: (error as Error).message });
+      }
+    },
+  );
 
   fastify.post('/api/checks/run', { onRequest: [fastify.requireAuth] }, async (_request, reply) => {
     if (app.checker.running) return reply.code(409).send({ error: 'check-in-progress' });

@@ -133,6 +133,79 @@ export class ComposeRunner {
     await this.#run(args, cwd, options.onOutput, options.jobId);
   }
 
+  /**
+   * Recrea un servicio: lo elimina y lo vuelve a crear.
+   *
+   * Es la version en dos pasos, la misma que se hace a mano:
+   *
+   *   docker compose rm -f -s <servicio>
+   *   docker compose up -d <servicio>
+   *
+   * Y no `up --force-recreate`, que tambien recrearia las dependencias. La
+   * diferencia importa: si el servicio depende de una VPN o de una base de
+   * datos, `--force-recreate` las tumbaria tambien. Asi solo se toca el
+   * servicio pedido, y las dependencias unicamente se arrancan si estaban
+   * paradas, que es lo que hace `up` por su cuenta.
+   *
+   * `-s` para el contenedor antes de borrarlo; sin el, `rm` falla si esta en
+   * marcha.
+   */
+  async recreateService(target: ComposeTarget, options: ComposeOptions): Promise<void> {
+    const { files, cwd } = await this.#resolveTarget(target);
+    const service = options.serviceName;
+    if (!service) throw new UnsafePathError('falta el nombre del servicio');
+    assertSafeName(service);
+
+    const base = [
+      '--project-name',
+      target.projectName,
+      '--project-directory',
+      cwd,
+      ...flagFiles(files),
+    ];
+
+    options.onOutput?.(`Eliminando el contenedor de ${service}`);
+    await this.#run([...base, 'rm', '--force', '--stop', service], cwd, options.onOutput, options.jobId);
+
+    options.onOutput?.(`Creando de nuevo ${service}`);
+    await this.#run([...base, 'up', '--detach', service], cwd, options.onOutput, options.jobId);
+  }
+
+  /** Arranca un servicio (y sus dependencias) sin recrear nada. */
+  async startService(target: ComposeTarget, options: ComposeOptions): Promise<void> {
+    await this.#serviceCommand(target, options, ['up', '--detach']);
+  }
+
+  async stopService(target: ComposeTarget, options: ComposeOptions): Promise<void> {
+    await this.#serviceCommand(target, options, ['stop']);
+  }
+
+  /** Descarga la imagen del servicio sin tocar el contenedor. */
+  async pullService(target: ComposeTarget, options: ComposeOptions): Promise<void> {
+    await this.#serviceCommand(target, options, ['pull']);
+  }
+
+  async #serviceCommand(
+    target: ComposeTarget,
+    options: ComposeOptions,
+    command: string[],
+  ): Promise<void> {
+    const { files, cwd } = await this.#resolveTarget(target);
+    const args = [
+      '--project-name',
+      target.projectName,
+      '--project-directory',
+      cwd,
+      ...flagFiles(files),
+      ...command,
+    ];
+    if (options.serviceName) {
+      assertSafeName(options.serviceName);
+      args.push(options.serviceName);
+    }
+    await this.#run(args, cwd, options.onOutput, options.jobId);
+  }
+
   async restart(target: ComposeTarget, options: ComposeOptions): Promise<void> {
     const { files, cwd } = await this.#resolveTarget(target);
     const args = [

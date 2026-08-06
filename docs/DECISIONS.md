@@ -208,6 +208,42 @@ una. La versión actual es la opción con menos exposición real.
 
 Revisar cuando publiquen un parche hacia delante.
 
+## Recrear un servicio en dos pasos, no con `--force-recreate`
+
+La acción "recrear" ejecuta:
+
+```bash
+docker compose rm -f -s <servicio>
+docker compose up -d <servicio>
+```
+
+y no el aparentemente equivalente `docker compose up -d --force-recreate
+<servicio>`. La diferencia no es de estilo:
+
+- `--force-recreate` recrea **también las dependencias** del servicio.
+- La secuencia en dos pasos solo destruye el servicio pedido. Sus dependencias
+  se quedan como están y `up` únicamente las arranca si estaban paradas.
+
+En un stack donde un servicio va detrás de una VPN (`network_mode:
+service:vpn`) o depende de una base de datos, `--force-recreate` tumbaría esa
+VPN y con ella la conectividad de todo lo que cuelgue de ella. La secuencia
+larga es lo que se hace a mano por algo.
+
+Descartado `--no-deps` como alternativa: evita recrear las dependencias, pero
+tampoco las arranca si estaban caídas, que es justo lo que se quiere al levantar
+un servicio a mano.
+
+## Las acciones de servicio comparten cola con las actualizaciones
+
+Recrear, parar o arrancar un servicio va por la misma cola que un update, y
+queda en el mismo historial. Son operaciones distintas conceptualmente, pero
+comparten las dos propiedades que importan: no pueden solaparse sobre el mismo
+proyecto sin corromper su estado, y conviene poder mirar después qué se hizo y
+con qué salida.
+
+Mantener dos colas independientes habría permitido que un recreate y un update
+se pisaran, que es el fallo que la cola existía para evitar.
+
 ## Detección reactiva de imágenes locales
 
 La heurística "sin `RepoDigests` es una imagen local" falla: Podman les asigna un

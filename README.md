@@ -154,6 +154,56 @@ restauración automática.
 Desde el bot de Telegram no se ofrece: el panel se cae unos segundos y desde el
 móvil no podrías ver qué ha pasado.
 
+## Acciones sobre un servicio
+
+En **Proyectos**, cada servicio tiene un menú con lo que normalmente harías por
+SSH: recrear, reiniciar, parar, arrancar y descargar la imagen. Solo aparece
+cuando el fichero del proyecto es accesible.
+
+**Recrear** resuelve el caso típico de un servicio que se ha quedado colgado y
+que arreglabas así:
+
+```bash
+cd /volume1/docker/medios
+docker compose rm -f -s reproductor
+docker compose up -d reproductor
+```
+
+Hace exactamente esos dos pasos, y no `up --force-recreate`, por un motivo
+concreto: `--force-recreate` **también recrearía las dependencias**. Si tu
+servicio va detrás de una VPN o depende de una base de datos, con esta secuencia
+esas quedan intactas y solo se arrancan si estaban paradas.
+
+Ejemplo de un proyecto donde la diferencia importa:
+
+```yaml
+# /volume1/docker/medios/docker-compose.yml
+services:
+  vpn:
+    image: qmcgaw/gluetun:latest
+    container_name: medios-vpn
+
+  reproductor:
+    image: ghcr.io/ejemplo/reproductor:latest
+    container_name: medios-reproductor
+    network_mode: service:vpn
+    depends_on:
+      - vpn
+```
+
+Recrear `reproductor` desde el panel no toca `vpn`. Un `--force-recreate` sí la
+tumbaría, y con ella la conexión de todo lo que vaya por detrás.
+
+Todas estas acciones pasan por la misma cola que las actualizaciones: se ejecutan
+de una en una, quedan en el historial y puedes ver su salida en directo.
+
+## Ayuda dentro de la aplicación
+
+El botón **Ayuda** de la barra lateral abre la documentación sin salir del panel,
+con índice y buscador, en español e inglés. Cubre cómo se detectan las
+actualizaciones, las acciones por servicio, los registries privados, el bot y qué
+hacer cuando algo falla.
+
 ## Bot de Telegram
 
 Créalo con [@BotFather](https://t.me/BotFather), pon el token en

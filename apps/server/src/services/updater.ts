@@ -9,7 +9,13 @@
  * concurrentes de compose sobre el mismo proyecto corrompen su estado, y un NAS
  * tampoco tiene CPU para dos descargas en paralelo.
  */
-import type { RecreateScope, UpdateJob, UpdateMode, UpdateStrategy } from '@cu/shared';
+import type {
+  RecreateScope,
+  ServiceAction,
+  UpdateJob,
+  UpdateMode,
+  UpdateStrategy,
+} from '@cu/shared';
 import { ComposeRunner, ComposeError, UnsafePathError } from '../docker/compose.js';
 import { ContainerRecreator, RecreateUnsupportedError } from '../docker/recreate.js';
 import { parseImageReference } from '../registry/reference.js';
@@ -45,6 +51,8 @@ export interface UpdateRequest {
   trigger: 'manual' | 'auto' | 'telegram';
   actorUserId?: number | null;
   actorChatId?: number | null;
+  /** Presente solo cuando el trabajo es una accion sobre un servicio. */
+  serviceAction?: { projectKey: string; serviceName: string; action: ServiceAction };
 }
 
 export type JobListener = (job: UpdateJob) => void;
@@ -387,7 +395,9 @@ export class UpdaterService {
     try {
       const targetTag = request.targetTag ?? imageRow?.candidate_tag ?? null;
 
-      if (plan.strategy === 'compose') {
+      if (request.serviceAction) {
+        await this.#runServiceAction(request, progress, jobId);
+      } else if (plan.strategy === 'compose') {
         await this.#runCompose(request, plan, progress, targetTag, jobId);
       } else {
         await this.#runRecreate(request, plan, policy, progress, targetTag);
@@ -506,6 +516,130 @@ export class UpdaterService {
       cleanupOldImage: policy.cleanupOldImage,
       onProgress: progress,
     });
+  }
+
+  /**
+   * Ejecuta una accion de Compose sobre un servicio concreto.
+   *
+   * Va por la misma cola que las actualizaciones porque el motivo es el mismo:
+   * dos operaciones simultaneas sobre el mismo proyecto corrompen su estado, y
+   * todo lo que recrea o para un contenedor merece quedar en el historial.
+   */
+  async enqueueServiceAction(input: {
+    projectKey: string;
+    serviceName: string;
+    action: ServiceAction;
+    actorUserId?: number | null;
+    actorChatId?: number | null;
+  }): Promise<{ job: UpdateJob; done: Promise<UpdateJob> }> {
+    const project = this.inventory.snapshot.projects.find((p) => p.key === input.projectKey);
+    if (!project) throw new Error('No se encuentra el proyecto');
+    if (!project.yamlAccessible) {
+      throw new UnsafePathError('El fichero del proyecto no es accesible desde el contenedor');
+    }
+
+    const target = project.containers.find(
+      (container) => container.serviceName === input.serviceName,
+    );
+
+    // Pararse o recrearse a uno mismo deja la peticion sin responder y el panel
+    // inaccesible. La auto-actualizacion tiene su propio camino con ayudante.
+    if (target?.isSelf) throw new SelfUpdateRejectedError();
+
+    if (this.#queue.length >= MAX_QUEUE) throw new UpdateInProgressError();
+
+    const jobId = this.repos.history.createJob({
+      imageRef: target ? safeRef(target.image) ?? target.image : input.serviceName,
+      containerId: target?.id ?? null,
+      containerName: target?.name ?? input.serviceName,
+      projectKey: input.projectKey,
+      mode: input.action,
+      strategy: 'compose',
+      trigger: 'manual',
+      actorUserId: input.actorUserId ?? null,
+      actorChatId: input.actorChatId ?? null,
+      fromDigest: null,
+      fromTag: null,
+    });
+
+    let resolveDone!: (job: UpdateJob) => void;
+    let rejectDone!: (error: unknown) => void;
+    const done = new Promise<UpdateJob>((resolve, reject) => {
+      resolveDone = resolve;
+      rejectDone = reject;
+    });
+    done.catch(() => undefined);
+
+    this.#queue.push({
+      jobId,
+      request: {
+        imageRef: input.serviceName,
+        mode: input.action,
+        trigger: 'manual',
+        serviceAction: {
+          projectKey: input.projectKey,
+          serviceName: input.serviceName,
+          action: input.action,
+        },
+      },
+      plan: {
+        strategy: 'compose',
+        containerId: target?.id ?? null,
+        containerName: target?.name ?? null,
+        serviceName: input.serviceName,
+        projectKey: input.projectKey,
+        reason: null,
+      },
+      resolve: resolveDone,
+      reject: rejectDone,
+    });
+
+    this.#emit(jobId);
+    void this.#drainQueue();
+
+    const job = this.repos.history.getJob(jobId);
+    if (!job) throw new Error('No se ha podido crear el trabajo');
+    return { job, done };
+  }
+
+  async #runServiceAction(
+    request: UpdateRequest,
+    progress: (line: string) => void,
+    jobId: number,
+  ): Promise<void> {
+    const spec = request.serviceAction!;
+    const project = this.inventory.snapshot.projects.find((p) => p.key === spec.projectKey);
+    if (!project) throw new Error('No se encuentra el proyecto');
+
+    const target = {
+      projectName: project.name,
+      workingDir: project.workingDir,
+      configFiles: project.configFiles,
+    };
+    const options = { scope: 'service' as const, serviceName: spec.serviceName, onOutput: progress, jobId };
+
+    // Se valida antes de tocar nada: en Container Manager el entorno del
+    // proyecto vive en su propio almacen y puede faltar alguna variable.
+    progress('Validando el fichero del proyecto');
+    await this.compose.validate(target);
+
+    switch (spec.action) {
+      case 'recreate':
+        await this.compose.recreateService(target, options);
+        break;
+      case 'restart':
+        await this.compose.restart(target, options);
+        break;
+      case 'stop':
+        await this.compose.stopService(target, options);
+        break;
+      case 'start':
+        await this.compose.startService(target, options);
+        break;
+      case 'pull':
+        await this.compose.pullService(target, options);
+        break;
+    }
   }
 
   /**

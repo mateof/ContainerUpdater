@@ -10,6 +10,7 @@ import { LiveContext } from '@/hooks/LiveContext';
 import { setLocale, currentLocale } from '@/i18n';
 import { Badge, Button, Menu, Spinner, Tooltip, cx, useTheme } from './ui';
 import { MadeBy, REPO_URL } from './MadeBy';
+import { HelpDialog } from '@/features/help/HelpDialog';
 import {
   IconContainer,
   IconDashboard,
@@ -23,6 +24,7 @@ import {
   IconUpdates,
   IconGithub,
   IconStar,
+  IconHelp,
 } from './icons';
 
 interface NavEntry {
@@ -48,6 +50,7 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
   const location = useLocation();
   const [theme, setTheme] = useTheme();
   const [, forceRender] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const live = useEvents(true);
 
@@ -114,6 +117,23 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
           </nav>
 
           <div className="mt-auto space-y-2 pt-3">
+            {/* La ayuda vive en un modal y no en una ruta: se consulta mientras
+                se esta haciendo algo, y cambiar de pantalla obligaria a
+                recuperar el sitio al volver. */}
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className={cx(
+                'flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-1.5',
+                'text-[0.75rem] text-[var(--text-muted)]',
+                'transition-colors duration-[var(--dur-fast)]',
+                'hover:bg-[var(--bg-hover)] hover:text-[var(--text)]',
+              )}
+            >
+              <IconHelp size={15} />
+              <span className="flex-1 text-left">{t('help.open')}</span>
+            </button>
+
             {/* Enlace al repositorio. Discreto y al fondo: esta ahi para quien
                 lo busque, sin robar atencion al panel. */}
             <a
@@ -236,6 +256,7 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
           </nav>
         </div>
       </div>
+      {helpOpen ? <HelpDialog onClose={() => setHelpOpen(false)} /> : null}
     </LiveContext.Provider>
   );
 }

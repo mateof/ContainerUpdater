@@ -240,6 +240,17 @@ export const es = {
     confirmRestart:
       'Se reiniciaran todos los servicios de {{name}}, incluidas las bases de datos del stack.',
     updateAll: 'Actualizar todo lo pendiente',
+    serviceActions: 'Acciones del servicio',
+    actionRecreate: 'Recrear',
+    actionPull: 'Descargar imagen',
+    confirmRecreate:
+      'Se eliminara el contenedor de {{service}} y se creara de nuevo con la misma configuracion. Sus dependencias no se tocan.',
+    confirmRestartService: 'Se reiniciara el servicio {{service}}.',
+    confirmStopService:
+      'Se parara el servicio {{service}}. Lo que dependa de el dejara de funcionar.',
+    confirmStartService: 'Se arrancara el servicio {{service}} y sus dependencias.',
+    confirmPull:
+      'Se descargara la imagen de {{service}} sin tocar el contenedor. Los cambios se aplicaran cuando lo recrees.',
   },
   updates: {
     title: 'Actualizaciones',
@@ -467,6 +478,11 @@ export const es = {
       'Este contenedor no se puede recrear con garantias ({{reason}}). Actualizalo desde Container Manager.',
     imageInUse: 'La imagen esta en uso y no se puede borrar',
     keyringLocked: 'No se pueden leer las credenciales guardadas',
+  },
+  help: {
+    title: 'Ayuda',
+    subtitle: 'Como funciona cada cosa y que hacer cuando algo falla',
+    open: 'Ayuda',
   },
   units: {
     seconds: 'segundos',

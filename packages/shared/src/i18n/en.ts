@@ -236,6 +236,16 @@ export const en: Translated<Catalog> = {
     confirmRestart:
       'Every service in {{name}} will be restarted, including the stack databases.',
     updateAll: 'Update everything pending',
+    serviceActions: 'Service actions',
+    actionRecreate: 'Recreate',
+    actionPull: 'Pull image',
+    confirmRecreate:
+      'The {{service}} container will be removed and created again with the same configuration. Its dependencies are left alone.',
+    confirmRestartService: 'The {{service}} service will be restarted.',
+    confirmStopService: 'The {{service}} service will be stopped. Anything depending on it stops working.',
+    confirmStartService: 'The {{service}} service and its dependencies will be started.',
+    confirmPull:
+      'The {{service}} image will be pulled without touching the container. Changes apply when you recreate it.',
   },
   updates: {
     title: 'Updates',
@@ -458,6 +468,11 @@ export const en: Translated<Catalog> = {
       'This container cannot be recreated reliably ({{reason}}). Update it from Container Manager.',
     imageInUse: 'The image is in use and cannot be deleted',
     keyringLocked: 'Stored credentials cannot be read',
+  },
+  help: {
+    title: 'Help',
+    subtitle: 'How each part works and what to do when something fails',
+    open: 'Help',
   },
   units: {
     seconds: 'seconds',
