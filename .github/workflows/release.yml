@@ -1,0 +1,225 @@
+name: Release
+
+# Publica la imagen en GHCR y crea la release cuando cambia la version del
+# package.json de la raiz.
+#
+# La version manda: si el tag vX.Y.Z ya existe, la publicacion se OMITE en vez
+# de fallar. Un push a main que solo toca documentacion o CI no deberia pintar
+# la pestana de Actions en rojo, y hacerlo fallar acaba entrenando a la gente a
+# ignorar los fallos.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Publicar aunque el tag ya exista (lo sobrescribe)'
+        type: boolean
+        default: false
+
+# Dos releases a la vez podrian pisarse el tag. No se cancela la que ya este en
+# marcha: a mitad de un push a GHCR dejaria el manifest incompleto.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/container-updater
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Decide si hay algo que publicar. Se separa para que el resto del workflow
+  # pueda leer la version sin volver a calcularla.
+  # ---------------------------------------------------------------------------
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should_release: ${{ steps.version.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Se necesitan los tags para saber si esta version ya se publico.
+          fetch-depth: 0
+
+      - name: Leer la version y comprobar si ya existe el tag
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$VERSION" ] || [ "$VERSION" = "undefined" ]; then
+            echo "::error::No se ha podido leer la version del package.json"
+            exit 1
+          fi
+
+          # Formato semver estricto: un "0.2" o un "v0.2.0" generarian un tag
+          # raro y una imagen mal etiquetada.
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Version no valida: '$VERSION'. Se espera X.Y.Z"
+            exit 1
+          fi
+
+          if [ "${{ inputs.force }}" = "true" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Publicacion forzada de la version $VERSION"
+            exit 0
+          fi
+
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::La version $VERSION ya esta publicada. Sube la version en package.json para publicar una nueva."
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Se publicara la version $VERSION"
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Se ejecuta SIEMPRE, publique o no. Un main roto tiene que verse aunque el
+  # commit no cambie la version.
+  # ---------------------------------------------------------------------------
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Comprobar tipos
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Imagen multi-arquitectura y release.
+  # ---------------------------------------------------------------------------
+  release:
+    needs: [check, verify]
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # QEMU para construir arm64 desde un runner x86. Solo se emula la etapa
+      # que compila codigo nativo: las de Vite y TypeScript llevan
+      # --platform=$BUILDPLATFORM en el Dockerfile y corren nativas.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Entrar en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          # GITHUB_TOKEN basta con permissions.packages: write. No hace falta
+          # crear ni rotar ningun PAT.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Construir y publicar
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            APP_VERSION=${{ needs.check.outputs.version }}
+            VCS_REF=${{ github.sha }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.check.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          # La cache de Actions evita recompilar better-sqlite3 bajo emulacion
+          # en cada release, que es con diferencia lo mas lento del build.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Crear el tag
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.check.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # -f por si se uso la publicacion forzada para rehacer una release.
+          git tag -f "v$VERSION"
+          git push origin "v$VERSION" --force
+
+      - name: Crear la release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.check.outputs.version }}"
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+
+          cat > notes.md <<EOF
+          ## Instalacion
+
+          \`\`\`yaml
+          image: $IMAGE:$VERSION
+          \`\`\`
+
+          Actualizar desde Container Manager: cambia el tag en tu
+          \`docker-compose.yml\` y reconstruye el proyecto. Los datos de
+          \`/volume1/docker/container-updater/data\` no se tocan.
+
+          Arquitecturas: \`linux/amd64\` y \`linux/arm64\`.
+          EOF
+
+          # --generate-notes anade el listado de cambios desde la release
+          # anterior sin tener que mantener un CHANGELOG a mano.
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release edit "v$VERSION" --notes-file notes.md --title "v$VERSION"
+          else
+            gh release create "v$VERSION" \
+              --title "v$VERSION" \
+              --notes-file notes.md \
+              --generate-notes
+          fi
+
+      - name: Resumen
+        run: |
+          {
+            echo "### Publicado v${{ needs.check.outputs.version }}"
+            echo ''
+            echo '```'
+            echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.check.outputs.version }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Aviso visible cuando el push no publica nada, para que quede claro que no es
+  # un fallo sino que falta subir la version.
+  # ---------------------------------------------------------------------------
+  skipped:
+    needs: [check, verify]
+    if: needs.check.outputs.should_release == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          {
+            echo "### Sin publicar"
+            echo ''
+            echo "La version \`${{ needs.check.outputs.version }}\` ya esta publicada."
+            echo "Sube la version en \`package.json\` para generar una release nueva."
+          } >> "$GITHUB_STEP_SUMMARY"

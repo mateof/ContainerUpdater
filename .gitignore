@@ -141,3 +141,12 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# ContainerUpdater
+# El frontend compilado se copia aqui en el build de la imagen.
+apps/server/public/
+# Base de datos y datos de ejecucion locales.
+data/
+*.db
+*.db-wal
+*.db-shm

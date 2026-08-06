@@ -1,0 +1,230 @@
+import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import type { ReactNode } from 'react';
+import type { AppSettings } from '@cu/shared';
+import { api } from '@/api/client';
+import {
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Field,
+  Input,
+  SectionTitle,
+  Select,
+  Skeleton,
+  Switch,
+  useToast,
+} from '@/components/ui';
+import { formatDateTime } from '@/lib/format';
+import { RegistriesSection } from './RegistriesSection';
+import { TelegramSection } from './TelegramSection';
+
+export function SettingsPage(): ReactNode {
+  const { t } = useTranslation();
+  const notify = useToast();
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({ queryKey: ['settings'], queryFn: () => api.settings() });
+  const { data: status } = useQuery({ queryKey: ['status'], queryFn: () => api.status() });
+
+  const [draft, setDraft] = useState<AppSettings | null>(null);
+
+  // El borrador se inicializa una vez cuando llegan los datos. Sincronizarlo en
+  // cada render pisaria lo que el usuario esta escribiendo.
+  useEffect(() => {
+    if (data?.settings && !draft) setDraft(data.settings);
+  }, [data?.settings, draft]);
+
+  const save = useMutation({
+    mutationFn: (patch: Partial<AppSettings>) => api.saveSettings(patch),
+    onSuccess: (result) => {
+      notify(t('common.save'), 'ok');
+      setDraft(result.settings);
+      void queryClient.invalidateQueries({ queryKey: ['settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['status'] });
+    },
+    onError: () => notify(t('common.error'), 'danger'),
+  });
+
+  if (isLoading || !draft) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  const patch = (changes: Partial<AppSettings>) => setDraft({ ...draft, ...changes });
+
+  return (
+    <div className="space-y-5 max-w-3xl">
+      <h1 className="text-xl font-semibold tracking-tight">{t('settings.title')}</h1>
+
+      {status && !status.keyringHealthy ? (
+        <Banner tone="warn" title={t('errors.keyringLocked')}>
+          {t('settings.keyringDegraded')}
+        </Banner>
+      ) : null}
+
+      {/* Programacion */}
+      <Card className="p-5">
+        <SectionTitle title={t('settings.schedule')} />
+        <div className="space-y-4">
+          <Field label={t('settings.checkCron')} hint={t('settings.checkCronHelp')} htmlFor="cron">
+            <Input
+              id="cron"
+              value={draft.checkCron}
+              onChange={(event) => patch({ checkCron: event.target.value })}
+              className="font-mono"
+            />
+          </Field>
+
+          {status?.nextCheckAt ? (
+            <p className="text-[0.75rem] text-[var(--text-muted)]">
+              {t('dashboard.nextCheck')}: {formatDateTime(status.nextCheckAt)}
+            </p>
+          ) : null}
+
+          <Switch
+            checked={draft.autoUpdateEnabled}
+            onCheckedChange={(value) => patch({ autoUpdateEnabled: value })}
+            label={t('settings.autoUpdateEnabled')}
+            hint={t('settings.autoUpdateEnabledHelp')}
+          />
+
+          <Field
+            label={t('settings.registryConcurrency')}
+            hint={t('settings.registryConcurrencyHelp')}
+            htmlFor="concurrency"
+          >
+            <Input
+              id="concurrency"
+              type="number"
+              min={1}
+              max={10}
+              value={draft.registryConcurrency}
+              onChange={(event) => patch({ registryConcurrency: Number(event.target.value) })}
+              className="w-24"
+            />
+          </Field>
+        </div>
+      </Card>
+
+      {/* Avisos */}
+      <Card className="p-5">
+        <SectionTitle title={t('settings.notifications')} />
+        <div className="divide-y divide-[var(--border)]">
+          <Switch
+            checked={draft.notifyOnUpdateAvailable}
+            onCheckedChange={(value) => patch({ notifyOnUpdateAvailable: value })}
+            label={t('settings.notifyOnUpdateAvailable')}
+          />
+          <Switch
+            checked={draft.notifyOnUpdateApplied}
+            onCheckedChange={(value) => patch({ notifyOnUpdateApplied: value })}
+            label={t('settings.notifyOnUpdateApplied')}
+          />
+          <Switch
+            checked={draft.notifyOnFailure}
+            onCheckedChange={(value) => patch({ notifyOnFailure: value })}
+            label={t('settings.notifyOnFailure')}
+          />
+        </div>
+      </Card>
+
+      {/* Metricas */}
+      <Card className="p-5">
+        <SectionTitle title={t('settings.metrics')} />
+        <div className="space-y-4">
+          <Field label={t('settings.metricsInterval')} htmlFor="interval">
+            <Input
+              id="interval"
+              type="number"
+              min={2}
+              max={60}
+              value={draft.metricsIntervalSeconds}
+              onChange={(event) => patch({ metricsIntervalSeconds: Number(event.target.value) })}
+              className="w-24"
+            />
+          </Field>
+
+          <Switch
+            checked={draft.metricsHistoryEnabled}
+            onCheckedChange={(value) => patch({ metricsHistoryEnabled: value })}
+            label={t('settings.metricsHistoryEnabled')}
+            hint={t('settings.metricsHistoryHelp')}
+          />
+
+          <Field label={t('settings.historyRetention')} htmlFor="retention">
+            <Input
+              id="retention"
+              type="number"
+              min={1}
+              max={365}
+              value={draft.historyRetentionDays}
+              onChange={(event) => patch({ historyRetentionDays: Number(event.target.value) })}
+              className="w-24"
+            />
+          </Field>
+
+          <Field label={t('nav.language')} htmlFor="locale">
+            <Select
+              id="locale"
+              value={draft.defaultLocale}
+              onChange={(event) => patch({ defaultLocale: event.target.value as 'es' | 'en' })}
+              className="w-44"
+            >
+              <option value="es">Espanol</option>
+              <option value="en">English</option>
+            </Select>
+          </Field>
+        </div>
+      </Card>
+
+      <div className="sticky bottom-4 flex justify-end">
+        <Button
+          variant="primary"
+          loading={save.isPending}
+          onClick={() => save.mutate(draft)}
+          className="shadow-[var(--shadow-lg)]"
+        >
+          {t('common.save')}
+        </Button>
+      </div>
+
+      <RegistriesSection />
+      <TelegramSection />
+
+      {/* Sistema */}
+      <Card className="p-5">
+        <SectionTitle title={t('settings.system')} />
+        <dl className="space-y-2 text-[0.8125rem]">
+          <Row label={t('settings.version')}>{status?.version ?? '-'}</Row>
+          <Row label={t('settings.dockerVersion')}>
+            {status?.dockerConnected ? (
+              <span className="flex items-center gap-2">
+                <Badge tone="ok">{status.dockerFlavor}</Badge>
+                API {status.dockerApiVersion}
+              </span>
+            ) : (
+              <Badge tone="danger">{t('errors.dockerUnavailable')}</Badge>
+            )}
+          </Row>
+          <Row label={t('dashboard.lastCheck')}>{formatDateTime(status?.lastCheckAt)}</Row>
+        </dl>
+      </Card>
+    </div>
+  );
+}
+
+function Row({ label, children }: { label: string; children: ReactNode }): ReactNode {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-[var(--border)] pb-2 last:border-0">
+      <dt className="text-[var(--text-muted)]">{label}</dt>
+      <dd className="text-right">{children}</dd>
+    </div>
+  );
+}

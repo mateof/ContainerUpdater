@@ -1,0 +1,94 @@
+# ContainerUpdater en un Synology NAS con Container Manager.
+#
+# Copia este fichero a /volume1/docker/container-updater/docker-compose.yml,
+# crea el .env al lado (ver .env.example) y crea el proyecto desde
+# Container Manager apuntando a esa carpeta.
+
+services:
+  container-updater:
+    # Se fija una version concreta a proposito, no `latest`: asi sabes lo que
+    # tienes y actualizas cuando tu quieras. Las versiones publicadas estan en
+    # https://github.com/mateof/ContainerUpdater/releases
+    image: ghcr.io/mateof/container-updater:0.1.0
+    container_name: container-updater
+    restart: unless-stopped
+
+    # El socket de Docker ya concede privilegios equivalentes a root en el NAS,
+    # asi que correr como root DENTRO del contenedor no empeora la situacion y
+    # evita tener que averiguar el GID del grupo docker, que cambia entre
+    # modelos y versiones de DSM. Si prefieres no hacerlo, mira la nota del
+    # README sobre group_add.
+    user: "0:0"
+
+    ports:
+      # Solo en la LAN. No abras este puerto en el router: quien llegue a esta
+      # aplicacion controla todos los contenedores del NAS.
+      - "8099:8080"
+
+    environment:
+      TZ: Europe/Madrid
+      CU_DEFAULT_LOCALE: es
+
+      # Clave maestra de 32 bytes en base64 que cifra las credenciales de
+      # registry. GUARDALA FUERA DEL NAS: sin ella no se pueden recuperar.
+      #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+      CU_ENCRYPTION_KEY: ${CU_ENCRYPTION_KEY}
+
+      # Solo se usan en el primer arranque. Si las omites, la aplicacion genera
+      # una contrasena y la escribe una vez en los logs del contenedor.
+      CU_ADMIN_USER: ${CU_ADMIN_USER:-admin}
+      CU_ADMIN_PASSWORD: ${CU_ADMIN_PASSWORD:-}
+
+      # Opcional: bot de Telegram. Sin token, la aplicacion funciona igual.
+      CU_TELEGRAM_BOT_TOKEN: ${CU_TELEGRAM_BOT_TOKEN:-}
+
+      # Cada 6 horas. Comprobar mas a menudo despierta los discos del NAS sin
+      # que nadie publique imagenes a esa velocidad.
+      CU_CHECK_CRON: "0 */6 * * *"
+
+      # Carpetas dentro de las cuales se acepta ejecutar compose. Acepta lista
+      # separada por comas si tienes proyectos en varios volumenes.
+      CU_COMPOSE_ROOTS: /volume1/docker
+
+      DOCKER_HOST: unix:///var/run/docker.sock
+      CU_HOST_PROC: /host/proc
+
+    volumes:
+      # Acceso al daemon de Docker. Es lo que permite ver y actualizar los
+      # contenedores.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+      # Base de datos, sesiones y credenciales cifradas.
+      - /volume1/docker/container-updater/data:/data
+
+      # IMPRESCINDIBLE Y CON LA MISMA RUTA A AMBOS LADOS.
+      #
+      # Las labels de compose que ponen los contenedores guardan rutas del NAS
+      # (por ejemplo /volume1/docker/n8n/docker-compose.yml). Solo resuelven
+      # dentro de este contenedor si el punto de montaje coincide exactamente.
+      # Montarlo en otro sitio rompe la estrategia de compose y todo pasaria a
+      # recrearse por API.
+      #
+      # Va en solo lectura a proposito: Compose unicamente necesita LEER el
+      # YAML. Los volumenes que declaren los servicios los resuelve el daemon
+      # del NAS, no pasan por este montaje.
+      - /volume1/docker:/volume1/docker:ro
+
+      # Metricas reales del NAS (CPU, memoria, carga, uptime). Sin este montaje
+      # la aplicacion funciona, pero muestra metricas aproximadas y lo indica.
+      - /proc:/host/proc:ro
+
+    healthcheck:
+      test: ["CMD", "node", "dist/healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+    logging:
+      # Sin limite, los logs de un contenedor que lleva meses en marcha se
+      # comen el volumen del sistema del NAS.
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
