@@ -22,6 +22,7 @@ import { formatDateTime } from '@/lib/format';
 import { IconGithub, IconStar } from '@/components/icons';
 import { MadeBy, REPO_URL } from '@/components/MadeBy';
 import { RegistriesSection } from './RegistriesSection';
+import { RuntimeSection } from './RuntimeSection';
 import { TelegramSection } from './TelegramSection';
 
 export function SettingsPage(): ReactNode {
@@ -198,6 +199,7 @@ export function SettingsPage(): ReactNode {
         </Button>
       </div>
 
+      <RuntimeSection />
       <RegistriesSection />
       <TelegramSection />
 

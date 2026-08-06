@@ -358,6 +358,25 @@ export const es = {
     telegramNoUsers: 'Nadie autorizado todavia. Solo las cuentas de esta lista pueden usar el bot.',
     telegramRevoke: 'Revocar acceso',
     telegramConfirmRevoke: 'Se revocara el acceso de {{name}} al bot.',
+    runtime: 'Entorno',
+    runtimeHelp:
+      'Donde se esta ejecutando la aplicacion y a que puede llegar. Mira aqui cuando algo no aparece.',
+    platform: 'Plataforma',
+    detectedBy: 'Detectada por',
+    runtimeEngine: 'Motor de contenedores',
+    socket: 'Socket',
+    composeRoots: 'Carpetas de proyectos',
+    projectsDetected: 'Proyectos manejables',
+    hostMetrics: 'Metricas del sistema',
+    verified: 'Comprobada',
+    unverified: 'Sin comprobar',
+    autoDetected: 'automatico',
+    socketDenied: 'El socket existe pero no se puede usar',
+    socketDeniedHelp:
+      'Se ha encontrado {{path}} pero faltan permisos. El problema es como esta montado, no la ruta.',
+    composeGap: '{{count}} proyectos sin carpeta accesible',
+    composeGapHelp:
+      'Se ven, pero no se pueden manejar con Compose porque su carpeta no esta montada aqui, o no con la misma ruta que en el sistema anfitrion. Se actualizaran recreando el contenedor.',
     account: 'Cuenta',
     about: 'Acerca de',
     aboutDescription:

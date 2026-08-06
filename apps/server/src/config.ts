@@ -39,13 +39,22 @@ const schema = z.object({
   CU_TRUST_PROXY: booleanish.default('true'),
   CU_SESSION_DAYS: z.coerce.number().int().min(1).max(90).default(7),
 
-  DOCKER_HOST: z.string().default('unix:///var/run/docker.sock'),
+  /**
+   * Sin definir, se sondean los sockets habituales de Docker y Podman hasta
+   * encontrar uno vivo. Antes habia aqui un valor fijo, que obligaba a
+   * configurarlo a mano en cuanto el runtime no era Docker en su sitio de
+   * siempre.
+   */
+  DOCKER_HOST: z.string().optional(),
 
   /**
    * Carpetas dentro de las cuales se acepta ejecutar compose. Todo YAML fuera
    * de aqui se rechaza aunque las labels del contenedor lo apunten.
+   *
+   * Sin definir, se deducen de donde estan los proyectos que declara el propio
+   * Docker. Un valor por defecto fijo solo acertaba en una plataforma.
    */
-  CU_COMPOSE_ROOTS: z.string().default('/volume1/docker'),
+  CU_COMPOSE_ROOTS: z.string().optional(),
   CU_DOCKER_BIN: z.string().default('docker'),
   CU_COMPOSE_TIMEOUT_MS: z.coerce.number().int().default(15 * 60_000),
 
@@ -78,8 +87,11 @@ export interface Config {
   secureCookies: boolean | undefined;
   trustProxy: boolean;
   sessionDays: number;
-  dockerHost: string;
+  /** Sin valor, se sondea al arrancar. */
+  dockerHost: string | undefined;
+  /** Vacio significa deducirlos de los proyectos detectados. */
   composeRoots: string[];
+  composeRootsExplicit: boolean;
   dockerBin: string;
   composeTimeoutMs: number;
   hostProc: string | null;
@@ -121,7 +133,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trustProxy: raw.CU_TRUST_PROXY,
     sessionDays: raw.CU_SESSION_DAYS,
     dockerHost: raw.DOCKER_HOST,
-    composeRoots: splitList(raw.CU_COMPOSE_ROOTS),
+    composeRoots: raw.CU_COMPOSE_ROOTS ? splitList(raw.CU_COMPOSE_ROOTS) : [],
+    composeRootsExplicit: Boolean(raw.CU_COMPOSE_ROOTS),
     dockerBin: raw.CU_DOCKER_BIN,
     composeTimeoutMs: raw.CU_COMPOSE_TIMEOUT_MS,
     hostProc: raw.CU_HOST_PROC || null,

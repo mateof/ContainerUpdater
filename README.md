@@ -67,6 +67,13 @@ muestra métricas aproximadas derivadas de Docker y lo indica en la interfaz.
 Si tu volumen no es `volume1`, ajusta el montaje y `CU_COMPOSE_ROOTS`, que
 acepta una lista separada por comas.
 
+`CU_COMPOSE_ROOTS` y `DOCKER_HOST` son opcionales: sin definirlos, la aplicación
+sondea los sockets habituales de Docker y de Podman y deduce las carpetas de
+proyectos de lo que declaran los propios contenedores. Lo que ha detectado se ve
+en **Ajustes → Entorno**, que es la primera pantalla a mirar cuando algo no
+aparece. Para otros entornos (Linux, Podman, TrueNAS SCALE, Unraid), ver
+[docs/PLATAFORMAS.md](docs/PLATAFORMAS.md).
+
 ## Seguridad
 
 **El socket de Docker equivale a root en el NAS.** Quien llegue a esta
@@ -287,6 +294,8 @@ lanza el workflow a mano desde la pestaña Actions marcando la casilla de forzar
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): cómo está montado por dentro.
 - [docs/SYNOLOGY.md](docs/SYNOLOGY.md): particularidades de DSM y problemas
   frecuentes.
+- [docs/PLATAFORMAS.md](docs/PLATAFORMAS.md): compose por entorno para Linux,
+  Podman, TrueNAS SCALE, Unraid y demás, y qué está comprobado de verdad.
 - [docs/DECISIONS.md](docs/DECISIONS.md): por qué cada decisión técnica, y qué
   se descartó.
 

@@ -27,6 +27,47 @@ export async function registerDockerRoutes(
     };
   });
 
+  /**
+   * Diagnostico del entorno.
+   *
+   * Responde a la pregunta que la gente se hace cuando algo no aparece: donde
+   * cree la aplicacion que esta, que socket usa y que carpetas puede tocar. Sin
+   * esto, un montaje mal puesto se manifiesta como "no detecta mis proyectos"
+   * sin ninguna pista de por que.
+   */
+  fastify.get('/api/runtime', { onRequest: [fastify.requireAuth] }, async () => {
+    const info = app.docker.client.versionInfo;
+    const hostAvailable = await app.host.available();
+
+    return {
+      platform: app.runtime.platform,
+      runtime: {
+        flavor: info?.flavor ?? 'unknown',
+        version: info?.version ?? null,
+        apiVersion: info?.apiVersion ?? null,
+        connected: app.docker.client.connected,
+      },
+      socket: {
+        path: app.runtime.dockerHost,
+        readable: app.runtime.socketReadable,
+        detected: !app.config.dockerHost,
+      },
+      compose: {
+        roots: app.runtime.composeRoots,
+        explicit: app.runtime.composeRootsExplicit,
+        // Cuantos proyectos se ven frente a cuantos se pueden manejar con
+        // Compose: la diferencia entre ambos numeros es exactamente lo que
+        // falta por montar.
+        projectsFound: app.runtime.projectDirs.length,
+        projectsUsable: app.inventory.snapshot.projects.filter((p) => p.yamlAccessible).length,
+      },
+      metrics: {
+        hostProcPath: app.config.hostProc,
+        hostProcAvailable: hostAvailable,
+      },
+    };
+  });
+
   fastify.get('/api/containers', { onRequest: [fastify.requireAuth] }, async () => ({
     containers: app.inventory.snapshot.containers,
   }));

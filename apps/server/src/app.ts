@@ -11,6 +11,8 @@ import { openDatabase, type Db } from './db/index.js';
 import { createRepositories, type Repositories } from './db/repositories/index.js';
 import { Keyring } from './crypto/keyring.js';
 import { DockerClient } from './docker/client.js';
+import { readComposeMembership } from './docker/projects.js';
+import { deriveComposeRoots, detectPlatform, findSocket, type PlatformInfo } from './platform.js';
 import { DockerApi } from './docker/api.js';
 import { ComposeRunner } from './docker/compose.js';
 import { ContainerRecreator } from './docker/recreate.js';
@@ -42,6 +44,15 @@ export interface AppContext {
   notifier: NotifierService;
   scheduler: Scheduler;
   telegram: TelegramBot;
+  /** Entorno detectado y rutas resueltas, para el panel de diagnostico. */
+  runtime: {
+    platform: PlatformInfo;
+    dockerHost: string;
+    socketReadable: boolean;
+    composeRoots: string[];
+    composeRootsExplicit: boolean;
+    projectDirs: string[];
+  };
   shutdown: () => Promise<void>;
 }
 
@@ -69,7 +80,31 @@ export async function createApp(config: Config): Promise<AppContext> {
     repos.settings.update({ checkCron: config.checkCron, defaultLocale: config.defaultLocale });
   }
 
-  const dockerClient = new DockerClient(config.dockerHost, log.child('docker'));
+  /**
+   * Resolucion del socket.
+   *
+   * Si no se ha configurado, se sondean los sitios habituales de Docker y de
+   * Podman. Antes habia un valor fijo, que en cuanto el runtime no era Docker en
+   * su ruta de siempre obligaba a configurarlo a mano sin ninguna pista.
+   */
+  const socket = config.dockerHost ? null : await findSocket();
+  const dockerHost = config.dockerHost ?? (socket ? `unix://${socket.path}` : 'unix:///var/run/docker.sock');
+
+  if (socket && !socket.readable) {
+    log.warn(
+      `Se ha encontrado ${socket.path} pero no se puede usar: es un problema de permisos, ` +
+        'no de ruta. Revisa como esta montado el socket.',
+    );
+  } else if (socket) {
+    log.info(`Socket detectado: ${socket.path}`);
+  } else if (!config.dockerHost) {
+    log.warn(
+      'No se ha encontrado ningun socket de Docker ni de Podman. Comprueba el montaje ' +
+        'del socket o define DOCKER_HOST.',
+    );
+  }
+
+  const dockerClient = new DockerClient(dockerHost, log.child('docker'));
   const docker = new DockerApi(dockerClient, log.child('docker'));
 
   try {
@@ -99,14 +134,61 @@ export async function createApp(config: Config): Promise<AppContext> {
     log.info(`Usuario administrador "${bootstrap.username}" creado desde el entorno`);
   }
 
-  const inventory = new InventoryService(docker, repos, config.composeRoots, log.child('inventory'));
+  /**
+   * Carpetas donde se acepta ejecutar Compose.
+   *
+   * Si no se han configurado, se deducen de donde el propio Docker dice que
+   * estan los proyectos, leyendo las labels de los contenedores. Es mas fiable
+   * que una tabla de rutas por plataforma, porque no adivina: funciona igual en
+   * un Synology, un Unraid o un portatil.
+   *
+   * Se hace ANTES de montar los servicios porque el inventario y el ejecutor de
+   * Compose necesitan la lista ya resuelta.
+   */
+  let composeRoots = config.composeRoots;
+  let projectDirs: string[] = [];
+
+  if (dockerClient.connected) {
+    try {
+      const containers = await docker.listContainers(true);
+      projectDirs = [
+        ...new Set(
+          containers
+            .map((container) => readComposeMembership(container)?.workingDir)
+            .filter((dir): dir is string => Boolean(dir)),
+        ),
+      ];
+
+      if (!config.composeRootsExplicit) {
+        composeRoots = await deriveComposeRoots(projectDirs);
+        if (composeRoots.length > 0) {
+          log.info(`Carpetas de proyectos detectadas: ${composeRoots.join(', ')}`);
+        } else if (projectDirs.length > 0) {
+          log.warn(
+            'Hay proyectos de Compose pero sus carpetas no son accesibles desde aqui. ' +
+              'Montalas con la misma ruta que en el sistema anfitrion para poder usar Compose.',
+          );
+        }
+      }
+    } catch (error) {
+      log.warn('No se han podido deducir las carpetas de proyectos', error);
+    }
+  }
+
+  const platform = await detectPlatform(projectDirs, dockerClient.versionInfo?.flavor ?? 'unknown');
+  log.info(
+    `Plataforma: ${platform.name}${platform.evidence ? ` (${platform.evidence})` : ''}` +
+      `${platform.verified ? '' : ' [soporte no verificado]'}`,
+  );
+
+  const inventory = new InventoryService(docker, repos, composeRoots, log.child('inventory'));
   const checker = new CheckerService(repos, docker, log.child('checker'));
 
   const compose = new ComposeRunner(
     config.dockerBin,
-    config.composeRoots,
+    composeRoots,
     config.composeTimeoutMs,
-    config.dockerHost,
+    dockerHost,
     log.child('compose'),
   );
   const recreator = new ContainerRecreator(docker, log.child('recreate'));
@@ -117,14 +199,14 @@ export async function createApp(config: Config): Promise<AppContext> {
     repos,
     inventory,
     compose,
-    config.composeRoots,
+    composeRoots,
     config.dockerBin,
     log.child('self-update'),
   );
 
   const host = new HostMetricsService(
     config.hostProc,
-    config.diskPaths.length > 0 ? config.diskPaths : defaultDiskPaths(config),
+    config.diskPaths.length > 0 ? config.diskPaths : composeRoots.slice(0, 1),
     log.child('host'),
   );
   const metrics = new MetricsService(docker, inventory, host, repos, log.child('metrics'));
@@ -227,14 +309,14 @@ export async function createApp(config: Config): Promise<AppContext> {
     notifier,
     scheduler,
     telegram,
+    runtime: {
+      platform,
+      dockerHost,
+      socketReadable: socket?.readable ?? true,
+      composeRoots,
+      composeRootsExplicit: config.composeRootsExplicit,
+      projectDirs,
+    },
     shutdown,
   };
-}
-
-/**
- * Sin rutas de disco configuradas se usa la primera carpeta de proyectos, que
- * en un Synology es donde vive lo que le interesa al usuario.
- */
-function defaultDiskPaths(config: Config): string[] {
-  return config.composeRoots.slice(0, 1);
 }

@@ -139,6 +139,25 @@ export interface ContainerInspectLike {
   }>;
 }
 
+/** Diagnostico del entorno: donde corre y que puede tocar. */
+export interface RuntimeInfo {
+  platform: { id: string; name: string; evidence: string | null; verified: boolean };
+  runtime: {
+    flavor: string;
+    version: string | null;
+    apiVersion: string | null;
+    connected: boolean;
+  };
+  socket: { path: string; readable: boolean; detected: boolean };
+  compose: {
+    roots: string[];
+    explicit: boolean;
+    projectsFound: number;
+    projectsUsable: number;
+  };
+  metrics: { hostProcPath: string | null; hostProcAvailable: boolean };
+}
+
 export interface UpdatePlan {
   strategy: UpdateStrategy;
   containerId: string | null;
@@ -161,6 +180,7 @@ export const api = {
   updateProfile: (locale: string) => put<{ user: CurrentUser }>('/auth/profile', { locale }),
 
   status: () => get<SystemStatusResponse>('/status'),
+  runtime: () => get<RuntimeInfo>('/runtime'),
   containers: () => get<{ containers: ContainerSummary[] }>('/containers'),
   /** Inspect completo del daemon. Tipado laxo a proposito: son decenas de campos. */
   container: (id: string) => get<{ container: ContainerInspectLike }>(`/containers/${id}`),

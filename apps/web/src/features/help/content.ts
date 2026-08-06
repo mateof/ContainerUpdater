@@ -243,9 +243,62 @@ const es: HelpSection[] = [
     ],
   },
   {
+    id: 'entorno',
+    title: 'Donde puede funcionar',
+    blocks: [
+      {
+        type: 'p',
+        text: 'La aplicacion no habla con tu NAS, habla con Docker. Por eso funciona igual en un Synology, en un servidor Linux, con Podman o en tu portatil: lo unico que cambia entre un sitio y otro es donde esta el socket y donde viven los proyectos.',
+      },
+      {
+        type: 'p',
+        text: 'Las dos cosas se detectan solas al arrancar. El socket se busca en los sitios habituales de Docker y de Podman, y las carpetas de proyectos se deducen de lo que declaran los propios contenedores. No hace falta configurar nada salvo que tu montaje sea peculiar.',
+      },
+      { type: 'h', text: 'Ajustes, Entorno' },
+      {
+        type: 'p',
+        text: 'Es la primera pantalla que mirar cuando algo no aparece. Dice que socket esta usando, que carpetas acepta y cuantos proyectos puede manejar frente a cuantos ve. Esa diferencia es exactamente lo que te falta por montar.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Comprobado de verdad: Synology DSM 7, Docker en Linux, Podman.',
+          'Deberia funcionar, sin probar: TrueNAS SCALE 24.10 o superior, Unraid, OpenMediaVault.',
+          'Imposible: TrueNAS CORE, FreeNAS y pfSense. Son FreeBSD, y ahi Docker no existe.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'La marca de "sin comprobar" es informacion, no un aviso',
+        text: 'Significa que el soporte esta deducido de la documentacion de esa plataforma y nadie lo ha probado alli. Deberia funcionar. Si no lo hace, es justo el fallo que interesa conocer.',
+      },
+      { type: 'h', text: 'Las dos formas de actualizar' },
+      {
+        type: 'p',
+        text: 'Si el fichero YAML del proyecto es accesible, se usa Compose, que respeta exactamente lo que hay escrito. Si no lo es, se copia la configuracion del contenedor que esta corriendo sobre la imagen nueva, con vuelta atras automatica si no arranca.',
+      },
+      {
+        type: 'p',
+        text: 'La segunda funciona bien, pero reproduce lo que esta en marcha y no lo que pone el fichero. Si alguien lo edito y no ha vuelto a levantar el stack, ese cambio no se aplica.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'La ruta tiene que coincidir a los dos lados',
+        text: 'Montar la carpeta de proyectos en otro sitio dentro del contenedor hace que se pierda la estrategia buena. Las rutas que guardan los contenedores son las del sistema anfitrion, y solo resuelven aqui si el punto de montaje es identico. Es decir, /srv/stacks:/srv/stacks y no /srv/stacks:/proyectos.',
+      },
+    ],
+  },
+  {
     id: 'problemas',
     title: 'Cuando algo va mal',
     blocks: [
+      { type: 'h', text: 'No aparece ningun contenedor' },
+      {
+        type: 'p',
+        text: 'Mira Ajustes, Entorno. Si el socket sale como no utilizable, esta montado pero faltan permisos: es un problema de como lo has montado, no de la ruta. Si no sale ninguno, no se ha montado.',
+      },
       { type: 'h', text: 'Una actualizacion se queda atascada' },
       {
         type: 'p',
@@ -482,9 +535,62 @@ const en: HelpSection[] = [
     ],
   },
   {
+    id: 'entorno',
+    title: 'Where it can run',
+    blocks: [
+      {
+        type: 'p',
+        text: 'The app does not talk to your NAS, it talks to Docker. That is why it works the same on a Synology, a Linux server, with Podman or on your laptop: the only thing that changes from one place to another is where the socket lives and where the projects are.',
+      },
+      {
+        type: 'p',
+        text: 'Both are worked out at startup. The socket is looked for in the usual Docker and Podman places, and the project folders are derived from what the containers themselves declare. Nothing needs configuring unless your setup is unusual.',
+      },
+      { type: 'h', text: 'Settings, Environment' },
+      {
+        type: 'p',
+        text: 'That is the first screen to check when something is missing. It says which socket is in use, which folders are accepted, and how many projects can be handled versus how many are visible. That gap is exactly what you have left to mount.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Actually verified: Synology DSM 7, Docker on Linux, Podman.',
+          'Should work, untested: TrueNAS SCALE 24.10 or newer, Unraid, OpenMediaVault.',
+          'Impossible: TrueNAS CORE, FreeNAS and pfSense. They are FreeBSD, and Docker does not exist there.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'The "unverified" mark is information, not a warning',
+        text: 'It means support was derived from that platform documentation and nobody has tried it there. It should work. If it does not, that is exactly the kind of bug worth hearing about.',
+      },
+      { type: 'h', text: 'The two ways of updating' },
+      {
+        type: 'p',
+        text: 'If the project YAML file is reachable, Compose is used, which respects exactly what is written there. If it is not, the configuration of the running container is copied onto the new image, with an automatic rollback if it fails to start.',
+      },
+      {
+        type: 'p',
+        text: 'The second one works fine, but it reproduces what is running rather than what the file says. If someone edited it and has not brought the stack back up, that change is not applied.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'The path has to match on both sides',
+        text: 'Mounting the projects folder somewhere else inside the container loses the good strategy. The paths containers record are host paths, and they only resolve here if the mount point is identical. That is, /srv/stacks:/srv/stacks and not /srv/stacks:/projects.',
+      },
+    ],
+  },
+  {
     id: 'problemas',
     title: 'When something goes wrong',
     blocks: [
+      { type: 'h', text: 'No containers show up' },
+      {
+        type: 'p',
+        text: 'Check Settings, Environment. If the socket comes up as unusable, it is mounted but permissions are missing: that is about how you mounted it, not about the path. If none shows up at all, it was not mounted.',
+      },
       { type: 'h', text: 'An update is stuck' },
       {
         type: 'p',
