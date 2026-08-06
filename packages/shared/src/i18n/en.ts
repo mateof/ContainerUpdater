@@ -332,6 +332,19 @@ export const en: Translated<Catalog> = {
     keyringDegradedAction: 'Forget stored credentials',
     keyringConfirmForget:
       'Every stored registry credential will be deleted. This cannot be undone.',
+    selfUpdateTitle: 'Update ContainerUpdater',
+    selfUpdateConfirm: 'Update and restart',
+    selfUpdateWarningTitle: 'The panel will be unavailable for a moment',
+    selfUpdateWarning:
+      'The app cannot restart itself, so it launches a helper that does it for it. The panel will be down for about 30 seconds. If anything goes wrong the details land in /data/self-update.log, and you can always fix it from Container Manager.',
+    selfUpdateWaiting: 'Updating...',
+    selfUpdateWaitingHelp:
+      'The panel is restarting on the new version. This page reloads by itself as soon as it is back.',
+    selfUpdateDone: 'Done. Reloading...',
+    selfUpdateTimeout: 'The panel did not come back',
+    selfUpdateTimeoutHelp:
+      'It may still be starting, or something may have failed. Check the container in Container Manager and the /data/self-update.log file.',
+    selfUpdateAvailable: 'A new version of ContainerUpdater is available',
   },
   telegram: {
     notAuthorized: 'You do not have access to this bot.',
@@ -381,7 +394,7 @@ export const en: Translated<Catalog> = {
     usage: 'Usage: <code>{{usage}}</code>',
     localeChanged: 'Language changed to English.',
     selfUpdateRejected:
-      'I cannot update myself. Do it from Container Manager so the process is not killed mid-update.',
+      'I do not update myself from Telegram: the panel goes down for a few seconds and you could not see what happened. Do it from the web, under Images.',
     updateInProgress: 'An update is already running. Wait for it to finish.',
     autoOn: 'Auto-update enabled for <b>{{ref}}</b>.',
     autoOff: 'Auto-update disabled for <b>{{ref}}</b>.',
@@ -410,7 +423,7 @@ export const en: Translated<Catalog> = {
     registryRateLimited: 'The registry throttled us. Retry in {{seconds}} seconds.',
     updateInProgress: 'An update is already running',
     selfUpdateRejected:
-      'ContainerUpdater cannot update itself: the process would die mid-way. Do it from Container Manager.',
+      'This update needs the external helper. Use the update button on the image itself from the Images screen.',
     unsafePath: 'The project path falls outside the allowed folders',
     composeFailed: 'Docker Compose failed: {{error}}',
     composeConfigInvalid:

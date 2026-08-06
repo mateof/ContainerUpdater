@@ -14,7 +14,13 @@ import { fileURLToPath } from 'node:url';
 const root = dirname(fileURLToPath(import.meta.url));
 
 await build({
-  entryPoints: [join(root, 'src/index.ts'), join(root, 'src/healthcheck.ts')],
+  entryPoints: [
+    join(root, 'src/index.ts'),
+    join(root, 'src/healthcheck.ts'),
+    // Punto de entrada del ayudante de auto-actualizacion: se ejecuta en un
+    // contenedor aparte, con la misma imagen pero otro comando.
+    join(root, 'src/self-update-runner.ts'),
+  ],
   outdir: join(root, 'dist'),
   bundle: true,
   platform: 'node',

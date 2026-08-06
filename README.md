@@ -130,11 +130,29 @@ restauración. El borrado literal previo sigue disponible como casilla marcable,
 con el aviso de que ahí no hay red de seguridad, y solo desde la web: el bot no
 lo ofrece.
 
-### Limitación consciente
+### Actualizarse a sí misma
 
-**La aplicación no puede actualizarse a sí misma.** Si lo intentara, el proceso
-moriría a mitad de su propia actualización. Lo detecta y lo rechaza con un
-mensaje claro; actualízala desde Container Manager.
+Sí puede, desde la pantalla de Imágenes. No lo hace el propio proceso, porque
+moriría a mitad: lanza un **contenedor ayudante** que sobrevive al reinicio.
+
+1. Descarga la imagen nueva mientras sigue funcionando y valida el proyecto. Si
+   algo falla aquí, no se ha tocado nada.
+2. Lanza el ayudante **con la imagen vieja**, la que ya se sabe que arranca.
+3. El ayudante para el panel, lo recrea con la versión nueva y comprueba que
+   responde. Si no responde, restaura la anterior.
+4. La pantalla espera y se recarga sola cuando el panel vuelve.
+
+**Hay unos 30 segundos sin panel.** Es inevitable: alguien tiene que sobrevivir
+al reinicio y no puede ser el que se reinicia. Todo lo que hace el ayudante
+queda en `/data/self-update.log`, que es lo que hay que mirar si algo sale mal.
+
+Con Docker Compose **no hay vuelta atrás automática**: Compose borra el
+contenedor anterior y volver requeriría cambiar la etiqueta del YAML, que es
+tuyo. La interfaz lo avisa antes de que confirmes. Con recreación directa sí hay
+restauración automática.
+
+Desde el bot de Telegram no se ofrece: el panel se cae unos segundos y desde el
+móvil no podrías ver qué ha pasado.
 
 ## Bot de Telegram
 

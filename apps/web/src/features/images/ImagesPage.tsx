@@ -21,6 +21,7 @@ import { displayImage, formatBytes, formatRelative, shortDigest } from '@/lib/fo
 import { UPDATE_STATUS_LABEL, UPDATE_STATUS_TONE } from '@/lib/labels';
 import { ImageDetailDialog } from './ImageDetailDialog';
 import { UpdateDialog } from './UpdateDialog';
+import { SelfUpdateDialog } from './SelfUpdateDialog';
 
 type Filter = 'all' | 'updates' | 'auto' | 'unknown';
 
@@ -35,9 +36,29 @@ export function ImagesPage(): ReactNode {
   const [updateTarget, setUpdateTarget] = useState<{ image: TrackedImage; force: boolean } | null>(
     null,
   );
+  const [selfUpdate, setSelfUpdate] = useState(false);
+
+  const { data: statusData } = useQuery({ queryKey: ['status'], queryFn: () => api.status() });
+  const { data: containersData } = useQuery({
+    queryKey: ['containers'],
+    queryFn: () => api.containers(),
+  });
 
   const { data, isLoading } = useQuery({ queryKey: ['images'], queryFn: () => api.images() });
   const images = data?.images ?? [];
+
+  /**
+   * Referencia de la imagen con la que corre la propia aplicacion. Actualizarla
+   * no es un update normal: hace falta el ayudante que sobrevive al reinicio,
+   * asi que se enruta a un dialogo distinto.
+   */
+  const selfImageRef = useMemo(() => {
+    const selfId = statusData?.selfContainerId;
+    if (!selfId) return null;
+    const own = containersData?.containers.find((container) => container.id === selfId);
+    if (!own) return null;
+    return images.find((image) => image.inUseBy.includes(own.name))?.ref ?? null;
+  }, [statusData?.selfContainerId, containersData?.containers, images]);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['images'] });
@@ -178,8 +199,14 @@ export function ImagesPage(): ReactNode {
               checking={checkOne.isPending && checkOne.variables === image.ref}
               onCheck={() => checkOne.mutate(image.ref)}
               onToggleAuto={(value) => toggleAuto.mutate({ ref: image.ref, value })}
-              onUpdate={(force) => setUpdateTarget({ image, force })}
+              onUpdate={(force) => {
+                // La imagen propia va por otro camino: no se puede recrear a si
+                // misma, hace falta el ayudante externo.
+                if (image.ref === selfImageRef) setSelfUpdate(true);
+                else setUpdateTarget({ image, force });
+              }}
               onDetail={() => setDetail(image)}
+              isSelf={image.ref === selfImageRef}
             />
           ))}
         </ul>
@@ -188,6 +215,8 @@ export function ImagesPage(): ReactNode {
       {detail ? (
         <ImageDetailDialog image={detail} onClose={() => setDetail(null)} onSaved={invalidate} />
       ) : null}
+
+      {selfUpdate ? <SelfUpdateDialog onClose={() => setSelfUpdate(false)} /> : null}
 
       {updateTarget ? (
         <UpdateDialog
@@ -211,6 +240,7 @@ function ImageRow({
   onToggleAuto,
   onUpdate,
   onDetail,
+  isSelf,
 }: {
   image: TrackedImage;
   checking: boolean;
@@ -218,6 +248,7 @@ function ImageRow({
   onToggleAuto: (value: boolean) => void;
   onUpdate: (force: boolean) => void;
   onDetail: () => void;
+  isSelf: boolean;
 }): ReactNode {
   const { t } = useTranslation();
   const hasUpdate = image.status === 'update-available';
@@ -252,6 +283,11 @@ function ImageRow({
               ) : null}
               {image.candidateTag ? (
                 <Badge tone="accent">{`→ ${image.candidateTag}`}</Badge>
+              ) : null}
+              {isSelf ? (
+                <Tooltip content={t('settings.selfUpdateWarning')}>
+                  <Badge tone="info">{t('containers.self')}</Badge>
+                </Tooltip>
               ) : null}
             </div>
 

@@ -340,6 +340,19 @@ export const es = {
     keyringDegradedAction: 'Olvidar credenciales guardadas',
     keyringConfirmForget:
       'Se borraran todas las credenciales de registry guardadas. Esta accion no se puede deshacer.',
+    selfUpdateTitle: 'Actualizar ContainerUpdater',
+    selfUpdateConfirm: 'Actualizar y reiniciar',
+    selfUpdateWarningTitle: 'El panel dejara de estar disponible un momento',
+    selfUpdateWarning:
+      'La aplicacion no puede reiniciarse a si misma, asi que lanza un ayudante que lo hace por ella. Durante unos 30 segundos no habra panel. Si algo sale mal, el detalle queda en /data/self-update.log y siempre puedes arreglarlo desde Container Manager.',
+    selfUpdateWaiting: 'Actualizando...',
+    selfUpdateWaitingHelp:
+      'El panel se esta reiniciando con la version nueva. Esta pagina se recargara sola en cuanto vuelva.',
+    selfUpdateDone: 'Listo. Recargando...',
+    selfUpdateTimeout: 'El panel no ha vuelto',
+    selfUpdateTimeoutHelp:
+      'Puede que siga arrancando o que algo haya fallado. Revisa el contenedor en Container Manager y el fichero /data/self-update.log.',
+    selfUpdateAvailable: 'Hay una version nueva de ContainerUpdater',
   },
   telegram: {
     notAuthorized: 'No tienes acceso a este bot.',
@@ -390,7 +403,7 @@ export const es = {
     usage: 'Uso: <code>{{usage}}</code>',
     localeChanged: 'Idioma cambiado a espanol.',
     selfUpdateRejected:
-      'No puedo actualizarme a mi mismo. Hazlo desde Container Manager para no cortar el proceso a media actualizacion.',
+      'No me actualizo desde Telegram: el panel se cae unos segundos y no podrias ver que ha pasado. Hazlo desde la web, en Imagenes.',
     updateInProgress: 'Ya hay una actualizacion en curso. Espera a que termine.',
     autoOn: 'Auto-actualizacion activada para <b>{{ref}}</b>.',
     autoOff: 'Auto-actualizacion desactivada para <b>{{ref}}</b>.',
@@ -419,7 +432,7 @@ export const es = {
     registryRateLimited: 'El registry ha limitado las peticiones. Reintenta en {{seconds}} segundos.',
     updateInProgress: 'Ya hay una actualizacion en curso',
     selfUpdateRejected:
-      'ContainerUpdater no puede actualizarse a si mismo: el proceso moriria a mitad. Hazlo desde Container Manager.',
+      'Esta actualizacion necesita el ayudante externo. Usa el boton de actualizar de la propia imagen en la pantalla de Imagenes.',
     unsafePath: 'La ruta del proyecto queda fuera de las carpetas permitidas',
     composeFailed: 'Docker Compose ha fallado: {{error}}',
     composeConfigInvalid:

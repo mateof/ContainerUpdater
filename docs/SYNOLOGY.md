@@ -189,9 +189,29 @@ contenedores.
 
 ## Actualizar la propia aplicación
 
-ContainerUpdater **no puede actualizarse a sí misma**: el proceso moriría a mitad
-de su propia actualización. Lo detecta y lo rechaza.
+Se puede desde la pantalla de Imágenes: lanza un contenedor ayudante que la
+recrea, porque el propio proceso moriría a mitad. Hay unos 30 segundos sin
+panel, y el detalle de lo que ocurra queda en `/data/self-update.log`.
 
-Para actualizarla, desde Container Manager: detén el proyecto, cambia el tag de
-la imagen en el `docker-compose.yml` y vuelve a construir. Tus datos están en
-`/volume1/docker/container-updater/data` y no se tocan.
+Si algo sale mal y el panel no vuelve:
+
+```bash
+# El log del ayudante dice exactamente en qué paso falló
+cat /volume1/docker/container-updater/data/self-update.log
+
+# ¿Quedó una copia del contenedor anterior?
+docker ps -a | grep container-updater
+
+# Si existe un container-updater__cu_old_..., arráncalo:
+docker rename container-updater__cu_old_XXXX container-updater
+docker start container-updater
+```
+
+También puedes actualizarla a mano desde Container Manager, que sigue siendo la
+vía más segura: detén el proyecto, cambia el tag de la imagen en el
+`docker-compose.yml` y reconstruye. Tus datos están en
+`/volume1/docker/container-updater/data` y no se tocan en ningún caso.
+
+**Con Compose no hay vuelta atrás automática.** Compose borra el contenedor
+anterior, así que si la versión nueva no arranca hay que corregirlo desde
+Container Manager. La interfaz lo avisa antes de confirmar.

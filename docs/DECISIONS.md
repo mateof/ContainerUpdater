@@ -157,14 +157,37 @@ base de datos del stack para actualizar el frontend. Por defecto se recrea solo
 el servicio afectado; recrear el proyecto entero está disponible como opción
 explícita y avisa de lo que implica.
 
-## Rechazar la auto-actualización
+## Auto-actualización mediante un ayudante externo
 
-Si la aplicación se actualiza a sí misma, el proceso muere a mitad. Hacerlo bien
-exige lanzar un contenedor efímero que recree al padre, con su propia clase de
-fallos. Se detecta y se rechaza con un mensaje claro.
+Un proceso no puede recrear su propio contenedor: al pararlo, muere a mitad y
+deja el contenedor en un estado indeterminado. La solución es delegar en un
+contenedor efímero que sobrevive al reinicio (verificado: un contenedor lanzado
+por otro sigue vivo aunque quien lo lanzó desaparezca, porque quien los gestiona
+es el daemon).
 
-Es una limitación consciente: prefiero decirlo que dejar una ruta que se rompe
-sola en el peor momento.
+Tres decisiones dentro de esto:
+
+**El ayudante corre con la imagen VIEJA.** Es la que ya se sabe que arranca. Si
+usara la nueva y esa imagen estuviera rota, no quedaría nadie capaz de dar
+marcha atrás.
+
+**Todo lo comprobable se hace antes.** La descarga, la verificación de que la
+imagen existe de verdad y la validación del YAML ocurren mientras la aplicación
+sigue en pie: si algo falla ahí, se devuelve un error normal y no ha pasado
+nada. El ayudante recibe las decisiones ya tomadas, porque cuanto menos tenga
+que decidir, menos puede salir mal cuando ya no hay panel donde mirar.
+
+**El log va a `/data`, no a stdout.** Mientras el ayudante trabaja no hay
+interfaz, y cuando termina se autoelimina. Un fichero persistente es lo único
+que queda para diagnosticar.
+
+Lo que **no** se resuelve: con Compose no hay rollback fiable. Compose borra el
+contenedor anterior y volver atrás exigiría cambiar la etiqueta del YAML, que es
+del usuario. Se avisa antes de confirmar en lugar de descubrirlo al fallar. Con
+recreación directa sí hay restauración automática, verificada.
+
+Tampoco se ofrece desde Telegram: el panel se cae unos segundos y desde el móvil
+no se podría ver qué ha pasado.
 
 ## `bookworm-slim` y no Alpine
 

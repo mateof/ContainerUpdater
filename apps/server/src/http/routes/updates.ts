@@ -114,6 +114,46 @@ export async function registerUpdateRoutes(
     }
   });
 
+  // -- Auto-actualizacion ---------------------------------------------------
+
+  fastify.get('/api/self-update/plan', { onRequest: [fastify.requireAuth] }, async () => ({
+    plan: await app.selfUpdate.plan(),
+  }));
+
+  /**
+   * Lanza la auto-actualizacion.
+   *
+   * Este proceso se para pocos segundos despues de responder, asi que la
+   * respuesta se envia ANTES de que el ayudante empiece a trabajar: si se
+   * esperase, el cliente veria la conexion cortada y no sabria si llego a
+   * lanzarse o no.
+   */
+  fastify.post('/api/self-update', { onRequest: [fastify.requireOperator] }, async (request, reply) => {
+    const plan = await app.selfUpdate.plan();
+    if (!plan.possible) {
+      return reply.code(422).send({ error: 'self-update-not-possible', reason: plan.reason });
+    }
+
+    app.repos.history.audit({
+      actorType: 'user',
+      actorId: String(request.currentUser!.id),
+      action: 'self-update.requested',
+      ip: request.ip,
+    });
+
+    try {
+      // La descarga y las validaciones se hacen aqui, con el panel todavia en
+      // pie: si algo falla, se devuelve un error normal y no ha pasado nada.
+      await app.selfUpdate.start((line: string) => app.log.info(`[self-update] ${line}`));
+      return reply.code(202).send({ started: true, strategy: plan.strategy });
+    } catch (error) {
+      app.log.error('No se ha podido iniciar la auto-actualizacion', error);
+      return reply
+        .code(500)
+        .send({ error: 'self-update-failed', message: (error as Error).message });
+    }
+  });
+
   fastify.post('/api/checks/run', { onRequest: [fastify.requireAuth] }, async (_request, reply) => {
     if (app.checker.running) return reply.code(409).send({ error: 'check-in-progress' });
     // No se espera al final: una comprobacion completa puede tardar y la

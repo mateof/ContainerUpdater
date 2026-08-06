@@ -148,6 +148,20 @@ export const api = {
   applyProject: (key: string, restartOnly: boolean) =>
     post<{ ok: true }>(`/projects/${encodeRef(key)}/apply`, { restartOnly }),
 
+  selfUpdatePlan: () =>
+    get<{
+      plan: {
+        possible: boolean;
+        strategy: UpdateStrategy;
+        containerName: string | null;
+        imageRef: string | null;
+        warning: string | null;
+        reason: string | null;
+      };
+    }>('/self-update/plan'),
+  /** Tras esto el servidor se para en unos segundos: la interfaz debe reconectar. */
+  selfUpdate: () => post<{ started: boolean; strategy: string }>('/self-update'),
+
   runCheck: () => post<{ started: boolean }>('/checks/run'),
   checkRuns: () => get<{ runs: CheckRun[] }>('/checks/runs'),
   jobs: () => get<{ jobs: UpdateJob[] }>('/updates/jobs'),

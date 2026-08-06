@@ -18,6 +18,7 @@ import { AuthService } from './services/auth.js';
 import { InventoryService } from './services/inventory.js';
 import { CheckerService } from './services/checker.js';
 import { UpdaterService } from './services/updater.js';
+import { SelfUpdateService } from './services/self-update.js';
 import { HostMetricsService } from './services/host.js';
 import { MetricsService } from './services/metrics.js';
 import { NotifierService } from './services/notifier.js';
@@ -35,6 +36,7 @@ export interface AppContext {
   inventory: InventoryService;
   checker: CheckerService;
   updater: UpdaterService;
+  selfUpdate: SelfUpdateService;
   metrics: MetricsService;
   host: HostMetricsService;
   notifier: NotifierService;
@@ -109,6 +111,16 @@ export async function createApp(config: Config): Promise<AppContext> {
   );
   const recreator = new ContainerRecreator(docker, log.child('recreate'));
   const updater = new UpdaterService(docker, repos, inventory, compose, recreator, log.child('updater'));
+
+  const selfUpdate = new SelfUpdateService(
+    docker,
+    repos,
+    inventory,
+    compose,
+    config.composeRoots,
+    config.dockerBin,
+    log.child('self-update'),
+  );
 
   const host = new HostMetricsService(
     config.hostProc,
@@ -209,6 +221,7 @@ export async function createApp(config: Config): Promise<AppContext> {
     inventory,
     checker,
     updater,
+    selfUpdate,
     metrics,
     host,
     notifier,
