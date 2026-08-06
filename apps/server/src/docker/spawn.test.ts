@@ -88,8 +88,15 @@ describe('ejecucion con salida en directo', () => {
   it('se puede matar un proceso largo y la promesa se resuelve', async () => {
     // Es lo que permite detener una actualizacion atascada: sin referencia al
     // proceso no habia forma de pararla y el trabajo quedaba colgado.
+    //
+    // Sin shell a proposito, igual que en produccion. Con `sh -c "sleep 30"` la
+    // senal llega al shell, y si ese shell no ha hecho exec de su unico comando
+    // (cosa que depende de que shell sea /bin/sh) el sleep sobrevive reteniendo
+    // las tuberias, con lo que `close` no se emite hasta que acaba de verdad.
+    // Pasaba en macOS y expiraba en el runner de CI, que es el peor sitio para
+    // descubrir que la prueba dependia del shell del sistema.
     const started = Date.now();
-    const result = await run('sh', ['-c', 'sleep 30'], (child) => {
+    const result = await run('sleep', ['30'], (child) => {
       setTimeout(() => child.kill('SIGTERM'), 100);
     });
 
