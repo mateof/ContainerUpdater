@@ -20,6 +20,21 @@ services:
     # README sobre group_add.
     user: "0:0"
 
+    # Se usa la red bridge que ya existe en vez de crear una propia.
+    #
+    # Compose crea por defecto una red por proyecto, y los rangos de direcciones
+    # que reparte Docker son limitados: con una docena larga de proyectos se
+    # agotan y cualquier stack nuevo falla con
+    #   "could not find an available, non-overlapping IPv4 address pool"
+    #
+    # Esta aplicacion no necesita red propia: habla con Docker por el socket,
+    # que es un fichero, y solo necesita salida a internet para consultar los
+    # registries. Asi no gasta uno de esos rangos.
+    #
+    # Si prefieres aislarla en su propia red, quita esta linea. Y si el error de
+    # arriba ya te ha aparecido, mira docs/SYNOLOGY.md.
+    network_mode: bridge
+
     ports:
       # Solo en la LAN. No abras este puerto en el router: quien llegue a esta
       # aplicacion controla todos los contenedores del NAS.

@@ -396,10 +396,53 @@ function safeRef(image: string): string | null {
 }
 
 function describeError(error: unknown): string {
-  if (error instanceof ComposeError) return `Docker Compose ha fallado: ${error.message}`;
   if (error instanceof UnsafePathError) return error.message;
   if (error instanceof RecreateUnsupportedError) return error.message;
-  return (error as Error).message ?? 'Error desconocido';
+
+  const message = (error as Error).message ?? 'Error desconocido';
+  const explained = explainDockerError(message);
+
+  if (error instanceof ComposeError) return `Docker Compose ha fallado: ${explained}`;
+  return explained;
+}
+
+/**
+ * Traduce errores del daemon que son crípticos pero tienen una causa muy
+ * concreta y una solución conocida.
+ *
+ * El mensaje original se conserva: si alguien busca el texto exacto en internet
+ * tiene que poder encontrarlo. Lo que se añade es qué hacer al respecto.
+ */
+export function explainDockerError(message: string): string {
+  // Ocurre en cuanto un NAS acumula una docena larga de proyectos: cada uno crea
+  // su red y `compose down` no las borra, asi que se agotan los rangos.
+  if (/non-overlapping IPv4 address pool/i.test(message)) {
+    return (
+      `${message}\n\n` +
+      'Docker se ha quedado sin rangos de direcciones para crear redes nuevas. ' +
+      'Suele deberse a redes huerfanas de proyectos que ya no existen: ejecuta ' +
+      '"docker network prune" para borrarlas. Si el problema vuelve, amplia ' +
+      '"default-address-pools" en la configuracion del daemon (ver docs/SYNOLOGY.md).'
+    );
+  }
+
+  if (/no space left on device/i.test(message)) {
+    return (
+      `${message}\n\n` +
+      'No queda espacio en el volumen de Docker. Libera con "docker image prune -a" ' +
+      'y revisa el tamano de los logs de los contenedores.'
+    );
+  }
+
+  if (/port is already allocated|address already in use/i.test(message)) {
+    return (
+      `${message}\n\n` +
+      'El puerto ya lo esta usando otro contenedor o proceso del NAS. Puede que el ' +
+      'contenedor anterior no llegara a pararse: revisalo en Container Manager.'
+    );
+  }
+
+  return message;
 }
 
 /** Reexportado para que las rutas HTTP puedan distinguir el caso. */

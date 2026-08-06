@@ -65,6 +65,67 @@ Ese montaje puede y debe ir `:ro`. Compose únicamente necesita **leer** el YAML
 los volúmenes que declaren los servicios los resuelve el daemon del NAS y no
 pasan por este montaje.
 
+## "No hay rangos de IP disponibles"
+
+```
+could not find an available, non-overlapping IPv4 address pool
+among the defaults to assign to the network
+```
+
+Es el error más habitual en un NAS con muchos proyectos, y no tiene nada que ver
+con esta aplicación: le pasa a cualquier stack que intente arrancar.
+
+**Por qué ocurre.** Cada proyecto de Compose crea su propia red, y Docker las
+reparte de unos rangos limitados: `172.17.0.0/12` troceado en `/16` (16 redes) y
+`192.168.0.0/16` en `/20` (16 más). Con una docena larga de proyectos se agotan.
+Además, `docker compose down` **deja la red creada**, así que se acumulan redes
+huérfanas de proyectos que ya no existen.
+
+### Solución inmediata
+
+```bash
+docker network prune -f
+```
+
+Borra las redes que no usa ningún contenedor. En la mayoría de los casos con
+esto basta, porque casi todas las acumuladas son huérfanas.
+
+Para ver cuántas hay y qué rango ocupa cada una:
+
+```bash
+docker network ls | wc -l
+docker network ls --format '{{.Name}}' | while read -r n; do
+  printf '%-40s %s\n' "$n" "$(docker network inspect "$n" \
+    --format '{{range .IPAM.Config}}{{.Subnet}} {{end}}')"
+done
+```
+
+### Solución permanente
+
+Ampliar los rangos que reparte Docker. En DSM, edita
+`/var/packages/ContainerManager/etc/dockerd.json` (por SSH como root) y añade:
+
+```json
+{
+  "default-address-pools": [
+    { "base": "10.200.0.0/16", "size": 24 }
+  ]
+}
+```
+
+Eso da 256 redes en lugar de 32. Reinicia Container Manager después.
+
+Elige una base que **no** choque con tu LAN ni con la VPN: si tu red doméstica
+es `192.168.1.0/24`, no uses `192.168.0.0/16` como base o perderás acceso al NAS
+desde algunos equipos.
+
+### Por qué el compose de ejemplo lleva `network_mode: bridge`
+
+ContainerUpdater no necesita una red propia: habla con Docker por el socket, que
+es un fichero, y solo necesita salida a internet para consultar los registries.
+Usar la red bridge que ya existe evita gastar uno de esos rangos escasos. Si
+prefieres aislarla, quita esa línea y Compose le creará su red.
+
 ## Kernels antiguos y cgroup v1
 
 Muchos modelos de Synology llevan kernels antiguos con cgroup v1, donde:
