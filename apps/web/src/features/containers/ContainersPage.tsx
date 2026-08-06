@@ -31,6 +31,7 @@ import {
 } from '@/components/icons';
 import { displayImage, formatBytes, formatPercent, formatRate, formatRelative } from '@/lib/format';
 import { CONTAINER_STATE_LABEL, CONTAINER_STATE_TONE, HEALTH_LABEL } from '@/lib/labels';
+import { JobIndicator } from '@/components/JobIndicator';
 import { LogsDialog } from './LogsDialog';
 
 type Filter = 'all' | 'running' | 'stopped' | 'unhealthy';
@@ -218,6 +219,13 @@ export function ContainersPage(): ReactNode {
                     ) : null}
 
                     <div className="flex shrink-0 items-center gap-1">
+                      {/* Si este contenedor se esta recreando, se avisa aqui:
+                          las acciones de arranque y parada no tienen sentido
+                          mientras tanto. */}
+                      {live.activeByContainer.get(container.id) ? (
+                        <JobIndicator job={live.activeByContainer.get(container.id)!} size="icon" />
+                      ) : null}
+
                       <Tooltip content={t('containers.logs')}>
                         <Button
                           size="icon"

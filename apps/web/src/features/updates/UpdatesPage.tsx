@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { UpdateJob } from '@cu/shared';
 import { api } from '@/api/client';
@@ -15,6 +16,11 @@ export function UpdatesPage(): ReactNode {
   const { t } = useTranslation();
   const live = useLive();
   const [detail, setDetail] = useState<UpdateJob | null>(null);
+
+  // Se llega aqui desde el indicador de una fila concreta, asi que hay que
+  // llevar al usuario a ESE trabajo y no dejarlo buscandolo en la lista.
+  const [params, setParams] = useSearchParams();
+  const focusId = Number(params.get('job')) || null;
 
   const { data: jobsData, isLoading } = useQuery({ queryKey: ['jobs'], queryFn: () => api.jobs() });
   const { data: runsData } = useQuery({ queryKey: ['runs'], queryFn: () => api.checkRuns() });
@@ -44,6 +50,27 @@ export function UpdatesPage(): ReactNode {
     [jobs],
   );
 
+  /**
+   * Lleva el trabajo señalado a la vista y lo resalta un momento.
+   *
+   * Se espera a que `jobs` tenga contenido: al entrar directamente por la URL,
+   * el elemento todavía no existe en el DOM cuando se monta el componente.
+   * El parámetro se limpia después para que al recargar no vuelva a saltar.
+   */
+  useEffect(() => {
+    if (!focusId || jobs.length === 0) return;
+
+    const element = document.getElementById(`job-${focusId}`);
+    if (!element) return;
+
+    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    element.classList.add('cu-highlight');
+    const timer = setTimeout(() => element.classList.remove('cu-highlight'), 2200);
+
+    setParams({}, { replace: true });
+    return () => clearTimeout(timer);
+  }, [focusId, jobs.length, setParams]);
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -61,7 +88,9 @@ export function UpdatesPage(): ReactNode {
             {t('updates.inProgress')}
           </h2>
           {active.map((job) => (
-            <ActiveJobCard key={job.id} job={job} />
+            <div key={job.id} id={`job-${job.id}`} className="rounded-[var(--radius)]">
+              <ActiveJobCard job={job} />
+            </div>
           ))}
         </section>
       ) : null}
@@ -84,7 +113,7 @@ export function UpdatesPage(): ReactNode {
         ) : (
           <ul className="space-y-2">
             {history.map((job) => (
-              <li key={job.id} className="cu-list-row">
+              <li key={job.id} id={`job-${job.id}`} className="cu-list-row rounded-[var(--radius)]">
                 <Card className="p-3">
                   <button
                     type="button"

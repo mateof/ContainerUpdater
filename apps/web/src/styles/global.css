@@ -274,6 +274,39 @@ body {
 }
 
 /*
+ * Resalte del elemento al que se ha llegado desde otra pantalla.
+ *
+ * Se anima box-shadow y no un borde o un fondo: el borde cambiaria el tamano y
+ * empujaria el resto de la lista, y el fondo taparia el contenido. La sombra no
+ * ocupa espacio ni afecta al layout, y aqui es una animacion puntual de dos
+ * segundos, no algo permanente en una lista con scroll.
+ */
+@keyframes cu-highlight-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 55%, transparent);
+  }
+  60% {
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 22%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.cu-highlight {
+  animation: cu-highlight-pulse 2.2s var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Sin animacion, pero el resalte tiene que seguir viendose: es la unica
+     senal de "es este" tras un salto entre pantallas. */
+  .cu-highlight {
+    animation: none;
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 35%, transparent);
+  }
+}
+
+/*
  * Virtualizacion gratis: el navegador se salta el layout y el pintado de las
  * filas fuera de la ventana. contain-intrinsic-size le da una altura estimada
  * para que la barra de scroll no salte.

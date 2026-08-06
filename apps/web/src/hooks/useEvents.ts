@@ -17,6 +17,13 @@ export interface LiveState {
   jobs: Map<number, UpdateJob>;
   /** El que se esta ejecutando ahora mismo, si hay alguno. */
   activeJob: UpdateJob | null;
+  /**
+   * Trabajos sin terminar indexados por referencia de imagen y por id de
+   * contenedor, para que cada fila de las listas sepa de un vistazo si esta
+   * siendo actualizada sin recorrer todos los trabajos.
+   */
+  activeByImage: Map<string, UpdateJob>;
+  activeByContainer: Map<string, UpdateJob>;
   activeRun: CheckRun | null;
   checkingImage: string | null;
 }
@@ -146,5 +153,30 @@ export function useEvents(enabled: boolean): LiveState {
     return null;
   }, [jobs]);
 
-  return { metrics, connected, jobs, activeJob, activeRun, checkingImage };
+  const { activeByImage, activeByContainer } = useMemo(() => {
+    const byImage = new Map<string, UpdateJob>();
+    const byContainer = new Map<string, UpdateJob>();
+
+    for (const job of jobs.values()) {
+      if (job.status !== 'running' && job.status !== 'queued') continue;
+      // Si hubiera varios para la misma imagen, se queda el que ya corre: es el
+      // que interesa mostrar.
+      const existing = byImage.get(job.imageRef);
+      if (!existing || job.status === 'running') byImage.set(job.imageRef, job);
+      if (job.containerId) byContainer.set(job.containerId, job);
+    }
+
+    return { activeByImage: byImage, activeByContainer: byContainer };
+  }, [jobs]);
+
+  return {
+    metrics,
+    connected,
+    jobs,
+    activeJob,
+    activeByImage,
+    activeByContainer,
+    activeRun,
+    checkingImage,
+  };
 }

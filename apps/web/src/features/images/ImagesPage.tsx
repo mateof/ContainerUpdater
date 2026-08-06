@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
-import type { TrackedImage } from '@cu/shared';
+import type { TrackedImage, UpdateJob } from '@cu/shared';
 import { api, ApiError } from '@/api/client';
 import {
   Badge,
@@ -22,6 +22,8 @@ import { UPDATE_STATUS_LABEL, UPDATE_STATUS_TONE } from '@/lib/labels';
 import { ImageDetailDialog } from './ImageDetailDialog';
 import { UpdateDialog } from './UpdateDialog';
 import { SelfUpdateDialog } from './SelfUpdateDialog';
+import { JobIndicator } from '@/components/JobIndicator';
+import { useLive } from '@/hooks/LiveContext';
 
 type Filter = 'all' | 'updates' | 'auto' | 'unknown';
 
@@ -29,6 +31,7 @@ export function ImagesPage(): ReactNode {
   const { t } = useTranslation();
   const notify = useToast();
   const queryClient = useQueryClient();
+  const live = useLive();
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -207,6 +210,7 @@ export function ImagesPage(): ReactNode {
               }}
               onDetail={() => setDetail(image)}
               isSelf={image.ref === selfImageRef}
+              activeJob={live.activeByImage.get(image.ref)}
             />
           ))}
         </ul>
@@ -241,6 +245,7 @@ function ImageRow({
   onUpdate,
   onDetail,
   isSelf,
+  activeJob,
 }: {
   image: TrackedImage;
   checking: boolean;
@@ -249,6 +254,7 @@ function ImageRow({
   onUpdate: (force: boolean) => void;
   onDetail: () => void;
   isSelf: boolean;
+  activeJob: UpdateJob | undefined;
 }): ReactNode {
   const { t } = useTranslation();
   const hasUpdate = image.status === 'update-available';
@@ -321,7 +327,12 @@ function ImageRow({
         </button>
 
         <div className="flex shrink-0 items-center gap-1">
-          {hasUpdate ? (
+          {/* Mientras hay un trabajo vivo se sustituye el boton por el
+              indicador: dejarlo visible invitaria a encolar la misma
+              actualizacion dos veces. */}
+          {activeJob ? (
+            <JobIndicator job={activeJob} />
+          ) : hasUpdate ? (
             <Button
               size="sm"
               variant="primary"
@@ -338,7 +349,7 @@ function ImageRow({
               variant="ghost"
               aria-label={t('images.check')}
               loading={checking}
-              disabled={!actionable}
+              disabled={!actionable || Boolean(activeJob)}
               onClick={onCheck}
             >
               <IconRefresh size={16} />
