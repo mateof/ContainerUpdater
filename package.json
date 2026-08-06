@@ -1,0 +1,29 @@
+{
+  "name": "container-updater",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Panel autoalojado para vigilar y actualizar las imagenes Docker de un NAS Synology",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @cu/shared && npm run build -w @cu/server && npm run build -w @cu/web",
+    "dev": "npm run dev -w @cu/server & npm run dev -w @cu/web",
+    "dev:server": "npm run dev -w @cu/server",
+    "dev:web": "npm run dev -w @cu/web",
+    "test": "npm run test -w @cu/server",
+    "test:watch": "npm run test:watch -w @cu/server",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run typecheck",
+    "docker:build": "docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/mateof/container-updater:0.1.0 ."
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,325 @@
+@import 'tailwindcss';
+@import 'uplot/dist/uPlot.min.css';
+
+/*
+ * Sistema de color en oklch.
+ *
+ * oklch es perceptualmente uniforme: bajar la L un 10% se ve igual de oscuro en
+ * el verde que en el rojo, cosa que no pasa en HSL. Eso permite generar la
+ * escala entera variando un solo canal en lugar de ajustar cada tono a mano.
+ *
+ * Los tokens viven en custom properties sobre :root, asi que cambiar de tema es
+ * cambiar un atributo del html: cero re-render de React.
+ */
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+:root {
+  --radius: 0.75rem;
+  --radius-sm: 0.5rem;
+
+  /* Duraciones cortas: un panel de administracion se usa con prisa. */
+  --dur-fast: 120ms;
+  --dur: 200ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-theme='dark'] {
+  --bg: oklch(0.17 0.014 250);
+  --bg-elevated: oklch(0.21 0.016 250);
+  --bg-hover: oklch(0.25 0.018 250);
+  --bg-inset: oklch(0.14 0.012 250);
+  --border: oklch(0.3 0.018 250);
+  --border-strong: oklch(0.4 0.02 250);
+  --text: oklch(0.96 0.005 250);
+  --text-muted: oklch(0.72 0.015 250);
+  --text-faint: oklch(0.56 0.015 250);
+
+  --accent: oklch(0.72 0.14 185);
+  --accent-hover: oklch(0.78 0.14 185);
+  --accent-fg: oklch(0.17 0.02 185);
+  --accent-soft: oklch(0.3 0.06 185);
+
+  --ok: oklch(0.75 0.16 155);
+  --ok-soft: oklch(0.3 0.07 155);
+  --warn: oklch(0.8 0.15 85);
+  --warn-soft: oklch(0.33 0.07 85);
+  --danger: oklch(0.68 0.19 25);
+  --danger-soft: oklch(0.32 0.09 25);
+  --info: oklch(0.72 0.14 250);
+  --info-soft: oklch(0.3 0.07 250);
+
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
+  --shadow: 0 2px 4px oklch(0 0 0 / 0.3), 0 8px 24px oklch(0 0 0 / 0.35);
+  --shadow-lg: 0 4px 8px oklch(0 0 0 / 0.35), 0 16px 48px oklch(0 0 0 / 0.45);
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: oklch(0.98 0.004 250);
+  --bg-elevated: oklch(1 0 0);
+  --bg-hover: oklch(0.95 0.008 250);
+  --bg-inset: oklch(0.955 0.006 250);
+  --border: oklch(0.9 0.008 250);
+  --border-strong: oklch(0.82 0.012 250);
+  --text: oklch(0.22 0.015 250);
+  --text-muted: oklch(0.48 0.018 250);
+  --text-faint: oklch(0.62 0.015 250);
+
+  --accent: oklch(0.55 0.12 185);
+  --accent-hover: oklch(0.48 0.13 185);
+  --accent-fg: oklch(1 0 0);
+  --accent-soft: oklch(0.94 0.04 185);
+
+  --ok: oklch(0.55 0.14 155);
+  --ok-soft: oklch(0.94 0.05 155);
+  --warn: oklch(0.62 0.13 75);
+  --warn-soft: oklch(0.95 0.05 85);
+  --danger: oklch(0.55 0.19 25);
+  --danger-soft: oklch(0.95 0.05 25);
+  --info: oklch(0.55 0.14 250);
+  --info-soft: oklch(0.94 0.04 250);
+
+  --shadow-sm: 0 1px 2px oklch(0.2 0.02 250 / 0.06);
+  --shadow: 0 1px 2px oklch(0.2 0.02 250 / 0.06), 0 6px 20px oklch(0.2 0.02 250 / 0.08);
+  --shadow-lg: 0 2px 6px oklch(0.2 0.02 250 / 0.08), 0 16px 40px oklch(0.2 0.02 250 / 0.12);
+  color-scheme: light;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* El panel gestiona su propio scroll: evita el rebote de la pagina entera. */
+  overflow: hidden;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* Barras de scroll discretas y coherentes con el tema. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Foco visible siempre. Quitarlo rompe la navegacion por teclado. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Animaciones                                                               */
+/*                                                                           */
+/* Solo transform y opacity, que van al compositor de la GPU. Animar width,   */
+/* height, top o box-shadow fuerza layout o paint en cada frame y es          */
+/* exactamente lo que hace que un panel "con efectos" se note a tirones en un */
+/* NAS con GPU integrada.                                                     */
+/* ------------------------------------------------------------------------- */
+
+@keyframes cu-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cu-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cu-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes cu-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cu-pulse-ring {
+  0% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+}
+
+.cu-animate-in {
+  animation: cu-fade-in var(--dur) var(--ease-out) both;
+}
+
+.cu-scale-in {
+  animation: cu-scale-in var(--dur-fast) var(--ease-out) both;
+}
+
+.cu-spin {
+  animation: cu-spin 900ms linear infinite;
+}
+
+/*
+ * Skeleton con una sola animacion compartida: el pseudo-elemento se desplaza
+ * con transform en vez de animar un background-position, que repinta.
+ */
+.cu-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-inset);
+  border-radius: var(--radius-sm);
+}
+.cu-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--bg-hover), transparent);
+  animation: cu-shimmer 1.4s infinite;
+}
+
+/*
+ * Indicador de "hay actualizacion". El angulo del degradado se anima con una
+ * custom property registrada, asi que el navegador la interpola de forma nativa
+ * sin un solo frame de JavaScript.
+ */
+@property --cu-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes cu-rotate-angle {
+  to {
+    --cu-angle: 360deg;
+  }
+}
+
+.cu-update-glow {
+  position: relative;
+  isolation: isolate;
+}
+.cu-update-glow::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--cu-angle),
+    transparent 0deg,
+    var(--accent) 60deg,
+    transparent 140deg
+  );
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: cu-rotate-angle 4s linear infinite;
+  z-index: -1;
+}
+
+/*
+ * Virtualizacion gratis: el navegador se salta el layout y el pintado de las
+ * filas fuera de la ventana. contain-intrinsic-size le da una altura estimada
+ * para que la barra de scroll no salte.
+ */
+.cu-list-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 68px;
+}
+
+/*
+ * backdrop-filter solo aqui y en los modales. Es caro en GPU y sobre listas con
+ * scroll produce tirones muy visibles.
+ */
+.cu-glass {
+  background: color-mix(in oklab, var(--bg-elevated) 82%, transparent);
+  backdrop-filter: blur(12px) saturate(1.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .cu-skeleton::after {
+    display: none;
+  }
+}
+
+/* Transiciones de vista entre rutas, cuando el navegador las soporta. */
+@view-transition {
+  navigation: auto;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+
+/* uPlot hereda los colores del tema en vez de traer los suyos. */
+.uplot,
+.u-wrap {
+  font-family: var(--font-sans) !important;
+}
+.u-legend {
+  display: none;
+}
