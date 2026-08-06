@@ -11,6 +11,7 @@ import type { LiveState } from './useEvents';
 export const LiveContext = createContext<LiveState>({
   metrics: [],
   connected: false,
+  jobs: new Map(),
   activeJob: null,
   activeRun: null,
   checkingImage: null,

@@ -104,6 +104,13 @@ Para cada contenedor mira sus labels de Compose:
   entonces borra el anterior. Si el contenedor nuevo no levanta, **restaura el
   anterior automáticamente**.
 
+Las actualizaciones se ejecutan **en segundo plano**. Al pulsar el botón la
+petición vuelve al instante y el trabajo sigue por su cuenta: puedes cerrar el
+diálogo, cambiar de pantalla o irte del navegador. En **Actualizaciones** se ve
+el trabajo en curso con la salida del terminal en vivo, y si lanzas varios se
+encolan y se ejecutan de uno en uno (dos invocaciones de Compose sobre el mismo
+proyecto corromperían su estado).
+
 Algunos contenedores se rechazan de entrada porque no se pueden reproducir con
 garantías: los que comparten pila de red con otro (`network_mode: container:`),
 los que usan `--link` heredado y los gestionados por Swarm o Kubernetes. La

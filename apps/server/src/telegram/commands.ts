@@ -373,6 +373,10 @@ export function registerCommands(
   async function runUpdate(ctx: Context, imageRef: string, mode: 'update' | 'force'): Promise<void> {
     const t = ctx.session!.t;
     try {
+      // Un aviso inmediato: el trabajo puede tardar minutos, o esperar turno si
+      // hay otro en marcha, y un chat en silencio parece que se ha perdido.
+      await ctx.reply(t('telegram.working'));
+
       const job = await services.updater.update({
         imageRef,
         mode,

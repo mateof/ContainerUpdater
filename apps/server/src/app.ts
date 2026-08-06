@@ -151,6 +151,36 @@ export async function createApp(config: Config): Promise<AppContext> {
     metrics.broadcast({ type: 'job-progress', payload: { job } });
   });
 
+  // Aviso al terminar. Va aqui y no dentro del updater para que este no dependa
+  // del notificador, y no en las rutas HTTP porque desde que los trabajos corren
+  // en segundo plano la peticion ya ha respondido cuando el trabajo acaba.
+  //
+  // Se ignoran dos casos para no mandar el mismo aviso dos veces: las
+  // automaticas las notifica el planificador con su propio resumen, y las
+  // lanzadas desde Telegram ya reciben la respuesta del propio comando.
+  updater.onJobFinished((job) => {
+    if (job.trigger === 'auto' || job.trigger === 'telegram') return;
+
+    if (job.status === 'success') {
+      void notifier.notifyUpdateApplied({
+        imageRef: job.imageRef,
+        containerName: job.containerName ?? '',
+        fromTag: job.fromTag,
+        toTag: job.toTag,
+        automatic: false,
+      });
+      return;
+    }
+
+    if (job.status === 'failed' || job.status === 'rolled-back') {
+      void notifier.notifyFailure({
+        imageRef: job.imageRef,
+        error: job.error ?? 'error desconocido',
+        rolledBack: job.status === 'rolled-back',
+      });
+    }
+  });
+
   if (dockerClient.connected) {
     await inventory.refresh().catch((error: Error) => {
       log.error('Fallo el inventario inicial', error);

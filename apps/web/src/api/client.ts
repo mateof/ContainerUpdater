@@ -88,6 +88,9 @@ export interface SystemStatusResponse {
   nextCheckAt: number | null;
   checkRunning: boolean;
   updateRunning: boolean;
+  /** Trabajos esperando turno, sin contar el que se esta ejecutando. */
+  updateQueued: number;
+  currentJobId: number | null;
   updatesAvailable: number;
   telegram: { configured: boolean; running: boolean };
 }
@@ -131,6 +134,7 @@ export const api = {
   checkImage: (ref: string) => post<{ run: CheckRun }>(`/images/${encodeRef(ref)}/check`),
   savePolicy: (ref: string, patch: Partial<ImagePolicy>) =>
     put<{ policy: ImagePolicy }>(`/images/${encodeRef(ref)}/policy`, patch),
+  /** Devuelve 202 en cuanto encola: el progreso llega despues por SSE. */
   updateImage: (
     ref: string,
     body: {
@@ -139,7 +143,7 @@ export const api = {
       removeImageFirst?: boolean;
       targetTag?: string;
     },
-  ) => post<{ job: UpdateJob }>(`/images/${encodeRef(ref)}/update`, body),
+  ) => post<{ job: UpdateJob; queued: number }>(`/images/${encodeRef(ref)}/update`, body),
 
   applyProject: (key: string, restartOnly: boolean) =>
     post<{ ok: true }>(`/projects/${encodeRef(key)}/apply`, { restartOnly }),

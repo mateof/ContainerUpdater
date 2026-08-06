@@ -47,7 +47,11 @@ export async function registerUpdateRoutes(
     const input = updateRequestSchema.parse(request.body ?? {});
 
     try {
-      const job = await app.updater.update({
+      // Se encola y se responde de inmediato: una actualizacion puede tardar
+      // varios minutos y mantener la peticion abierta acabaria en un timeout
+      // del navegador o del proxy inverso de DSM. El progreso viaja por SSE y
+      // se puede seguir desde la pantalla de Actualizaciones.
+      const { job } = await app.updater.enqueue({
         imageRef: ref,
         mode: input.mode,
         scope: input.scope,
@@ -65,18 +69,13 @@ export async function registerUpdateRoutes(
         ip: request.ip,
       });
 
-      await app.notifier.notifyUpdateApplied({
-        imageRef: job.imageRef,
-        containerName: job.containerName ?? '',
-        fromTag: job.fromTag,
-        toTag: job.toTag,
-        automatic: false,
-      });
-
-      return { job };
+      // 202: aceptado y en marcha, pero todavia sin terminar.
+      return reply.code(202).send({ job, queued: app.updater.queued });
     } catch (error) {
-      // Cada fallo tiene su codigo para que la interfaz pueda explicarlo en
-      // vez de mostrar un 500 generico.
+      // Los errores que se detectan ANTES de encolar si se devuelven aqui, con
+      // un codigo propio cada uno para que la interfaz los explique en vez de
+      // mostrar un 500 generico. Lo que falle durante la ejecucion viaja por
+      // SSE y queda en el historial.
       if (error instanceof SelfUpdateRejectedError) {
         return reply.code(409).send({ error: 'self-update-rejected' });
       }
@@ -86,17 +85,7 @@ export async function registerUpdateRoutes(
       if (error instanceof RecreateUnsupportedError) {
         return reply.code(422).send({ error: 'recreate-unsupported', reason: error.reason });
       }
-
-      const rolledBack = (error as { rolledBack?: boolean }).rolledBack === true;
-      await app.notifier.notifyFailure({
-        imageRef: ref,
-        error: (error as Error).message,
-        rolledBack,
-      });
-      return reply.code(500).send({
-        error: rolledBack ? 'rolled-back' : 'update-failed',
-        message: (error as Error).message,
-      });
+      return reply.code(500).send({ error: 'update-failed', message: (error as Error).message });
     }
   });
 

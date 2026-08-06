@@ -1,27 +1,70 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
 import type { UpdateJob } from '@cu/shared';
 import { api } from '@/api/client';
+import { useLive } from '@/hooks/LiveContext';
 import { Badge, Card, EmptyState, Modal, Skeleton, Button } from '@/components/ui';
 import { IconUpdates } from '@/components/icons';
 import { displayImage, formatDateTime, formatDuration, formatRelative } from '@/lib/format';
 import { JOB_STATUS_LABEL, JOB_STATUS_TONE } from '@/lib/labels';
+import { ActiveJobCard } from './ActiveJobCard';
 
 export function UpdatesPage(): ReactNode {
   const { t } = useTranslation();
+  const live = useLive();
   const [detail, setDetail] = useState<UpdateJob | null>(null);
 
   const { data: jobsData, isLoading } = useQuery({ queryKey: ['jobs'], queryFn: () => api.jobs() });
   const { data: runsData } = useQuery({ queryKey: ['runs'], queryFn: () => api.checkRuns() });
 
-  const jobs = jobsData?.jobs ?? [];
   const runs = runsData?.runs ?? [];
+
+  /**
+   * Se fusiona el historial de la consulta con lo que llega por SSE.
+   *
+   * Los eventos son siempre más recientes que la consulta: traen cada línea de
+   * log conforme se produce. Sin esta fusión, el trabajo en curso se vería
+   * congelado en el estado que tuviera al cargar la página.
+   */
+  const jobs = useMemo(() => {
+    const merged = new Map<number, UpdateJob>();
+    for (const job of jobsData?.jobs ?? []) merged.set(job.id, job);
+    for (const [id, job] of live.jobs) merged.set(id, job);
+    return [...merged.values()].sort((a, b) => b.id - a.id);
+  }, [jobsData?.jobs, live.jobs]);
+
+  const active = useMemo(
+    () => jobs.filter((job) => job.status === 'running' || job.status === 'queued'),
+    [jobs],
+  );
+  const history = useMemo(
+    () => jobs.filter((job) => job.status !== 'running' && job.status !== 'queued'),
+    [jobs],
+  );
 
   return (
     <div className="space-y-5">
-      <h1 className="text-xl font-semibold tracking-tight">{t('updates.title')}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold tracking-tight">{t('updates.title')}</h1>
+        {active.length > 1 ? (
+          <Badge tone="info">{t('updates.queuePosition', { count: active.length - 1 })}</Badge>
+        ) : null}
+      </div>
+
+      {/* En curso y en cola. Solo aparece cuando hay algo, para no dejar un
+          hueco vacío permanente en la pantalla. */}
+      {active.length > 0 ? (
+        <section className="space-y-2">
+          <h2 className="text-[0.8125rem] font-semibold text-[var(--text-muted)]">
+            {t('updates.inProgress')}
+          </h2>
+          {active.map((job) => (
+            <ActiveJobCard key={job.id} job={job} />
+          ))}
+        </section>
+      ) : null}
 
       <section>
         <h2 className="mb-2 text-[0.8125rem] font-semibold text-[var(--text-muted)]">
@@ -34,13 +77,13 @@ export function UpdatesPage(): ReactNode {
               <Skeleton key={index} className="h-14 w-full" />
             ))}
           </div>
-        ) : jobs.length === 0 ? (
+        ) : history.length === 0 ? (
           <Card>
             <EmptyState icon={<IconUpdates size={30} />} title={t('common.empty')} />
           </Card>
         ) : (
           <ul className="space-y-2">
-            {jobs.map((job) => (
+            {history.map((job) => (
               <li key={job.id} className="cu-list-row">
                 <Card className="p-3">
                   <button

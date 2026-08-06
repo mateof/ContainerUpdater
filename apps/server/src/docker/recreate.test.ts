@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCreateBody } from './recreate.js';
+import { buildCreateBody, sanitizeHostConfig } from './recreate.js';
 import { demultiplexLogs } from './api.js';
 import type { ContainerInspect, ImageInspect } from './types.js';
 
@@ -129,6 +129,46 @@ describe('buildCreateBody', () => {
     // del usuario que arrastrar alguna de la imagen.
     const body = buildCreateBody(makeContainer(), null, 'miapp:2.0');
     expect(body.Env).toHaveLength(3);
+  });
+});
+
+describe('sanitizeHostConfig', () => {
+  it('quita el swappiness cuando no hay limite de memoria', () => {
+    // Verificado: Podman rellena MemorySwappiness con 0 aunque nadie lo haya
+    // configurado, y crun sobre cgroup v2 no soporta ese parametro, asi que el
+    // contenedor recreado no arranca. Sin limite de memoria el valor no lo puso
+    // el usuario y omitirlo no pierde nada.
+    const clean = sanitizeHostConfig({ Memory: 0, MemorySwappiness: 0 } as never);
+    expect('MemorySwappiness' in clean).toBe(false);
+  });
+
+  it('conserva el swappiness si el usuario puso limite de memoria', () => {
+    const clean = sanitizeHostConfig({ Memory: 512_000_000, MemorySwappiness: 10 } as never);
+    expect((clean as Record<string, unknown>).MemorySwappiness).toBe(10);
+  });
+
+  it('quita el -1, que significa sin definir', () => {
+    const clean = sanitizeHostConfig({ Memory: 512_000_000, MemorySwappiness: -1 } as never);
+    expect('MemorySwappiness' in clean).toBe(false);
+  });
+
+  it('omite los campos a null, que son los no configurados', () => {
+    const clean = sanitizeHostConfig({ Binds: null, CapAdd: null, Privileged: false } as never);
+    expect('Binds' in clean).toBe(false);
+    expect('CapAdd' in clean).toBe(false);
+    // false es un valor real, no un "sin configurar": tiene que conservarse.
+    expect(clean.Privileged).toBe(false);
+  });
+
+  it('no toca la configuracion que si puso el usuario', () => {
+    const clean = sanitizeHostConfig({
+      Binds: ['/datos:/datos'],
+      RestartPolicy: { Name: 'unless-stopped' },
+      NetworkMode: 'bridge',
+    } as never);
+    expect(clean.Binds).toEqual(['/datos:/datos']);
+    expect(clean.RestartPolicy?.Name).toBe('unless-stopped');
+    expect(clean.NetworkMode).toBe('bridge');
   });
 });
 

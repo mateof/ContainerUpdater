@@ -256,7 +256,16 @@ export const es = {
     rolledBackNotice:
       'El contenedor nuevo no arranco correctamente, asi que se ha restaurado el anterior.',
     viewLog: 'Ver registro',
-    queued: 'En cola. Hay otra actualizacion en curso.',
+    queued: 'En cola. Empezara cuando termine la actualizacion en curso.',
+    runsInBackground:
+      'La actualizacion se ejecuta en segundo plano. Podras seguir el progreso y la salida en Actualizaciones.',
+    inProgress: 'En curso',
+    waiting: 'Esperando turno',
+    queuePosition: '{{count}} en espera',
+    noActiveJobs: 'No hay ninguna actualizacion en marcha',
+    liveOutput: 'Salida en vivo',
+    followOutput: 'Seguir la salida',
+    elapsed: 'Lleva {{value}}',
     checkRuns: 'Comprobaciones',
     imagesChecked: 'Imagenes comprobadas',
     updatesFound: 'Actualizaciones encontradas',

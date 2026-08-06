@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import type { RecreateScope, TrackedImage } from '@cu/shared';
 import { api, ApiError } from '@/api/client';
-import { useLive } from '@/hooks/LiveContext';
 import { Badge, Banner, Button, Modal, Select, Switch, Field } from '@/components/ui';
 import { displayImage } from '@/lib/format';
 import { STRATEGY_HELP, STRATEGY_LABEL, STRATEGY_TONE } from '@/lib/labels';
@@ -28,8 +28,7 @@ export function UpdateDialog({
   onDone: (message: string, tone: 'ok' | 'danger' | 'info') => void;
 }): ReactNode {
   const { t } = useTranslation();
-  const live = useLive();
-  const logRef = useRef<HTMLPreElement>(null);
+  const navigate = useNavigate();
 
   const [scope, setScope] = useState<RecreateScope>(image.policy.recreateScope);
   const [removeFirst, setRemoveFirst] = useState(false);
@@ -41,13 +40,6 @@ export function UpdateDialog({
     queryFn: () => api.imagePlan(image.ref),
   });
   const plan = planData?.plan;
-
-  const job = live.activeJob?.imageRef === image.ref ? live.activeJob : null;
-
-  // El log se autodesplaza mientras corre para que la ultima linea sea visible.
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [job?.log]);
 
   const update = useMutation({
     mutationFn: () =>
@@ -61,10 +53,17 @@ export function UpdateDialog({
       setRunning(true);
       setError(null);
     },
-    onSuccess: () => {
+    // El servidor responde en cuanto encola, no cuando termina. Se cierra el
+    // dialogo y se manda al usuario a Actualizaciones, donde puede seguir el
+    // progreso y la salida sin quedarse mirando un modal bloqueado.
+    onSuccess: (result) => {
       setRunning(false);
-      onDone(t('updates.statusSuccess'), 'ok');
+      onDone(
+        result.queued > 0 ? t('updates.queued') : t('images.updateStarted'),
+        'info',
+      );
       onClose();
+      navigate('/updates');
     },
     onError: (caught) => {
       setRunning(false);
@@ -75,11 +74,8 @@ export function UpdateDialog({
           'self-update-rejected': t('errors.selfUpdateRejected'),
           'update-in-progress': t('errors.updateInProgress'),
           'recreate-unsupported': t('projects.strategyUnsupportedHelp'),
-          'rolled-back': t('updates.rolledBackNotice'),
         };
-        const message = messages[caught.code] ?? t('common.error');
-        setError(message);
-        if (caught.code === 'rolled-back') onDone(message, 'danger');
+        setError(messages[caught.code] ?? t('common.error'));
         return;
       }
       setError(t('common.error'));
@@ -93,11 +89,8 @@ export function UpdateDialog({
     <Modal
       open
       onOpenChange={(open) => {
-        // Cerrar el dialogo a media actualizacion no la cancela, y dar esa
-        // impresion seria peor que impedirlo.
         if (!open && !running) onClose();
       }}
-      wide={Boolean(job)}
       title={force ? t('images.force') : t('images.update')}
       description={displayImage(image.ref)}
       footer={
@@ -177,19 +170,10 @@ export function UpdateDialog({
 
         {error ? <Banner tone="danger" title={error} /> : null}
 
-        {job ? (
-          <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[0.75rem] font-medium">{t('updates.viewLog')}</span>
-              <Badge tone={job.status === 'running' ? 'info' : 'neutral'}>{job.status}</Badge>
-            </div>
-            <pre
-              ref={logRef}
-              className="max-h-56 overflow-auto rounded-[var(--radius-sm)] bg-[var(--bg-inset)] p-3 font-mono text-[0.6875rem] leading-relaxed whitespace-pre-wrap break-all"
-            >
-              {job.log || t('common.loading')}
-            </pre>
-          </div>
+        {!unsupported ? (
+          <p className="text-[0.75rem] text-[var(--text-muted)]">
+            {t('updates.runsInBackground')}
+          </p>
         ) : null}
       </div>
     </Modal>

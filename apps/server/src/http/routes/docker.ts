@@ -20,6 +20,8 @@ export async function registerDockerRoutes(
       nextCheckAt: app.scheduler.nextCheckAt,
       checkRunning: app.checker.running,
       updateRunning: app.updater.busy,
+      updateQueued: app.updater.queued,
+      currentJobId: app.updater.currentJobId,
       updatesAvailable: app.repos.inventory.countUpdatesAvailable(),
       telegram: { configured: app.telegram.configured, running: app.telegram.ready },
     };

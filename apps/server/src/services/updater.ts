@@ -49,9 +49,27 @@ export interface UpdateRequest {
 
 export type JobListener = (job: UpdateJob) => void;
 
+/**
+ * Tope de trabajos en espera. Un NAS no va a actualizar cincuenta imagenes de
+ * golpe, y sin tope un bucle de reintentos podria llenar la cola sin que nadie
+ * se entere.
+ */
+const MAX_QUEUE = 20;
+
+interface QueuedEntry {
+  jobId: number;
+  request: UpdateRequest;
+  plan: Awaited<ReturnType<UpdaterService['planFor']>>;
+  resolve: (job: UpdateJob) => void;
+  reject: (error: unknown) => void;
+}
+
 export class UpdaterService {
   #busy = false;
+  #currentJobId: number | null = null;
+  readonly #queue: QueuedEntry[] = [];
   readonly #listeners = new Set<JobListener>();
+  readonly #finishListeners = new Set<JobListener>();
 
   constructor(
     private readonly docker: DockerApi,
@@ -66,9 +84,31 @@ export class UpdaterService {
     return this.#busy;
   }
 
+  /** Trabajos en espera, sin contar el que se esta ejecutando. */
+  get queued(): number {
+    return this.#queue.length;
+  }
+
+  get currentJobId(): number | null {
+    return this.#currentJobId;
+  }
+
+  /** Se dispara en cada cambio de un trabajo, incluida cada linea de log. */
   onJobUpdate(listener: JobListener): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  /**
+   * Se dispara una unica vez por trabajo, cuando termina.
+   *
+   * Existe aparte de `onJobUpdate` para que quien avise por Telegram no tenga
+   * que filtrar estados ni llevar la cuenta de lo ya notificado. Tambien evita
+   * que el updater dependa del notificador.
+   */
+  onJobFinished(listener: JobListener): () => void {
+    this.#finishListeners.add(listener);
+    return () => this.#finishListeners.delete(listener);
   }
 
   #emit(jobId: number): void {
@@ -167,17 +207,33 @@ export class UpdaterService {
     };
   }
 
-  async update(request: UpdateRequest): Promise<UpdateJob> {
-    if (this.#busy) throw new UpdateInProgressError();
-
+  /**
+   * Encola una actualizacion y devuelve inmediatamente.
+   *
+   * Un update puede tardar varios minutos (descargar una imagen grande por la
+   * linea de casa no es rapido), asi que la peticion HTTP no puede quedarse
+   * esperando: el navegador o el proxy inverso de DSM cortarian antes. Se
+   * devuelve el trabajo ya creado y el progreso viaja por SSE.
+   *
+   * `done` permite a quien si necesite el resultado (el auto-update del
+   * planificador, el bot) esperar sin bloquear a los demas.
+   *
+   * La validacion del plan se hace ANTES de encolar: si la imagen no se puede
+   * actualizar, el usuario tiene que enterarse al pulsar el boton, no dos
+   * minutos despues al mirar el historial.
+   */
+  async enqueue(request: UpdateRequest): Promise<{ job: UpdateJob; done: Promise<UpdateJob> }> {
     const plan = await this.planFor(request.imageRef);
     if (plan.reason === 'self') throw new SelfUpdateRejectedError();
     if (plan.strategy === 'unsupported') {
       throw new RecreateUnsupportedError(plan.reason ?? 'configuracion no reproducible');
     }
 
+    // Tope de cola: si algo va mal y se acumulan peticiones, es mejor rechazar
+    // que dejar al NAS con cincuenta actualizaciones pendientes.
+    if (this.#queue.length >= MAX_QUEUE) throw new UpdateInProgressError();
+
     const imageRow = this.repos.inventory.findImage(request.imageRef);
-    const policy = this.repos.inventory.getPolicy(request.imageRef);
 
     const jobId = this.repos.history.createJob({
       imageRef: request.imageRef,
@@ -193,7 +249,88 @@ export class UpdaterService {
       fromTag: imageRow?.tag ?? null,
     });
 
+    let resolveDone!: (job: UpdateJob) => void;
+    let rejectDone!: (error: unknown) => void;
+    const done = new Promise<UpdateJob>((resolve, reject) => {
+      resolveDone = resolve;
+      rejectDone = reject;
+    });
+    // Sin esto, un trabajo que falla y cuyo `done` nadie espera genera un
+    // unhandledRejection que tumbaria el proceso.
+    done.catch(() => undefined);
+
+    this.#queue.push({ jobId, request, plan, resolve: resolveDone, reject: rejectDone });
+    this.#emit(jobId);
+
+    void this.#drainQueue();
+
+    const job = this.repos.history.getJob(jobId);
+    if (!job) throw new Error('No se ha podido crear el trabajo');
+    return { job, done };
+  }
+
+  /**
+   * Procesa la cola de uno en uno.
+   *
+   * En serie a proposito: dos invocaciones concurrentes de compose sobre el
+   * mismo proyecto corrompen su estado, y un NAS tampoco tiene ancho de banda
+   * ni CPU para dos descargas a la vez.
+   */
+  async #drainQueue(): Promise<void> {
+    if (this.#busy) return;
     this.#busy = true;
+
+    try {
+      for (;;) {
+        const entry = this.#queue.shift();
+        if (!entry) break;
+
+        this.#currentJobId = entry.jobId;
+        try {
+          const job = await this.#execute(entry.jobId, entry.request, entry.plan);
+          entry.resolve(job);
+          for (const listener of this.#finishListeners) {
+            try {
+              listener(job);
+            } catch (error) {
+              this.log.warn('Un oyente de fin de trabajo ha fallado', error);
+            }
+          }
+        } catch (error) {
+          entry.reject(error);
+          const job = this.repos.history.getJob(entry.jobId);
+          if (job) {
+            for (const listener of this.#finishListeners) {
+              try {
+                listener(job);
+              } catch (listenerError) {
+                this.log.warn('Un oyente de fin de trabajo ha fallado', listenerError);
+              }
+            }
+          }
+        } finally {
+          this.#currentJobId = null;
+        }
+      }
+    } finally {
+      this.#busy = false;
+    }
+  }
+
+  /** Compatibilidad: encola y espera. Lo usan el auto-update y el bot. */
+  async update(request: UpdateRequest): Promise<UpdateJob> {
+    const { done } = await this.enqueue(request);
+    return done;
+  }
+
+  async #execute(
+    jobId: number,
+    request: UpdateRequest,
+    plan: Awaited<ReturnType<UpdaterService['planFor']>>,
+  ): Promise<UpdateJob> {
+    const imageRow = this.repos.inventory.findImage(request.imageRef);
+    const policy = this.repos.inventory.getPolicy(request.imageRef);
+
     this.repos.history.markJobRunning(jobId);
     this.#emit(jobId);
 
@@ -233,7 +370,8 @@ export class UpdaterService {
       this.#emit(jobId);
       throw error;
     } finally {
-      this.#busy = false;
+      // El flag de ocupado lo gestiona el procesador de la cola, no cada
+      // trabajo: si lo liberara aqui, el siguiente podria arrancar en paralelo.
       this.#emit(jobId);
     }
 

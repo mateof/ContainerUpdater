@@ -13,6 +13,7 @@ import type {
   NetworkAttachment,
 } from './types.js';
 import type { RegistryCredentials } from '../db/repositories/index.js';
+import { localRepositoryName, type ImageReference } from '../registry/reference.js';
 import type { Logger } from '../logger.js';
 
 export class DockerApi {
@@ -128,14 +129,14 @@ export class DockerApi {
    * bueno y el recreate siguiera adelante con la imagen vieja.
    */
   async pullImage(
-    ref: { repository: string; tag: string; host: string },
+    ref: ImageReference,
     credentials: RegistryCredentials | null,
     onProgress?: (message: string) => void,
   ): Promise<void> {
-    const fromImage =
-      ref.host === 'registry-1.docker.io'
-        ? ref.repository.replace(/^library\//, '')
-        : `${ref.host}/${ref.repository}`;
+    // El daemon espera el nombre con el que guarda la imagen, no el host de la
+    // API del registry. Misma conversion que en el resto del codigo, en un
+    // unico sitio para que no puedan divergir.
+    const fromImage = localRepositoryName(ref);
 
     const headers: Record<string, string> = {};
     if (credentials) {

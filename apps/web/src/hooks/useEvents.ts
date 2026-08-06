@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { CheckRun, MetricsSnapshot, UpdateJob } from '@cu/shared';
 
@@ -8,6 +8,14 @@ const MAX_POINTS = 120;
 export interface LiveState {
   metrics: MetricsSnapshot[];
   connected: boolean;
+  /**
+   * Trabajos recibidos por SSE, indexados por id. Se guardan TODOS y no solo el
+   * ultimo porque desde que se ejecutan en segundo plano puede haber uno
+   * corriendo y varios esperando turno, y la pantalla de Actualizaciones los
+   * muestra a la vez.
+   */
+  jobs: Map<number, UpdateJob>;
+  /** El que se esta ejecutando ahora mismo, si hay alguno. */
   activeJob: UpdateJob | null;
   activeRun: CheckRun | null;
   checkingImage: string | null;
@@ -24,7 +32,7 @@ export interface LiveState {
 export function useEvents(enabled: boolean): LiveState {
   const [metrics, setMetrics] = useState<MetricsSnapshot[]>([]);
   const [connected, setConnected] = useState(false);
-  const [activeJob, setActiveJob] = useState<UpdateJob | null>(null);
+  const [jobs, setJobs] = useState<Map<number, UpdateJob>>(() => new Map());
   const [activeRun, setActiveRun] = useState<CheckRun | null>(null);
   const [checkingImage, setCheckingImage] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -58,11 +66,19 @@ export function useEvents(enabled: boolean): LiveState {
 
       source.addEventListener('job-progress', (event) => {
         const data = JSON.parse((event as MessageEvent).data) as { job: UpdateJob };
-        setActiveJob(data.job);
+        setJobs((current) => {
+          // Mapa nuevo en cada evento: mutar el existente no dispararia el
+          // re-render y el log se quedaria congelado en pantalla.
+          const next = new Map(current);
+          next.set(data.job.id, data.job);
+          return next;
+        });
+
         if (data.job.status !== 'running' && data.job.status !== 'queued') {
           void queryClient.invalidateQueries({ queryKey: ['jobs'] });
           void queryClient.invalidateQueries({ queryKey: ['images'] });
           void queryClient.invalidateQueries({ queryKey: ['containers'] });
+          void queryClient.invalidateQueries({ queryKey: ['status'] });
         }
       });
 
@@ -123,5 +139,12 @@ export function useEvents(enabled: boolean): LiveState {
     };
   }, [enabled, queryClient]);
 
-  return { metrics, connected, activeJob, activeRun, checkingImage };
+  const activeJob = useMemo(() => {
+    for (const job of jobs.values()) {
+      if (job.status === 'running') return job;
+    }
+    return null;
+  }, [jobs]);
+
+  return { metrics, connected, jobs, activeJob, activeRun, checkingImage };
 }

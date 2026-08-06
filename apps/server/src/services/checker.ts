@@ -14,7 +14,7 @@ import {
   compareDigests,
   pickPlatformChild,
 } from '../registry/manifest.js';
-import { parseImageReference } from '../registry/reference.js';
+import { localImageName, parseImageReference } from '../registry/reference.js';
 import { findUpgradeCandidate } from '../registry/semver.js';
 import type { ImageRow, Repositories } from '../db/repositories/index.js';
 import type { DockerApi } from '../docker/api.js';
@@ -298,7 +298,7 @@ export class CheckerService {
     // del indice. Solo en ese caso vale la pena bajar el cuerpo del indice.
     if (comparison.needsIndexLookup) {
       const children = await this.#registry.fetchIndexChildren(ref, credentials);
-      const local = await this.#localPlatform(ref.normalized);
+      const local = await this.#localPlatform(ref);
       const child = pickPlatformChild(children, local);
       if (child && localDigests.includes(child.digest)) {
         return { hasUpdate: false, remoteDigest: head.digest };
@@ -325,12 +325,17 @@ export class CheckerService {
   /**
    * Plataforma de la imagen local. Sin esto compararíamos el manifest de arm64
    * contra el de amd64 y siempre habria "actualizacion".
+   *
+   * Se pregunta por el nombre LOCAL de la imagen. Con la referencia de registry
+   * el daemon responde "No such image", el catch se lo traga y la plataforma
+   * cae a amd64 por defecto: en un NAS arm64 eso da comparaciones erroneas sin
+   * que nada falle de forma visible.
    */
   async #localPlatform(
-    ref: string,
+    ref: ReturnType<typeof parseImageReference>,
   ): Promise<{ architecture: string | null; os: string | null; variant: string | null }> {
     try {
-      const image = await this.docker.inspectImage(ref);
+      const image = await this.docker.inspectImage(localImageName(ref));
       return {
         architecture: image.Architecture ?? null,
         os: image.Os ?? null,

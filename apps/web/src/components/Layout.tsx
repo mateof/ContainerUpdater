@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEvents } from '@/hooks/useEvents';
 import { LiveContext } from '@/hooks/LiveContext';
 import { setLocale, currentLocale } from '@/i18n';
-import { Badge, Button, Menu, Tooltip, cx, useTheme } from './ui';
+import { Badge, Button, Menu, Spinner, Tooltip, cx, useTheme } from './ui';
 import {
   IconContainer,
   IconDashboard,
@@ -100,6 +100,11 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
                   <Badge tone="accent" className="px-1.5 py-0 tabular-nums">
                     {updates}
                   </Badge>
+                ) : null}
+                {/* Aviso de que hay una actualizacion corriendo en segundo
+                    plano, para que se vea desde cualquier pantalla. */}
+                {to === '/updates' && live.activeJob ? (
+                  <Spinner className="size-3.5 text-[var(--accent)]" />
                 ) : null}
               </NavLink>
             ))}
@@ -199,7 +204,8 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
               >
                 <Icon size={19} />
                 <span className="truncate max-w-full px-0.5">{t(key)}</span>
-                {to === '/images' && updates > 0 ? (
+                {(to === '/images' && updates > 0) ||
+                (to === '/updates' && live.activeJob) ? (
                   <span className="absolute top-1 right-[22%] size-1.5 rounded-full bg-[var(--accent)]" />
                 ) : null}
               </NavLink>

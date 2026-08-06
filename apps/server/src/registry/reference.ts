@@ -107,6 +107,30 @@ export function parseImageReference(input: string): ImageReference {
   };
 }
 
+/**
+ * Nombre con el que el daemon conoce la imagen.
+ *
+ * NO es lo mismo que `normalized`. `registry-1.docker.io` es el host con el que
+ * se habla la API del registry, pero el daemon guarda las imagenes de Docker
+ * Hub como `nginx:alpine`, sin host y sin el `library/` implicito. Pedirle
+ * `registry-1.docker.io/library/nginx:alpine` devuelve "No such image" aunque
+ * la imagen acabe de descargarse.
+ *
+ * Se usa en todo lo que hable con el daemon: inspeccionar, crear un contenedor
+ * o borrar una imagen. Para hablar con el registry se usa `normalized`.
+ */
+export function localImageName(ref: ImageReference): string {
+  return `${localRepositoryName(ref)}:${ref.tag}`;
+}
+
+/** Igual que `localImageName` pero sin la etiqueta, que algunas APIs piden aparte. */
+export function localRepositoryName(ref: ImageReference): string {
+  if (ref.host === DOCKER_HUB_HOST) {
+    return ref.repository.replace(/^library\//, '');
+  }
+  return `${ref.host}/${ref.repository}`;
+}
+
 /** Forma legible para la interfaz: se quitan los adornos que el usuario no escribio. */
 export function displayReference(ref: ImageReference): string {
   const repo =

@@ -3,6 +3,7 @@ import {
   DOCKER_HUB_HOST,
   digestsForRepository,
   displayReference,
+  localImageName,
   parseImageReference,
 } from './reference.js';
 
@@ -116,5 +117,39 @@ describe('digestsForRepository', () => {
   it('devuelve una lista vacia cuando no hay digests', () => {
     expect(digestsForRepository(null, ref)).toEqual([]);
     expect(digestsForRepository(undefined, ref)).toEqual([]);
+  });
+});
+
+describe('localImageName', () => {
+  it('quita el host y el library implicito en Docker Hub', () => {
+    // El daemon guarda las imagenes de Hub como `nginx:alpine`. Pedirle
+    // `registry-1.docker.io/library/nginx:alpine` responde "No such image"
+    // aunque la imagen acabe de descargarse, y el recreate falla justo despues
+    // de un pull correcto.
+    expect(localImageName(parseImageReference('nginx:alpine'))).toBe('nginx:alpine');
+    expect(localImageName(parseImageReference('docker.io/library/postgres:17'))).toBe('postgres:17');
+  });
+
+  it('conserva el namespace de Hub cuando no es library', () => {
+    expect(localImageName(parseImageReference('grafana/grafana:11.1.0'))).toBe(
+      'grafana/grafana:11.1.0',
+    );
+  });
+
+  it('conserva el host en el resto de registries', () => {
+    expect(localImageName(parseImageReference('ghcr.io/mateof/app:1.0'))).toBe(
+      'ghcr.io/mateof/app:1.0',
+    );
+    expect(localImageName(parseImageReference('registry.local:5000/team/app:2'))).toBe(
+      'registry.local:5000/team/app:2',
+    );
+  });
+
+  it('se diferencia de la forma normalizada, que es la del registry', () => {
+    // Son dos identificadores distintos para lo mismo y confundirlos fue un
+    // fallo real: uno sirve para hablar con el registry y el otro con el daemon.
+    const ref = parseImageReference('nginx:alpine');
+    expect(ref.normalized).toBe('registry-1.docker.io/library/nginx:alpine');
+    expect(localImageName(ref)).not.toBe(ref.normalized);
   });
 });

@@ -11,11 +11,12 @@ import type { DockerApi } from './api.js';
 import type {
   ContainerInspect,
   CreateContainerBody,
+  HostConfig,
   ImageInspect,
   NetworkAttachment,
 } from './types.js';
 import type { RegistryCredentials } from '../db/repositories/index.js';
-import type { ImageReference } from '../registry/reference.js';
+import { localImageName, type ImageReference } from '../registry/reference.js';
 import type { Logger } from '../logger.js';
 
 export class RecreateUnsupportedError extends Error {
@@ -71,6 +72,13 @@ export class ContainerRecreator {
 
   async recreate(options: RecreateOptions): Promise<RecreateResult> {
     const { onProgress } = options;
+
+    // El daemon no conoce la imagen por su referencia de registry: para Docker
+    // Hub la guarda como `nginx:alpine`, no como
+    // `registry-1.docker.io/library/nginx:alpine`. Usar la forma equivocada
+    // hace que falle con "No such image" justo despues de un pull correcto.
+    const localName = localImageName(options.ref);
+
     const container = await this.docker.inspectContainer(options.containerId);
     this.assertSupported(container);
 
@@ -95,7 +103,7 @@ export class ContainerRecreator {
         onProgress('Modo forzado con borrado previo: no habra rollback disponible');
         await this.docker.stopContainer(container.Id, container.Config.StopTimeout ?? 10);
         await this.docker.removeContainer(container.Id, true);
-        await this.docker.removeImage(options.ref.normalized, true).catch((error: Error) => {
+        await this.docker.removeImage(localName, true).catch((error: Error) => {
           onProgress(`No se ha podido borrar la imagen: ${error.message}`);
         });
         await this.docker.pullImage(options.ref, options.credentials, onProgress);
@@ -115,8 +123,8 @@ export class ContainerRecreator {
         await this.docker.stopContainer(container.Id, container.Config.StopTimeout ?? 10);
       }
 
-      const newImage = await this.docker.inspectImage(options.ref.normalized);
-      const body = buildCreateBody(container, oldImage, options.ref.normalized);
+      const newImage = await this.docker.inspectImage(localName);
+      const body = buildCreateBody(container, oldImage, localName);
 
       onProgress('Creando el contenedor nuevo');
       newContainerId = await this.docker.createContainer(originalName, body);
@@ -304,7 +312,7 @@ export function buildCreateBody(
     ? undefined
     : container.Config.Entrypoint;
 
-  const hostConfig = { ...container.HostConfig };
+  const hostConfig = sanitizeHostConfig(container.HostConfig);
 
   // Los volumenes anonimos (nombre de 64 hex) no aparecen en Binds. Si no se
   // arrastran explicitamente en Mounts, el contenedor nuevo crea otros vacios y
@@ -354,6 +362,42 @@ export function buildCreateBody(
       ? { EndpointsConfig: { [firstNetwork[0]]: sanitizeEndpoint(firstNetwork[1]) } }
       : undefined,
   };
+}
+
+/**
+ * Limpia la configuracion del host antes de reenviarla.
+ *
+ * El inspect devuelve TODOS los campos, incluidos los que el usuario nunca
+ * configuro, rellenos con el valor que significa "sin establecer". Reenviarlos
+ * tal cual no siempre es inocuo: verificado con crun sobre cgroup v2, un
+ * `MemorySwappiness` que el propio daemon habia rellenado hace que el
+ * contenedor nuevo no arranque, con el mensaje
+ * "cannot set memory swappiness with cgroupv2".
+ *
+ * Omitir un campo no establecido es equivalente a enviarlo vacio y evita esa
+ * clase entera de incompatibilidades entre runtimes.
+ */
+export function sanitizeHostConfig(hostConfig: HostConfig): HostConfig {
+  const clean: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(hostConfig)) {
+    // null significa "no configurado" en la respuesta del inspect.
+    if (value === null) continue;
+    clean[key] = value;
+  }
+
+  // El swappiness solo tiene sentido junto a un limite de memoria: sin limite,
+  // el valor que devuelve el inspect lo ha puesto el daemon, no el usuario.
+  // Verificado: Podman lo rellena con 0 y crun sobre cgroup v2 no soporta ese
+  // parametro en absoluto, asi que el contenedor recreado no arranca. Se
+  // conserva unicamente cuando hay limite y el valor es intencionado.
+  const swappiness = clean.MemorySwappiness;
+  const hasMemoryLimit = typeof clean.Memory === 'number' && clean.Memory > 0;
+  if (swappiness === -1 || (!hasMemoryLimit && (swappiness === 0 || swappiness === undefined))) {
+    delete clean.MemorySwappiness;
+  }
+
+  return clean as HostConfig;
 }
 
 /**
