@@ -7,6 +7,11 @@
 # caro del build y emularlas multiplica el tiempo por cinco o por diez.
 
 ARG NODE_VERSION=22
+# Version que mostrara la aplicacion. La inyecta el workflow de release desde el
+# package.json; en un build local se queda en "dev" para que se distinga a
+# simple vista de una imagen publicada.
+ARG APP_VERSION=dev
+ARG VCS_REF=unknown
 
 # ---------------------------------------------------------------------------
 # 1. Frontend. JavaScript puro: la arquitectura de destino da igual, asi que se
@@ -78,11 +83,16 @@ COPY --from=server-deps  /repo/node_modules ./node_modules
 COPY --from=server-build /repo/apps/server/dist ./dist
 COPY --from=web-build    /repo/apps/web/dist ./public
 
+# Se redeclaran: los ARG anteriores al primer FROM no llegan a las etapas.
+ARG APP_VERSION
+ARG VCS_REF
+
 ENV NODE_ENV=production \
     PORT=8080 \
     CU_DATA_DIR=/data \
     CU_PUBLIC_DIR=/app/public \
-    CU_HOST_PROC=/host/proc
+    CU_HOST_PROC=/host/proc \
+    CU_VERSION=${APP_VERSION}
 
 VOLUME ["/data"]
 EXPOSE 8080
@@ -96,7 +106,11 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "dist/index.js"]
 
+# `image.source` es lo que hace que GHCR vincule el paquete con el repositorio y
+# muestre el README en la pagina del paquete.
 LABEL org.opencontainers.image.title="ContainerUpdater" \
       org.opencontainers.image.description="Panel para vigilar y actualizar las imagenes Docker de un NAS Synology" \
       org.opencontainers.image.source="https://github.com/mateof/ContainerUpdater" \
-      org.opencontainers.image.licenses="MIT"
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${VCS_REF}"

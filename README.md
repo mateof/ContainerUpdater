@@ -166,12 +166,46 @@ npm test             # tests unitarios
 npm run typecheck
 ```
 
-Construir la imagen para las dos arquitecturas:
+Construir la imagen en local:
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/mateof/container-updater:0.1.0 --push .
+npm run docker:build     # solo tu arquitectura, tag container-updater:local
+npm run docker:push      # amd64 + arm64 a GHCR, normalmente lo hace el workflow
 ```
+
+## Publicación
+
+La imagen se publica sola en `ghcr.io/mateof/container-updater`. **La versión del
+`package.json` de la raíz es la que manda.** En cada push a `main`, el workflow:
+
+1. Ejecuta typecheck, tests y build.
+2. Lee la versión del `package.json`.
+3. Si el tag `v{versión}` **no existe**, construye la imagen para `amd64` y
+   `arm64`, la sube a GHCR y crea la release en GitHub.
+4. Si **ya existe**, no publica nada y lo indica en el resumen de la ejecución.
+
+No falla cuando la versión no cambia: un push que solo toca documentación no
+debería pintar Actions en rojo, y acostumbrarse a ver fallos hace que se acaben
+ignorando los de verdad.
+
+Para publicar una versión nueva basta con subirla antes de mergear:
+
+```bash
+npm run version:patch    # corrección
+npm run version:minor    # funcionalidad nueva
+npm run version:major    # rompe configuración existente
+```
+
+Esos scripts tocan solo el `package.json` de la raíz y no crean tag; el tag lo
+crea el workflow. La versión se inyecta en la imagen, así que la que muestra
+Ajustes es la real.
+
+No hace falta configurar ningún secreto: el workflow usa el `GITHUB_TOKEN` que
+Actions ya proporciona. Solo asegúrate de que en **Settings → Actions → General →
+Workflow permissions** esté marcado *Read and write permissions*.
+
+Para republicar una versión ya subida (por ejemplo si una release salió mal),
+lanza el workflow a mano desde la pestaña Actions marcando la casilla de forzar.
 
 ## Documentación
 

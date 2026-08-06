@@ -6,6 +6,9 @@
 
 services:
   container-updater:
+    # Se fija una version concreta a proposito, no `latest`: asi sabes lo que
+    # tienes y actualizas cuando tu quieras. Las versiones publicadas estan en
+    # https://github.com/mateof/ContainerUpdater/releases
     image: ghcr.io/mateof/container-updater:0.1.0
     container_name: container-updater
     restart: unless-stopped
