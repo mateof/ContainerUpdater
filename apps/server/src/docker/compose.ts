@@ -206,6 +206,30 @@ export class ComposeRunner {
     await this.#run(args, cwd, options.onOutput, options.jobId);
   }
 
+  /**
+   * Baja el proyecto entero.
+   *
+   * Sin `--volumes` a proposito, y sin ofrecer la opcion: `down -v` borra los
+   * volumenes con nombre, o sea la base de datos del stack, y no hay vuelta
+   * atras. Es una operacion que debe costar escribirla a mano.
+   */
+  async down(target: ComposeTarget, options: ComposeOptions): Promise<void> {
+    const { files, cwd } = await this.#resolveTarget(target);
+    await this.#run(
+      [
+        '--project-name',
+        target.projectName,
+        '--project-directory',
+        cwd,
+        ...flagFiles(files),
+        'down',
+      ],
+      cwd,
+      options.onOutput,
+      options.jobId,
+    );
+  }
+
   async restart(target: ComposeTarget, options: ComposeOptions): Promise<void> {
     const { files, cwd } = await this.#resolveTarget(target);
     const args = [

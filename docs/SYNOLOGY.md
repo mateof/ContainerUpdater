@@ -1,96 +1,115 @@
-# Synology y DSM
+# Synology and DSM
 
-Particularidades del NAS que condicionan el funcionamiento, y los problemas que
-más probablemente te encuentres.
+*[Español](SYNOLOGY.es.md)*
+
+The NAS specifics that shape how this works, and the problems you are most
+likely to run into.
 
 ## Container Manager
 
-Desde DSM 7.2, el paquete Docker se llama Container Manager y trae Compose
-integrado. Los "proyectos" son stacks de Compose normales: los contenedores
-llevan las labels estándar `com.docker.compose.*`, así que no hace falta hablar
-con ninguna API propietaria de Synology.
+Since DSM 7.2 the Docker package is called Container Manager and ships Compose
+built in. Its "projects" are ordinary Compose stacks: the containers carry the
+standard `com.docker.compose.*` labels, so there is no need to talk to any
+proprietary Synology API.
 
-Los proyectos viven normalmente en `/volume1/docker/<nombre>`.
+Projects normally live under `/volume1/docker/<name>`.
 
-### El nombre de proyecto no es único
+### The project name is not unique
 
-Container Manager deriva el nombre del proyecto del nombre de la carpeta. Dos
-stacks en `/repos/a/docker` y `/repos/b/docker` se llaman **los dos** `docker`.
-Verificado en un entorno real con tres proyectos homónimos.
+Container Manager derives the project name from the folder name. Two stacks in
+`/repos/a/docker` and `/repos/b/docker` are **both** called `docker`. Verified in
+a real environment with three same-named projects.
 
-Por eso la aplicación identifica cada proyecto por `(nombre, directorio)`.
-Agrupar solo por nombre haría que un `compose down` cayera en el stack
-equivocado, que es un desastre difícil de deshacer.
+That is why the app identifies each project by `(name, directory)`. Grouping by
+name alone would land a `compose down` on the wrong stack, which is a disaster
+that is hard to undo.
 
-### El proyecto puede aparecer como modificado
+### The project may show up as modified
 
-Después de que la aplicación ejecute Compose, Container Manager puede mostrar el
-proyecto como cambiado fuera de su control. Suele reconciliarse solo. Por eso el
-comportamiento por defecto es recrear únicamente el servicio afectado
-(`--no-deps`), que toca lo mínimo.
+After the app runs Compose, Container Manager may show the project as changed
+outside its control. It usually reconciles on its own. That is why the default
+behaviour is to recreate only the affected service (`--no-deps`), which touches
+the least.
 
-### Las variables del proyecto no están en un .env
+### The project variables are not in a .env
 
-Container Manager guarda el entorno del proyecto en su propio almacén, así que
-puede no haber ningún `.env` junto al YAML. Si el fichero referencia
-`${DB_PASSWORD}` y esa variable no está disponible, `compose up` falla a mitad y
-deja el stack a medio levantar.
+Container Manager keeps the project environment in its own store, so there may be
+no `.env` next to the YAML at all. If the file references `${DB_PASSWORD}` and
+that variable is not available, `compose up` fails halfway and leaves the stack
+half up.
 
-Por eso siempre se ejecuta `compose config --quiet` antes de tocar nada: si
-faltan variables, el fallo ocurre sin haber parado ningún contenedor y recibes un
-error claro.
+That is why `compose config --quiet` always runs before anything is touched: if
+variables are missing, the failure happens without having stopped any container
+and you get a clear error.
 
-## Montajes
+## Mounts
 
-### La ruta tiene que coincidir
+### The path has to match
 
 ```yaml
 - /volume1/docker:/volume1/docker:ro
 ```
 
-Las labels de Compose guardan rutas del NAS. Dentro del contenedor solo resuelven
-si el punto de montaje es idéntico. Con `-v /volume1/docker:/proyectos`, la
-aplicación buscaría `/volume1/docker/n8n/docker-compose.yml` y no lo encontraría.
+Compose labels hold NAS paths. Inside the container they only resolve if the
+mount point is identical. With `-v /volume1/docker:/projects`, the app would look
+for `/volume1/docker/n8n/docker-compose.yml` and not find it.
 
-No es fatal: los proyectos pasarían a actualizarse recreando el contenedor por
-API, que funciona pero deja la vista de Container Manager menos sincronizada. La
-interfaz indica qué método usará cada proyecto y por qué.
+It is not fatal: projects would fall back to being updated by recreating the
+container through the API, which works but leaves the Container Manager view less
+in sync. The interface tells you which method each project will use and why.
 
-Si tus proyectos están en `volume2`, ajusta el montaje y `CU_COMPOSE_ROOTS`, que
-acepta una lista separada por comas.
+If your projects are on `volume2`, adjust the mount and `CU_COMPOSE_ROOTS`, which
+takes a comma-separated list.
 
-### Solo lectura
+### Read-only
 
-Ese montaje puede y debe ir `:ro`. Compose únicamente necesita **leer** el YAML;
-los volúmenes que declaren los servicios los resuelve el daemon del NAS y no
-pasan por este montaje.
+That mount can and should be `:ro`. Compose only needs to **read** the YAML; the
+volumes the services declare are resolved by the NAS daemon and never go through
+this mount.
 
-## "No hay rangos de IP disponibles"
+### The writable folder for new projects
+
+Creating projects from the web does need write access, and that is why it goes in
+a **separate** mount:
+
+```yaml
+- /volume1/docker:/volume1/docker:ro
+- /volume1/docker/projects:/volume1/docker/projects
+```
+
+Reading still covers all of `/volume1/docker`, but writing is confined to that
+subfolder. It is deliberate: a mistake while creating a project cannot overwrite
+a stack that already works. Point `CU_PROJECTS_DIR` at it.
+
+If you leave that mount out, everything else works exactly the same and the app
+says why the create button is disabled.
+
+## "No IP address pools available"
 
 ```
 could not find an available, non-overlapping IPv4 address pool
 among the defaults to assign to the network
 ```
 
-Es el error más habitual en un NAS con muchos proyectos, y no tiene nada que ver
-con esta aplicación: le pasa a cualquier stack que intente arrancar.
+This is the most common error on a NAS with many projects, and it has nothing to
+do with this app: it happens to any stack trying to start.
 
-**Por qué ocurre.** Cada proyecto de Compose crea su propia red, y Docker las
-reparte de unos rangos limitados: `172.17.0.0/12` troceado en `/16` (16 redes) y
-`192.168.0.0/16` en `/20` (16 más). Con una docena larga de proyectos se agotan.
-Además, `docker compose down` **deja la red creada**, así que se acumulan redes
-huérfanas de proyectos que ya no existen.
+**Why it happens.** Each Compose project creates its own network, and Docker
+hands them out from limited ranges: `172.17.0.0/12` carved into `/16` (16
+networks) and `192.168.0.0/16` into `/20` (16 more). A dozen-odd projects exhaust
+them. On top of that, `docker compose down` **leaves the network behind**, so
+orphan networks from projects that no longer exist pile up.
 
-### Solución inmediata
+### Immediate fix
 
 ```bash
 docker network prune -f
 ```
 
-Borra las redes que no usa ningún contenedor. En la mayoría de los casos con
-esto basta, porque casi todas las acumuladas son huérfanas.
+Deletes the networks no container is using. In most cases that is enough, because
+nearly all the accumulated ones are orphans.
 
-Para ver cuántas hay y qué rango ocupa cada una:
+To see how many there are and which range each takes:
 
 ```bash
 docker network ls | wc -l
@@ -100,10 +119,10 @@ docker network ls --format '{{.Name}}' | while read -r n; do
 done
 ```
 
-### Solución permanente
+### Permanent fix
 
-Ampliar los rangos que reparte Docker. En DSM, edita
-`/var/packages/ContainerManager/etc/dockerd.json` (por SSH como root) y añade:
+Widen the ranges Docker hands out. On DSM, edit
+`/var/packages/ContainerManager/etc/dockerd.json` (over SSH as root) and add:
 
 ```json
 {
@@ -113,65 +132,64 @@ Ampliar los rangos que reparte Docker. En DSM, edita
 }
 ```
 
-Eso da 256 redes en lugar de 32. Reinicia Container Manager después.
+That gives 256 networks instead of 32. Restart Container Manager afterwards.
 
-Elige una base que **no** choque con tu LAN ni con la VPN: si tu red doméstica
-es `192.168.1.0/24`, no uses `192.168.0.0/16` como base o perderás acceso al NAS
-desde algunos equipos.
+Pick a base that does **not** clash with your LAN or your VPN: if your home
+network is `192.168.1.0/24`, do not use `192.168.0.0/16` as the base or you will
+lose access to the NAS from some machines.
 
-### Por qué el compose de ejemplo lleva `network_mode: bridge`
+### Why the example compose uses `network_mode: bridge`
 
-ContainerUpdater no necesita una red propia: habla con Docker por el socket, que
-es un fichero, y solo necesita salida a internet para consultar los registries.
-Usar la red bridge que ya existe evita gastar uno de esos rangos escasos. Si
-prefieres aislarla, quita esa línea y Compose le creará su red.
+ContainerUpdater does not need a network of its own: it talks to Docker over the
+socket, which is a file, and only needs outbound internet to query the
+registries. Using the bridge network that already exists avoids burning one of
+those scarce ranges. If you would rather isolate it, drop that line and Compose
+will create its network.
 
-## Kernels antiguos y cgroup v1
+## Old kernels and cgroup v1
 
-Muchos modelos de Synology llevan kernels antiguos con cgroup v1, donde:
+Many Synology models ship old kernels with cgroup v1, where:
 
-- `online_cpus` no existe en las estadísticas; hay que usar
+- `online_cpus` does not exist in the stats; you have to use
   `percpu_usage.length`.
-- El caché de memoria se llama `total_inactive_file` en vez de `inactive_file`.
+- The memory cache is called `total_inactive_file` instead of `inactive_file`.
 
-La aplicación prueba ambos, así que funciona en los dos casos sin configurar
-nada.
+The app tries both, so it works either way with nothing to configure.
 
-## Hibernación de discos
+## Drive hibernation
 
-Si tienes la hibernación activada, cualquier lectura del sistema de ficheros los
-despierta. Por eso:
+If you have hibernation on, any filesystem read wakes the drives. That is why:
 
-- El intervalo de comprobación por defecto es de **6 horas**, no una hora.
-- El uso de disco se mide cada 5 minutos, separado del muestreo de CPU.
-- Las métricas en vivo no se escriben en la base de datos salvo que actives el
-  histórico a mano.
+- The default check interval is **6 hours**, not one hour.
+- Disk usage is measured every 5 minutes, separately from the CPU sampling.
+- Live metrics are not written to the database unless you turn on history by
+  hand.
 
-## Proxy inverso de DSM
+## DSM reverse proxy
 
-Si publicas la aplicación a través del proxy inverso de DSM, ten en cuenta que su
-nginx **bufferiza** las respuestas por defecto, lo que corta el flujo de eventos
-en vivo. La aplicación envía `X-Accel-Buffering: no` para desactivarlo, más un
-latido cada 15 segundos para que ningún intermediario cierre por inactividad.
+If you publish the app through the DSM reverse proxy, bear in mind its nginx
+**buffers** responses by default, which cuts off the live event stream. The app
+sends `X-Accel-Buffering: no` to turn that off, plus a heartbeat every 15 seconds
+so no intermediary closes the connection for being idle.
 
-Si usas HTTPS a través del proxy, activa `CU_SECURE_COOKIES=1`. En una LAN por
-HTTP plano **no lo actives**: la cookie `Secure` no se enviaría y el login
-parecería no hacer nada.
+If you use HTTPS through the proxy, turn on `CU_SECURE_COOKIES=1`. On a plain
+HTTP LAN **do not turn it on**: the `Secure` cookie would not be sent and sign-in
+would appear to do nothing.
 
-## Métricas del NAS que no están
+## NAS metrics that are missing
 
-Las temperaturas de disco, el estado SMART y el del RAID **no** están en `/proc`:
-viven en la API de DSM (`webapi/entry.cgi`) y requieren credenciales de DSM.
-Quedan fuera del alcance de esta versión. La aplicación lo indica como no
-disponible en vez de mostrar un dato inventado.
+Drive temperatures, SMART status and RAID health are **not** in `/proc`: they
+live in the DSM API (`webapi/entry.cgi`) and need DSM credentials. They are out
+of scope for this version. The app reports them as unavailable rather than
+showing an invented figure.
 
-## Permisos
+## Permissions
 
-El compose de ejemplo usa `user: "0:0"`. El socket de Docker ya concede
-privilegios equivalentes a root en el NAS, así que correr como root dentro del
-contenedor no empeora la situación y evita una clase entera de incidencias.
+The example compose uses `user: "0:0"`. The Docker socket already grants
+privileges equivalent to root on the NAS, so running as root inside the container
+makes nothing worse and avoids a whole class of incidents.
 
-Si prefieres no hacerlo, averigua el GID del grupo del socket y usa `group_add`:
+If you would rather not, find the GID of the socket's group and use `group_add`:
 
 ```bash
 stat -c %g /var/run/docker.sock
@@ -180,38 +198,38 @@ stat -c %g /var/run/docker.sock
 ```yaml
 user: "1026:100"
 group_add:
-  - "<el GID que devuelva el comando>"
+  - "<whatever GID the command returned>"
 ```
 
-Ese GID varía entre modelos y versiones de DSM, y cambia tras algunas
-actualizaciones, así que tenlo presente si un día la aplicación deja de ver los
-contenedores.
+That GID varies between models and DSM versions, and changes after some updates,
+so keep it in mind if one day the app stops seeing the containers.
 
-## Actualizar la propia aplicación
+## Updating the app itself
 
-Se puede desde la pantalla de Imágenes: lanza un contenedor ayudante que la
-recrea, porque el propio proceso moriría a mitad. Hay unos 30 segundos sin
-panel, y el detalle de lo que ocurra queda en `/data/self-update.log`.
+You can, from the Images screen: it launches a helper container that recreates
+it, because the process itself would die halfway. There are about 30 seconds
+without a panel, and the detail of what happened goes to
+`/data/self-update.log`.
 
-Si algo sale mal y el panel no vuelve:
+If something goes wrong and the panel does not come back:
 
 ```bash
-# El log del ayudante dice exactamente en qué paso falló
+# The helper log says exactly which step failed
 cat /volume1/docker/container-updater/data/self-update.log
 
-# ¿Quedó una copia del contenedor anterior?
+# Is there a copy of the previous container left?
 docker ps -a | grep container-updater
 
-# Si existe un container-updater__cu_old_..., arráncalo:
+# If a container-updater__cu_old_... exists, start it:
 docker rename container-updater__cu_old_XXXX container-updater
 docker start container-updater
 ```
 
-También puedes actualizarla a mano desde Container Manager, que sigue siendo la
-vía más segura: detén el proyecto, cambia el tag de la imagen en el
-`docker-compose.yml` y reconstruye. Tus datos están en
-`/volume1/docker/container-updater/data` y no se tocan en ningún caso.
+You can also update it by hand from Container Manager, which is still the safest
+route: stop the project, change the image tag in the `docker-compose.yml` and
+rebuild. Your data lives in `/volume1/docker/container-updater/data` and is never
+touched.
 
-**Con Compose no hay vuelta atrás automática.** Compose borra el contenedor
-anterior, así que si la versión nueva no arranca hay que corregirlo desde
-Container Manager. La interfaz lo avisa antes de confirmar.
+**With Compose there is no automatic rollback.** Compose deletes the previous
+container, so if the new version fails to start you have to fix it from Container
+Manager. The interface warns you before you confirm.

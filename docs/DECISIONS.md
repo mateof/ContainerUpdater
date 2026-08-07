@@ -1,256 +1,307 @@
-# Decisiones técnicas
+# Technical decisions
 
-Por qué cada elección, y qué se descartó. El repo guarda el "qué"; esto guarda
-el "por qué", que es lo que no se deduce leyendo el código.
+*[Español](DECISIONS.es.md)*
 
-## Hallazgos que condicionaron el diseño
+Why each choice, and what was ruled out. The repo records the "what"; this
+records the "why", which is what you cannot work out by reading the code.
 
-Verificados en vivo contra los registries reales y contra el Docker local, no
-supuestos. Varios contradicen lo que dice la documentación o lo que circula por
-ahí.
+## Findings that shaped the design
 
-| Hallazgo | Consecuencia |
+Verified live against the real registries and the local Docker, not assumed.
+Several of them contradict the documentation or what gets repeated around.
+
+| Finding | Consequence |
 |---|---|
-| Los `HEAD` de manifest en Docker Hub **no** descuentan cuota | El camino caliente de detección sale gratis |
-| El token de Docker Hub está acotado **por repositorio** | Caché por `(host, repo, scope)`, no global |
-| `lscr.io` emite el challenge con `realm="https://ghcr.io/token"` | Hay que leer el realm de la cabecera; hardcodearlo rompe linuxserver.io |
-| `quay.io` público responde 200 **sin challenge** | Hace falta la rama sin autenticación |
-| GHCR devuelve **403**, no 401, para repositorio privado o inexistente | Distinguir "faltan credenciales" de "no existe" |
-| `nginx:alpine` tiene **dos** `RepoDigests` | La comparación es de conjuntos, no de un string |
-| Podman devuelve `precpu_stats` vacío con `stream=false` | La fórmula estándar de CPU% da basura |
-| Tres proyectos de Compose distintos llamados **todos** `docker` | La clave del proyecto es `(nombre, directorio)` |
-| Podman asigna `RepoDigests` a imágenes construidas en local | La heurística "sin digest es local" no sirve |
-| Docker Hub responde 401 igual para privado que para inexistente | Se usa su API pública, que sí distingue 404 |
+| Manifest `HEAD`s on Docker Hub do **not** count against the quota | The hot detection path is free |
+| The Docker Hub token is scoped **per repository** | Cache by `(host, repo, scope)`, not globally |
+| `lscr.io` issues the challenge with `realm="https://ghcr.io/token"` | The realm has to be read from the header; hardcoding it breaks linuxserver.io |
+| Public `quay.io` answers 200 **with no challenge** | The unauthenticated branch is needed |
+| GHCR returns **403**, not 401, for a private or non-existent repository | Tell "credentials missing" apart from "does not exist" |
+| `nginx:alpine` has **two** `RepoDigests` | The comparison is against a set, not a string |
+| Podman returns an empty `precpu_stats` with `stream=false` | The standard CPU% formula yields rubbish |
+| Three different Compose projects **all** called `docker` | The project key is `(name, directory)` |
+| Podman assigns `RepoDigests` to locally built images | The "no digest means local" heuristic does not work |
+| Docker Hub answers 401 the same for private and non-existent | Its public API is used instead, which does distinguish 404 |
 
-## Sesión con cookie, no JWT
+## Cookie session, not JWT
 
-El motivo decisivo es el flujo de métricas: `EventSource` no admite cabeceras, así
-que con JWT habría que meter el token en la query string y acabaría en los logs
-del proxy de DSM. Con cookie `httpOnly` funciona sin trabajo extra, es inmune a
-exfiltración por XSS y revocar es borrar una fila.
+The deciding reason is the metrics stream: `EventSource` does not accept headers,
+so with a JWT the token would have to go in the query string and would end up in
+the DSM proxy logs. With an `httpOnly` cookie it works with no extra effort, it
+is immune to XSS exfiltration, and revoking is deleting a row.
 
-Descartado JWT en `localStorage`: exfiltrable por XSS y sin revocación real salvo
-manteniendo una lista negra, que es exactamente la tabla de sesiones que se
-quería evitar.
+JWT in `localStorage` was ruled out: exfiltrable by XSS and with no real
+revocation short of keeping a blocklist, which is exactly the session table it
+was meant to avoid.
 
-## Argon2id vía `@node-rs/argon2`
+## Argon2id via `@node-rs/argon2`
 
-Publica binarios precompilados para `linux-arm64-musl`, `linux-arm64-gnu`,
-`linux-x64-musl` y `linux-x64-gnu`. Cero compilación tanto en Alpine como en
-Debian y en las dos arquitecturas que hay que cubrir.
+It publishes prebuilt binaries for `linux-arm64-musl`, `linux-arm64-gnu`,
+`linux-x64-musl` and `linux-x64-gnu`. Zero compilation on both Alpine and Debian
+and on both architectures that have to be covered.
 
-Descartado el paquete `argon2` clásico: usa node-gyp y obligaría a llevar
-toolchain en la imagen final o a compilar emulado. Descartado bcrypt: trunca en
-silencio a 72 bytes y es mucho menos duro en memoria.
+The classic `argon2` package was ruled out: it uses node-gyp and would mean
+carrying a toolchain in the final image or compiling under emulation. bcrypt was
+ruled out: it silently truncates at 72 bytes and is far less memory-hard.
 
-## Envelope encryption con `node:crypto`
+## Envelope encryption with `node:crypto`
 
-Una clave maestra del entorno envuelve una clave de datos generada en el primer
-arranque. Rotar la maestra es re-envolver una clave, no re-cifrar cada fila.
+A master key from the environment wraps a data key generated on first start.
+Rotating the master key means re-wrapping one key, not re-encrypting every row.
 
-El AAD ata cada ciphertext a su fila y a la versión de clave: sin él, copiar el
-blob de un registry a otro en la base de datos descifraría el secreto del vecino.
+The AAD binds each ciphertext to its row and key version: without it, copying the
+blob from one registry to another in the database would decrypt the neighbour's
+secret.
 
-Descartado libsodium: otra dependencia nativa que compilar en arm64 a cambio de
-nada que AES-256-GCM no cubra. Descartado `crypto.createCipher`, obsoleto y con
-IV derivado. Descartado AES-CBC, sin autenticación.
+libsodium was ruled out: another native dependency to compile on arm64 in
+exchange for nothing AES-256-GCM does not cover. `crypto.createCipher` was ruled
+out, deprecated and with a derived IV. AES-CBC was ruled out, unauthenticated.
 
-**Perder la clave no impide arrancar.** La aplicación entra en modo degradado, no
-borra nada y avisa. Borrar es siempre una acción manual del usuario. Un arranque
-fallido por no poder descifrar una credencial sería un fallo mucho peor que la
-pérdida en sí.
+**Losing the key does not stop it starting.** The app enters degraded mode,
+deletes nothing and warns. Deleting is always a manual action by the user. A
+failed startup because a credential could not be decrypted would be a far worse
+failure than the loss itself.
 
-## SQLite con WAL
+## SQLite with WAL
 
-Permite leer mientras se escribe, que es el patrón real: el planificador escribe
-resultados mientras la interfaz consulta el inventario. `synchronous=NORMAL` en
-vez de `FULL` porque un fsync por transacción castiga el disco del NAS y lo único
-que se arriesga ante un corte de corriente es la última comprobación.
+It allows reading while writing, which is the actual pattern: the scheduler
+writes results while the interface queries the inventory. `synchronous=NORMAL`
+rather than `FULL` because an fsync per transaction punishes the NAS disk and all
+that is risked on a power cut is the last check.
 
-**Las métricas en vivo no van a disco.** Escribir cada pocos segundos por
-contenedor despierta los discos continuamente para guardar datos que casi nadie
-consulta. Buffer circular en memoria, y agregado a disco solo si el usuario
-activa el histórico.
+**Live metrics do not go to disk.** Writing every few seconds per container wakes
+the drives constantly to store data almost nobody looks at. Ring buffer in
+memory, rolled up to disk only if the user turns on history.
 
-## SSE y no WebSocket
+## SSE, not WebSocket
 
-Flujo unidireccional, la cookie viaja sola, el navegador reconecta solo, y
-atraviesa el proxy inverso de DSM sin configurar `Upgrade`, que es una fuente
-clásica de "en local va y en el NAS no".
+One-way flow, the cookie travels on its own, the browser reconnects by itself,
+and it gets through the DSM reverse proxy without configuring `Upgrade`, which is
+a classic source of "works locally, not on the NAS".
 
-Descartado `stats?stream=true` mantenido abierto por contenedor: treinta
-contenedores serían treinta conexiones permanentes y treinta mensajes por
-segundo, muchísimo más de lo que hace falta para pintar una gráfica.
+Keeping `stats?stream=true` open per container was ruled out: thirty containers
+would be thirty permanent connections and thirty messages a second, vastly more
+than is needed to draw a chart.
 
-## Un solo muestreador, y solo si hay alguien mirando
+## One sampler, and only while somebody is watching
 
-Diez pestañas abiertas generan el mismo trabajo que una. Y con la pestaña oculta,
-la interfaz cierra la conexión, con lo que el servidor deja de muestrear del
-todo. En un NAS eso es la diferencia entre una aplicación que molesta y una que
-no se nota.
+Ten open tabs generate the same work as one. And with the tab hidden, the
+interface closes the connection, at which point the server stops sampling
+entirely. On a NAS that is the difference between an app that gets in the way and
+one you do not notice.
 
-## uPlot y no Recharts
+## uPlot, not Recharts
 
-uPlot dibuja sobre canvas: mil puntos son mil operaciones de dibujo, no mil nodos
-del DOM. Las librerías basadas en SVG generan cientos de nodos por gráfica y con
-treinta contenedores el navegador de un NAS se arrastra. 45 KB frente a bastante
-más.
+uPlot draws on canvas: a thousand points are a thousand draw operations, not a
+thousand DOM nodes. SVG-based libraries generate hundreds of nodes per chart and
+with thirty containers a NAS browser crawls. 45 KB against considerably more.
 
-## Lector propio de `/proc`
+## Our own `/proc` reader
 
-Descartado `systeminformation`: lee rutas de `/proc` **fijas**, es decir las del
-namespace del contenedor y no las del NAS. Devolvería la memoria y la CPU del
-propio contenedor haciéndolas pasar por las del sistema, que es peor que no
-mostrar nada. No admite prefijo, así que no hay forma de apuntarlo a
+`systeminformation` was ruled out: it reads **fixed** `/proc` paths, meaning the
+container's namespace rather than the NAS's. It would return the container's own
+memory and CPU while passing them off as the system's, which is worse than
+showing nothing. It takes no prefix, so there is no way to point it at
 `/host/proc`.
 
-Un lector propio son unas decenas de líneas, no tiene dependencias y dice la
-verdad.
+Our own reader is a few dozen lines, has no dependencies and tells the truth.
 
 ## croner
 
-Cero dependencias, zona horaria y protección contra solapamientos de serie.
-Descartados BullMQ y Agenda: exigen Redis o MongoDB para programar cuatro tareas
-en un NAS. Descartado `node-cron`: sin protección de solapamiento.
+Zero dependencies, time zones and overlap protection out of the box. BullMQ and
+Agenda were ruled out: they need Redis or MongoDB to schedule four tasks on a
+NAS. `node-cron` was ruled out: no overlap protection.
 
-## grammY con long polling
+## grammY with long polling
 
-El NAS está detrás de NAT. Un webhook obligaría a abrir un puerto y a tener
-certificado válido; el long polling solo hace HTTPS saliente.
+The NAS is behind NAT. A webhook would mean opening a port and holding a valid
+certificate; long polling only makes outbound HTTPS.
 
-`drop_pending_updates` al arrancar es importante: tras un reinicio del NAS,
-Telegram tiene encolados los mensajes de mientras estuvo apagado, y sin esto el
-bot ejecutaría un `/actualizar` de hace horas nada más levantarse.
+`drop_pending_updates` at startup matters: after a NAS restart, Telegram has the
+messages from while it was off queued up, and without this the bot would run an
+`/update` from hours ago the moment it came back.
 
-Descartado telegraf (mantenimiento irregular) y node-telegram-bot-api (API
-antigua, tipos pobres).
+telegraf (irregular maintenance) and node-telegram-bot-api (old API, poor types)
+were ruled out.
 
-## HTML y no MarkdownV2 en Telegram
+## HTML, not MarkdownV2, on Telegram
 
-Las referencias de imagen llevan `.`, `-`, `_` y `/`, y MarkdownV2 obliga a
-escapar cada uno de esos caracteres. Es una fuente garantizada de mensajes rotos.
-En HTML solo hay tres caracteres que escapar.
+Image references contain `.`, `-`, `_` and `/`, and MarkdownV2 forces escaping
+every one of those characters. It is a guaranteed source of broken messages. In
+HTML there are only three characters to escape.
 
-## Deduplicación por digest
+## Deduplication by digest
 
-La clave es `sha256(canal|tipo|referencia|digest|chat)`. Como incluye el digest,
-mientras `latest` apunte a la misma imagen no se vuelve a avisar, pero en cuanto
-apunte a una nueva el aviso sale solo. Cumple los dos requisitos con un único
-mecanismo.
+The key is `sha256(channel|type|reference|digest|chat)`. Because it includes the
+digest, while `latest` points at the same image nothing is sent again, but as
+soon as it points at a new one the notification goes out by itself. It meets both
+requirements with a single mechanism.
 
-Se **reserva la fila antes de enviar** y se borra si el envío falla. Enviar
-primero y apuntar después perdería la marca si el proceso muere en medio y
-avisaría dos veces.
+The row is **reserved before sending** and deleted if the send fails. Sending
+first and recording afterwards would lose the mark if the process died in between
+and would notify twice.
 
-## Nonces en los botones del bot
+## Nonces on the bot buttons
 
-Los `callback_data` llevan un identificador de vida corta guardado en servidor, no
-la acción en claro. Sin esto, un botón "Actualizar ahora" que quede en el
-historial del chat podría pulsarse meses después y disparar una actualización que
-nadie espera. Además, Telegram limita `callback_data` a 64 bytes y una referencia
-de imagen se pasa de largo.
+The `callback_data` carries a short-lived identifier held on the server, not the
+action in the clear. Without this, an "Update now" button left in the chat
+history could be pressed months later and fire an update nobody expects. On top
+of that, Telegram caps `callback_data` at 64 bytes and an image reference goes
+well past it.
 
-## `--no-deps` por defecto
+## `--no-deps` by default
 
-Pediste "reiniciar el proyecto", pero en la práctica casi nunca quieres tumbar la
-base de datos del stack para actualizar el frontend. Por defecto se recrea solo
-el servicio afectado; recrear el proyecto entero está disponible como opción
-explícita y avisa de lo que implica.
+The request was to "restart the project", but in practice you almost never want
+to take the stack database down to update the frontend. By default only the
+affected service is recreated; recreating the whole project is available as an
+explicit option and warns what it entails.
 
-## Auto-actualización mediante un ayudante externo
+## Self-update through an external helper
 
-Un proceso no puede recrear su propio contenedor: al pararlo, muere a mitad y
-deja el contenedor en un estado indeterminado. La solución es delegar en un
-contenedor efímero que sobrevive al reinicio (verificado: un contenedor lanzado
-por otro sigue vivo aunque quien lo lanzó desaparezca, porque quien los gestiona
-es el daemon).
+A process cannot recreate its own container: stopping it kills it halfway and
+leaves the container in an indeterminate state. The answer is to delegate to an
+ephemeral container that survives the restart (verified: a container launched by
+another stays alive even when the launcher disappears, because the daemon is what
+manages them).
 
-Tres decisiones dentro de esto:
+Three decisions inside this:
 
-**El ayudante corre con la imagen VIEJA.** Es la que ya se sabe que arranca. Si
-usara la nueva y esa imagen estuviera rota, no quedaría nadie capaz de dar
-marcha atrás.
+**The helper runs the OLD image.** It is the one already known to start. If it
+used the new one and that image were broken, nobody would be left able to go
+back.
 
-**Todo lo comprobable se hace antes.** La descarga, la verificación de que la
-imagen existe de verdad y la validación del YAML ocurren mientras la aplicación
-sigue en pie: si algo falla ahí, se devuelve un error normal y no ha pasado
-nada. El ayudante recibe las decisiones ya tomadas, porque cuanto menos tenga
-que decidir, menos puede salir mal cuando ya no hay panel donde mirar.
+**Everything checkable happens beforehand.** The pull, verifying the image really
+exists and validating the YAML all happen while the app is still standing: if
+something fails there, a normal error is returned and nothing has happened. The
+helper is handed decisions already made, because the less it has to decide, the
+less can go wrong when there is no panel left to look at.
 
-**El log va a `/data`, no a stdout.** Mientras el ayudante trabaja no hay
-interfaz, y cuando termina se autoelimina. Un fichero persistente es lo único
-que queda para diagnosticar.
+**The log goes to `/data`, not stdout.** While the helper works there is no
+interface, and when it finishes it deletes itself. A persistent file is the only
+thing left to diagnose with.
 
-Lo que **no** se resuelve: con Compose no hay rollback fiable. Compose borra el
-contenedor anterior y volver atrás exigiría cambiar la etiqueta del YAML, que es
-del usuario. Se avisa antes de confirmar en lugar de descubrirlo al fallar. Con
-recreación directa sí hay restauración automática, verificada.
+What is **not** solved: with Compose there is no reliable rollback. Compose
+deletes the previous container and going back would mean changing the tag in the
+user's YAML. You are warned before confirming rather than discovering it on
+failure. With direct recreation there is automatic restore, verified.
 
-Tampoco se ofrece desde Telegram: el panel se cae unos segundos y desde el móvil
-no se podría ver qué ha pasado.
+It is also not offered from Telegram: the panel goes down for a few seconds and
+from a phone there would be no way to see what happened.
 
-## `bookworm-slim` y no Alpine
+## `bookworm-slim`, not Alpine
 
-`better-sqlite3` se compila desde fuente, y builder y runtime tienen que
-compartir libc o el `.node` no carga. glibc da un build más predecible que musl a
-cambio de unos pocos MB.
+`better-sqlite3` compiles from source, and builder and runtime have to share libc
+or the `.node` will not load. glibc gives a more predictable build than musl in
+exchange for a few MB.
 
-Solo la etapa que compila código nativo se emula bajo QEMU; las de Vite y
-TypeScript llevan `--platform=$BUILDPLATFORM`, porque son lo caro y emularlas
-multiplica el tiempo de build.
+Only the stage compiling native code is emulated under QEMU; the Vite and
+TypeScript ones carry `--platform=$BUILDPLATFORM`, because they are the expensive
+part and emulating them multiplies build time.
 
-## `react-router-dom` fijado a 7.18.2
+## `react-router-dom` pinned to 7.18.2
 
-Hay una advisory abierta sobre el modo RSC, que esta aplicación no usa (router
-puramente de cliente, sin acciones de servidor). `npm audit` propone bajar a
-7.11.0, pero esa versión arrastra **catorce** advisories antiguas en lugar de
-una. La versión actual es la opción con menos exposición real.
+There is an open advisory about RSC mode, which this app does not use (purely
+client-side router, no server actions). `npm audit` proposes dropping to 7.11.0,
+but that version drags in **fourteen** old advisories instead of one. The current
+version is the option with the least real exposure.
 
-Revisar cuando publiquen un parche hacia delante.
+Revisit when they publish a forward fix.
 
-## Recrear un servicio en dos pasos, no con `--force-recreate`
+## Recreating a service in two steps, not with `--force-recreate`
 
-La acción "recrear" ejecuta:
+The "recreate" action runs:
 
 ```bash
-docker compose rm -f -s <servicio>
-docker compose up -d <servicio>
+docker compose rm -f -s <service>
+docker compose up -d <service>
 ```
 
-y no el aparentemente equivalente `docker compose up -d --force-recreate
-<servicio>`. La diferencia no es de estilo:
+and not the apparently equivalent `docker compose up -d --force-recreate
+<service>`. The difference is not stylistic:
 
-- `--force-recreate` recrea **también las dependencias** del servicio.
-- La secuencia en dos pasos solo destruye el servicio pedido. Sus dependencias
-  se quedan como están y `up` únicamente las arranca si estaban paradas.
+- `--force-recreate` recreates **the service's dependencies too**.
+- The two-step sequence only destroys the requested service. Its dependencies are
+  left as they are and `up` only starts them if they were stopped.
 
-En un stack donde un servicio va detrás de una VPN (`network_mode:
-service:vpn`) o depende de una base de datos, `--force-recreate` tumbaría esa
-VPN y con ella la conectividad de todo lo que cuelgue de ella. La secuencia
-larga es lo que se hace a mano por algo.
+In a stack where a service sits behind a VPN (`network_mode: service:vpn`) or
+depends on a database, `--force-recreate` would take that VPN down and with it
+the connectivity of everything hanging off it. The long sequence is what people
+do by hand for a reason.
 
-Descartado `--no-deps` como alternativa: evita recrear las dependencias, pero
-tampoco las arranca si estaban caídas, que es justo lo que se quiere al levantar
-un servicio a mano.
+`--no-deps` was ruled out as an alternative: it avoids recreating the
+dependencies, but it does not start them either if they were down, which is
+exactly what you want when bringing a service up by hand.
 
-## Las acciones de servicio comparten cola con las actualizaciones
+## Service actions share a queue with the updates
 
-Recrear, parar o arrancar un servicio va por la misma cola que un update, y
-queda en el mismo historial. Son operaciones distintas conceptualmente, pero
-comparten las dos propiedades que importan: no pueden solaparse sobre el mismo
-proyecto sin corromper su estado, y conviene poder mirar después qué se hizo y
-con qué salida.
+Recreating, stopping or starting a service goes through the same queue as an
+update, and lands in the same history. They are conceptually different
+operations, but they share the two properties that matter: they cannot overlap on
+the same project without corrupting its state, and it is worth being able to look
+afterwards at what was done and with what output.
 
-Mantener dos colas independientes habría permitido que un recreate y un update
-se pisaran, que es el fallo que la cola existía para evitar.
+Keeping two independent queues would have allowed a recreate and an update to
+collide, which is the failure the queue existed to prevent.
 
-## Detección reactiva de imágenes locales
+## Project operations also became queued jobs
 
-La heurística "sin `RepoDigests` es una imagen local" falla: Podman les asigna un
-digest igualmente, y entonces se consultan contra Docker Hub, donde no existen, y
-el usuario ve un "requiere autenticación" que no significa nada.
+Bringing a project up used to run Compose inside the HTTP request. It was the
+same mistake already fixed for the updates: a large stack takes longer than the
+browser or the DSM proxy will hold the connection, and meanwhile there was no way
+to see how it was going. Now they share the queue, the history and the live
+output with everything else.
 
-Se resuelve **reaccionando al resultado** en vez de adivinando: cuando el
-registry confirma que el repositorio no existe, la imagen se marca como
-construida en local y queda fuera de futuras comprobaciones. Se auto-corrige y el
-mensaje explica lo que pasa de verdad.
+## Reactive detection of local images
+
+The "no `RepoDigests` means a local image" heuristic fails: Podman assigns them a
+digest anyway, so they get queried against Docker Hub, where they do not exist,
+and the user sees an "authentication required" that means nothing.
+
+It is solved by **reacting to the result** rather than guessing: when the registry
+confirms the repository does not exist, the image is marked as locally built and
+left out of future checks. It corrects itself and the message explains what is
+actually going on.
+
+## Project creation writes to a separate folder
+
+The recommended mount puts the projects folder read-only, because until then only
+the YAML had to be read. Creating projects needs write access, and the obvious
+move would have been to drop the `:ro`.
+
+It goes in a **separate mount** for a specific reason: the risk of writing is not
+symmetric. Reading the wrong file is harmless; overwriting the compose of a stack
+in production is not. Confining writes to one subfolder means a bug in the
+creation path cannot reach the stacks that already work, and the cost is one
+extra line in the compose.
+
+The consequence is that without that mount the feature is simply off. That is
+deliberate too: silently falling back to writing wherever there happens to be
+permission would be the worst of both.
+
+## The `.env` is not encrypted on disk
+
+Compose has to read it in the clear, and so does anything else that brings the
+stack up over SSH or from Container Manager. Encrypting it on disk would mean
+only this app could start the project, which trades a real capability for the
+appearance of security.
+
+What is done instead is what actually holds:
+
+- `0600` permissions, so it is not readable by the rest of the system.
+- Values whose key looks like it names a secret are masked in the interface, and
+  revealing one is a separate, audited request for that single variable rather
+  than a dump of the file.
+- Each save archives the previous version encrypted in the database, with the
+  same envelope as the registry credentials. A backup of a secret is still a
+  secret.
+
+Materialising the file only for the duration of the Compose run and deleting it
+afterwards was considered and ruled out: it would break every use outside the
+app, and a stack you cannot start over SSH is a trap for whoever inherits it.
+
+## Only projects created here can be edited
+
+The files of a project made in Container Manager or over SSH are read, never
+written. It would be technically easy to allow it and it would look like a
+feature, but overwriting a file somebody else wrote, from a web panel, is the
+kind of surprise that destroys trust in a tool that has the Docker socket.

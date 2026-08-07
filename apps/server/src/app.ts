@@ -15,6 +15,7 @@ import { readComposeMembership } from './docker/projects.js';
 import { deriveComposeRoots, detectPlatform, findSocket, type PlatformInfo } from './platform.js';
 import { DockerApi } from './docker/api.js';
 import { ComposeRunner } from './docker/compose.js';
+import { ProjectFilesService, resolveProjectsDir } from './services/project-files.js';
 import { ContainerRecreator } from './docker/recreate.js';
 import { AuthService } from './services/auth.js';
 import { InventoryService } from './services/inventory.js';
@@ -34,6 +35,8 @@ export interface AppContext {
   keyring: Keyring;
   repos: Repositories;
   docker: DockerApi;
+  compose: ComposeRunner;
+  projectFiles: ProjectFilesService;
   auth: AuthService;
   inventory: InventoryService;
   checker: CheckerService;
@@ -52,6 +55,7 @@ export interface AppContext {
     composeRoots: string[];
     composeRootsExplicit: boolean;
     projectDirs: string[];
+    projectsDir: string | null;
   };
   shutdown: () => Promise<void>;
 }
@@ -181,6 +185,29 @@ export async function createApp(config: Config): Promise<AppContext> {
       `${platform.verified ? '' : ' [soporte no verificado]'}`,
   );
 
+  /**
+   * Carpeta donde se crean los proyectos nuevos.
+   *
+   * Se anade a las carpetas permitidas de Compose: si no, un proyecto creado
+   * aqui no pasaria el filtro de rutas y no se podria levantar. Va aparte
+   * porque esta tiene que admitir escritura y las otras, siguiendo la
+   * recomendacion del montaje, no.
+   */
+  const projectsDir = await resolveProjectsDir(config.projectsDir, composeRoots);
+  if (projectsDir && !composeRoots.includes(projectsDir)) {
+    composeRoots = [...composeRoots, projectsDir];
+  }
+  if (projectsDir) {
+    log.info(`Carpeta para proyectos nuevos: ${projectsDir}`);
+  } else {
+    log.info(
+      'No hay ninguna carpeta con permiso de escritura, asi que no se pueden crear ' +
+        'proyectos desde la aplicacion. Monta una y apuntala con CU_PROJECTS_DIR.',
+    );
+  }
+
+  const projectFiles = new ProjectFilesService(projectsDir, repos, log.child('project-files'));
+
   const inventory = new InventoryService(docker, repos, composeRoots, log.child('inventory'));
   const checker = new CheckerService(repos, docker, log.child('checker'));
 
@@ -299,6 +326,8 @@ export async function createApp(config: Config): Promise<AppContext> {
     keyring,
     repos,
     docker,
+    compose,
+    projectFiles,
     auth,
     inventory,
     checker,
@@ -316,6 +345,7 @@ export async function createApp(config: Config): Promise<AppContext> {
       composeRoots,
       composeRootsExplicit: config.composeRootsExplicit,
       projectDirs,
+      projectsDir,
     },
     shutdown,
   };

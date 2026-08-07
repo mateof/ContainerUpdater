@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
-import type { ComposeProject, ServiceAction } from '@cu/shared';
+import type { ComposeProject, ProjectAction, ServiceAction } from '@cu/shared';
 import { api, ApiError } from '@/api/client';
 import {
   Badge,
@@ -17,7 +17,8 @@ import {
   Tooltip,
   useToast,
 } from '@/components/ui';
-import { IconDownload, IconMore, IconProject, IconRefresh, IconRestart } from '@/components/icons';
+import { IconDownload, IconMore, IconPlus, IconProject, IconRefresh, IconRestart } from '@/components/icons';
+import { ProjectEditor } from './ProjectEditor';
 import { displayImage } from '@/lib/format';
 import { JobIndicator } from '@/components/JobIndicator';
 import { useLive } from '@/hooks/LiveContext';
@@ -30,6 +31,18 @@ const ACTION_LABEL: Record<ServiceAction, string> = {
   stop: 'containers.stop',
   start: 'containers.start',
   pull: 'projects.actionPull',
+};
+
+const PROJECT_ACTION_LABEL: Record<ProjectAction, string> = {
+  up: 'projects.up',
+  restart: 'projects.restart',
+  down: 'projects.down',
+};
+
+const PROJECT_ACTION_CONFIRM: Record<ProjectAction, string> = {
+  up: 'projects.confirmUp',
+  restart: 'projects.confirmRestart',
+  down: 'projects.confirmDown',
 };
 
 const ACTION_CONFIRM: Record<ServiceAction, string> = {
@@ -45,7 +58,7 @@ export function ProjectsPage(): ReactNode {
   const notify = useToast();
   const queryClient = useQueryClient();
   const live = useLive();
-  const [confirm, setConfirm] = useState<{ project: ComposeProject; restartOnly: boolean } | null>(
+  const [confirm, setConfirm] = useState<{ project: ComposeProject; action: ProjectAction } | null>(
     null,
   );
   const [confirmAction, setConfirmAction] = useState<{
@@ -53,6 +66,10 @@ export function ProjectsPage(): ReactNode {
     service: string;
     action: ServiceAction;
   } | null>(null);
+  /** `undefined` en `name` significa crear; una cadena, editar ese proyecto. */
+  const [editor, setEditor] = useState<{ name?: string } | null>(null);
+
+  const dir = useQuery({ queryKey: ['projects-dir'], queryFn: () => api.projectsDir() });
 
   const serviceAction = useMutation({
     mutationFn: ({
@@ -86,10 +103,12 @@ export function ProjectsPage(): ReactNode {
   const projects = data?.projects ?? [];
 
   const apply = useMutation({
-    mutationFn: ({ key, restartOnly }: { key: string; restartOnly: boolean }) =>
-      api.applyProject(key, restartOnly),
+    mutationFn: ({ key, action }: { key: string; action: ProjectAction }) =>
+      api.projectAction(key, action),
     onSuccess: () => {
-      notify(t('updates.statusSuccess'), 'ok');
+      // Igual que el resto: se encola y el progreso se sigue en Actualizaciones.
+      notify(t('updates.runsInBackground'), 'info');
+      void queryClient.invalidateQueries({ queryKey: ['jobs'] });
       void queryClient.invalidateQueries({ queryKey: ['projects'] });
       void queryClient.invalidateQueries({ queryKey: ['containers'] });
       setConfirm(null);
@@ -109,7 +128,30 @@ export function ProjectsPage(): ReactNode {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold tracking-tight">{t('projects.title')}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold tracking-tight">{t('projects.title')}</h1>
+        <Tooltip content={dir.data?.writable ? t('projects.newProjectHelp') : (dir.data?.reason ?? '')}>
+          <span>
+            <Button
+              variant="primary"
+              icon={<IconPlus size={16} />}
+              disabled={!dir.data?.writable}
+              onClick={() => setEditor({})}
+            >
+              {t('projects.newProject')}
+            </Button>
+          </span>
+        </Tooltip>
+      </div>
+
+      {/* Sin carpeta escribible no se puede crear nada, y el motivo casi siempre
+          es el montaje en solo lectura. Decirlo aqui evita que el boton
+          desactivado parezca un fallo. */}
+      {dir.data && !dir.data.writable ? (
+        <Banner tone="info" title={t('projects.cannotCreate')}>
+          {dir.data.reason}
+        </Banner>
+      ) : null}
 
       {isLoading ? (
         <div className="space-y-2">
@@ -156,7 +198,7 @@ export function ProjectsPage(): ReactNode {
                       variant="ghost"
                       aria-label={t('projects.restart')}
                       disabled={!project.yamlAccessible}
-                      onClick={() => setConfirm({ project, restartOnly: true })}
+                      onClick={() => setConfirm({ project, action: 'restart' })}
                     >
                       <IconRestart size={16} />
                     </Button>
@@ -167,11 +209,36 @@ export function ProjectsPage(): ReactNode {
                       variant="ghost"
                       aria-label={t('projects.up')}
                       disabled={!project.yamlAccessible}
-                      onClick={() => setConfirm({ project, restartOnly: false })}
+                      onClick={() => setConfirm({ project, action: 'up' })}
                     >
                       <IconRefresh size={16} />
                     </Button>
                   </Tooltip>
+                  <Menu
+                    trigger={
+                      <Button size="icon" variant="ghost" aria-label={t('projects.projectActions')}>
+                        <IconMore size={16} />
+                      </Button>
+                    }
+                    items={[
+                      {
+                        key: 'edit',
+                        label: t('projects.editFilesShort'),
+                        // Solo lo creado aqui: sobrescribir el YAML de un stack
+                        // que hizo otro es la clase de sorpresa que no se quiere.
+                        disabled: !project.managed,
+                        onSelect: () => setEditor({ name: project.name }),
+                      },
+                      { type: 'separator', key: 'sep' },
+                      {
+                        key: 'down',
+                        label: t('projects.down'),
+                        danger: true,
+                        disabled: !project.yamlAccessible,
+                        onSelect: () => setConfirm({ project, action: 'down' }),
+                      },
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -271,17 +338,18 @@ export function ProjectsPage(): ReactNode {
         <ConfirmDialog
           open
           onOpenChange={(open) => !open && setConfirm(null)}
-          title={confirm.restartOnly ? t('projects.restart') : t('projects.up')}
-          description={t('projects.confirmRestart', { name: confirm.project.name })}
+          title={t(PROJECT_ACTION_LABEL[confirm.action])}
+          description={t(PROJECT_ACTION_CONFIRM[confirm.action], { name: confirm.project.name })}
           confirmLabel={t('common.confirm')}
           cancelLabel={t('common.cancel')}
-          danger
+          // Bajar el stack corta el servicio; levantar y reiniciar no tanto.
+          danger={confirm.action === 'down'}
           loading={apply.isPending}
-          onConfirm={() =>
-            apply.mutate({ key: confirm.project.key, restartOnly: confirm.restartOnly })
-          }
+          onConfirm={() => apply.mutate({ key: confirm.project.key, action: confirm.action })}
         />
       ) : null}
+
+      {editor ? <ProjectEditor name={editor.name} onClose={() => setEditor(null)} /> : null}
 
       {confirmAction ? (
         <ConfirmDialog

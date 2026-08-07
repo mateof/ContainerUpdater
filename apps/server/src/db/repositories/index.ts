@@ -6,12 +6,14 @@ import { createHistoryRepository } from './history.js';
 import { createRegistryRepository } from './registries.js';
 import { createNotificationRepository, createTelegramRepository } from './notifications.js';
 import { createSettingsRepository, createTagCacheRepository } from './settings.js';
+import { createManagedProjectRepository } from './projects.js';
 
 export function createRepositories(db: Db, keyring: Keyring) {
   return {
     users: createUserRepository(db),
     sessions: createSessionRepository(db),
     inventory: createInventoryRepository(db),
+    managedProjects: createManagedProjectRepository(db, keyring),
     history: createHistoryRepository(db),
     registries: createRegistryRepository(db, keyring),
     notifications: createNotificationRepository(db),
@@ -23,8 +25,9 @@ export function createRepositories(db: Db, keyring: Keyring) {
 
 export type Repositories = ReturnType<typeof createRepositories>;
 
-export { projectKey, DEFAULT_POLICY } from './inventory.js';
+export { DEFAULT_POLICY } from './inventory.js';
 export { dedupeKey } from './notifications.js';
 export type { ImageRow, ProjectRow } from './inventory.js';
+export type { ManagedProjectRow, ProjectFileKind, ProjectFileVersion } from './projects.js';
 export type { UserRow } from './users.js';
 export type { RegistryCredentials } from './registries.js';

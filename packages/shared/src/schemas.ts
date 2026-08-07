@@ -86,9 +86,48 @@ export const serviceActionSchema = z.object({
   action: z.enum(['recreate', 'restart', 'stop', 'start', 'pull']),
 });
 
-export const projectApplySchema = z.object({
+/**
+ * Nombre de un proyecto creado desde aqui.
+ *
+ * Es a la vez el nombre del proyecto de Compose y el de su carpeta, asi que la
+ * validacion es la mas restrictiva de las dos. Se prohibe empezar por `-`
+ * (Compose lo tomaria por una opcion) y cualquier cosa que parezca una ruta:
+ * es el unico dato del que sale un nombre de directorio.
+ */
+export const projectNameSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9_-]*$/, 'minusculas, digitos, guion y guion bajo; ha de empezar por letra o digito');
+
+/** Tope de tamano de los ficheros. Un compose legitimo no se acerca. */
+const FILE_MAX = 256 * 1024;
+
+export const projectCreateSchema = z.object({
+  name: projectNameSchema,
+  compose: z.string().min(1).max(FILE_MAX),
+  env: z.string().max(FILE_MAX).optional(),
+  /** Levantarlo nada mas crearlo. */
+  start: z.boolean().default(true),
+});
+
+export const projectFilesUpdateSchema = z.object({
+  name: projectNameSchema,
+  compose: z.string().min(1).max(FILE_MAX),
+  env: z.string().max(FILE_MAX).optional(),
+  /** Volver a aplicar el proyecto tras guardar. */
+  apply: z.boolean().default(false),
+});
+
+export const projectActionSchema = z.object({
   projectKey: z.string().min(1).max(1024),
-  restartOnly: z.boolean().default(false),
+  action: z.enum(['up', 'restart', 'down']),
+});
+
+/** Ver en claro una sola variable, no el fichero entero. */
+export const envRevealSchema = z.object({
+  name: projectNameSchema,
+  key: z.string().min(1).max(255),
 });
 
 // ---------------------------------------------------------------------------

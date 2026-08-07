@@ -6,7 +6,9 @@
  * contenedores que ya no existen.
  */
 import { hostname } from 'node:os';
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { join } from 'node:path';
 import type {
   ComposeProject,
   ContainerState,
@@ -17,7 +19,12 @@ import type {
 } from '@cu/shared';
 import type { DockerApi } from '../docker/api.js';
 import type { ContainerListItem, ImageListItem } from '../docker/types.js';
-import { checkComposeAccessibility, readComposeMembership } from '../docker/projects.js';
+import {
+  checkComposeAccessibility,
+  composeProjectKey,
+  readComposeMembership,
+} from '../docker/projects.js';
+import { COMPOSE_FILENAME } from './project-files.js';
 import { digestsForRepository, parseImageReference } from '../registry/reference.js';
 import { defaultTrackMode } from '../registry/semver.js';
 import type { Repositories } from '../db/repositories/index.js';
@@ -226,6 +233,7 @@ export class InventoryService {
     }
 
     const imagesByRef = new Map(this.repos.inventory.listImages().map((row) => [row.normalized_ref, row]));
+    const managedDirs = new Set(this.repos.managedProjects.list().map((row) => row.dir));
     const projects: ComposeProject[] = [];
 
     for (const [key, group] of grouped) {
@@ -259,11 +267,61 @@ export class InventoryService {
         strategy,
         containers: group.members,
         updatesAvailable,
+        managed: managedDirs.has(group.workingDir),
       });
     }
 
+    projects.push(...(await this.#pendingProjects(grouped)));
+
     projects.sort((a, b) => a.name.localeCompare(b.name));
     return projects;
+  }
+
+  /**
+   * Proyectos creados aqui que todavia no tienen ningun contenedor.
+   *
+   * Los proyectos salen de las labels de los contenedores, asi que uno recien
+   * creado (o uno cuyo primer arranque ha fallado) no aparece por ningun lado.
+   * Sin esto quedaria invisible justo cuando hay que entrar a corregir el YAML,
+   * que es cuando mas falta hace verlo.
+   */
+  async #pendingProjects(
+    running: Map<string, { workingDir: string }>,
+  ): Promise<ComposeProject[]> {
+    const activeDirs = new Set([...running.values()].map((group) => group.workingDir));
+    const pending: ComposeProject[] = [];
+
+    for (const row of this.repos.managedProjects.list()) {
+      if (activeDirs.has(row.dir)) continue;
+
+      const composeFile = join(row.dir, COMPOSE_FILENAME);
+      try {
+        await access(composeFile, constants.R_OK);
+      } catch {
+        // Alguien ha borrado el fichero por fuera. Mostrar el proyecto solo
+        // llevaria a que todas sus acciones fallasen sin explicar por que.
+        continue;
+      }
+
+      const check = await checkComposeAccessibility(
+        { workingDir: row.dir, configFiles: [composeFile] },
+        this.composeRoots,
+      );
+
+      pending.push({
+        key: composeProjectKey(row.name, row.dir),
+        name: row.name,
+        workingDir: row.dir,
+        configFiles: [composeFile],
+        yamlAccessible: check.accessible,
+        strategy: check.accessible ? 'compose' : 'recreate',
+        containers: [],
+        updatesAvailable: 0,
+        managed: true,
+      });
+    }
+
+    return pending;
   }
 
   /**

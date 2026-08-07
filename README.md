@@ -1,304 +1,357 @@
 # ContainerUpdater
 
-Panel autoalojado para vigilar y actualizar las imágenes Docker de un **Synology
-NAS con Container Manager**.
+***English** · [Español](README.es.md)*
 
-Container Manager no avisa de si existe una versión nueva de una imagen, y el
-caso que más molesta es GHCR: un tag `latest` puede llevar meses obsoleto sin
-ninguna señal en la interfaz de DSM. Esta aplicación lo resuelve, y de paso
-reúne en un sitio lo que hasta ahora obligaba a entrar por SSH.
+Self-hosted panel for watching and updating the Docker images on a **Synology NAS
+running Container Manager**.
 
-## Qué hace
+Container Manager never tells you when a new version of an image is out, and the
+case that stings most is GHCR: a `latest` tag can sit months out of date with no
+sign of it anywhere in the DSM interface. This app fixes that, and while it is at
+it gathers in one place the things that used to mean opening an SSH session.
 
-- **Detecta actualizaciones** comparando el digest local contra el manifest del
-  registry. Funciona con Docker Hub, GHCR (público y privado), lscr.io, quay.io
-  y registries propios.
-- **Sigue versiones semánticas** además de digests: avisa de que existe
-  `postgres:18-alpine` cuando tienes `17-alpine`, sin proponerte saltos entre
-  imágenes base distintas.
-- **Actualiza y reinicia** el proyecto afectado, con Docker Compose cuando el
-  YAML es accesible y recreando el contenedor por la API cuando no lo es.
-- **Auto-actualización por imagen**: marcas las que quieres que se actualicen
-  solas y el resto solo avisan.
-- **Forzado**: vuelve a descargar y recrea aunque no haya novedad.
-- **Rendimiento** del NAS y de cada contenedor, en vivo.
-- **Bot de Telegram** restringido a las cuentas que autorices, que notifica sin
-  repetirse y acepta comandos.
-- **Interfaz en español e inglés**, con tema claro y oscuro.
+## What it does
 
-## Instalación en el NAS
+- **Detects updates** by comparing the local digest against the registry
+  manifest. Works with Docker Hub, GHCR (public and private), lscr.io, quay.io
+  and your own registries.
+- **Follows semantic versions** as well as digests: it tells you
+  `postgres:18-alpine` exists when you are on `17-alpine`, without ever
+  suggesting a jump between different base images.
+- **Updates and restarts** the affected project, with Docker Compose when the
+  YAML is reachable and by recreating the container through the API when it is
+  not.
+- **Per-image auto-update**: you mark the ones you want updated on their own and
+  the rest just notify.
+- **Force**: pulls again and recreates even when nothing changed.
+- **Performance** of the NAS and of each container, live.
+- **Telegram bot** restricted to the accounts you authorise, which notifies
+  without repeating itself and takes commands.
+- **Creates projects** from the web: you paste or upload a `docker-compose.yml`
+  and its `.env`, and the folder is created, validated and brought up.
+- **Interface in Spanish and English**, with light and dark themes.
 
-1. Crea la carpeta `/volume1/docker/container-updater`.
-2. Copia [docker-compose.example.yml](docker-compose.example.yml) como
-   `docker-compose.yml` y [.env.example](.env.example) como `.env` dentro de esa
-   carpeta.
-3. Genera la clave de cifrado y ponla en el `.env`:
+## Installing on the NAS
+
+1. Create the folder `/volume1/docker/container-updater`.
+2. Copy [docker-compose.example.yml](docker-compose.example.yml) as
+   `docker-compose.yml` and [.env.example](.env.example) as `.env` inside that
+   folder.
+3. Generate the encryption key and put it in the `.env`:
    ```bash
    node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
    ```
-   **Guarda una copia fuera del NAS.**
-4. En Container Manager, crea un proyecto apuntando a esa carpeta.
-5. Entra en `http://IP-DEL-NAS:8099`.
+   **Keep a copy off the NAS.**
+4. In Container Manager, create a project pointing at that folder.
+5. Go to `http://NAS-IP:8099`.
 
-Si no pusiste `CU_ADMIN_PASSWORD`, la contraseña inicial se escribe una sola vez
-en los logs: `docker logs container-updater`.
+If you did not set `CU_ADMIN_PASSWORD`, the initial password is written once to
+the logs: `docker logs container-updater`.
 
-### Los dos montajes que hay que entender
+### The three mounts worth understanding
 
 ```yaml
 - /volume1/docker:/volume1/docker:ro
+- /volume1/docker/projects:/volume1/docker/projects
 - /proc:/host/proc:ro
 ```
 
-El primero **tiene que ir con la misma ruta a ambos lados**. Los contenedores
-que crea Container Manager llevan labels con rutas del NAS
-(`/volume1/docker/n8n/docker-compose.yml`), y esas rutas solo resuelven dentro
-del contenedor si el punto de montaje coincide exactamente. Montarlo en otro
-sitio no rompe la aplicación, pero todos los proyectos pasarían a actualizarse
-recreando el contenedor por API en vez de con Compose.
+The first one **has to use the same path on both sides**. The containers
+Container Manager creates carry labels holding NAS paths
+(`/volume1/docker/n8n/docker-compose.yml`), and those paths only resolve inside
+the container if the mount point matches exactly. Mounting it somewhere else does
+not break the app, but every project would fall back to being updated by
+recreating the container through the API instead of with Compose.
 
-Va en **solo lectura** a propósito: Compose únicamente necesita leer el YAML.
-Los volúmenes que declaren los servicios los resuelve el daemon del NAS y no
-pasan por este montaje.
+It is **read-only** on purpose: Compose only needs to read the YAML. The volumes
+the services declare are resolved by the NAS daemon and never go through this
+mount.
 
-El segundo da las métricas reales del NAS. Sin él la aplicación funciona, pero
-muestra métricas aproximadas derivadas de Docker y lo indica en la interfaz.
+The second is the only place on the host where the app **writes**, and it is what
+makes creating projects from the web possible. It sits in a subfolder of the
+first on purpose: reading still covers all of `/volume1/docker`, but writing is
+confined to that folder, so a mistake while creating a project cannot touch a
+stack that already works. Drop it and you lose only project creation, and the app
+says so on the screen itself.
 
-Si tu volumen no es `volume1`, ajusta el montaje y `CU_COMPOSE_ROOTS`, que
-acepta una lista separada por comas.
+The third gives you the real NAS metrics. Without it the app still works, but
+shows approximate figures derived from Docker and says so in the interface.
 
-`CU_COMPOSE_ROOTS` y `DOCKER_HOST` son opcionales: sin definirlos, la aplicación
-sondea los sockets habituales de Docker y de Podman y deduce las carpetas de
-proyectos de lo que declaran los propios contenedores. Lo que ha detectado se ve
-en **Ajustes → Entorno**, que es la primera pantalla a mirar cuando algo no
-aparece. Para otros entornos (Linux, Podman, TrueNAS SCALE, Unraid), ver
-[docs/PLATAFORMAS.md](docs/PLATAFORMAS.md).
+If your volume is not `volume1`, adjust the mount and `CU_COMPOSE_ROOTS`, which
+takes a comma-separated list.
 
-## Seguridad
+`CU_COMPOSE_ROOTS` and `DOCKER_HOST` are optional: without them the app probes
+the usual Docker and Podman sockets and derives the project folders from what the
+containers themselves declare. What it found is shown under **Settings →
+Environment**, which is the first screen to look at when something is missing.
+For other environments (Linux, Podman, TrueNAS SCALE, Unraid), see
+[docs/PLATFORMS.md](docs/PLATFORMS.md).
 
-**El socket de Docker equivale a root en el NAS.** Quien llegue a esta
-aplicación controla todos tus contenedores. Sin adornos:
+## Security
 
-- No abras su puerto en el router. Publícalo solo en la LAN.
-- Si quieres acceso remoto, ponlo detrás del proxy inverso de DSM con HTTPS y un
-  certificado, y activa `CU_SECURE_COOKIES=1`.
-- La contraseña inicial se cambia obligatoriamente en el primer acceso.
+**The Docker socket is equivalent to root on the NAS.** Whoever reaches this app
+controls every container you have. Plainly:
 
-Lo que hace la aplicación por su parte: contraseñas con Argon2id, sesiones con
-cookie `httpOnly` y token opaco, límite de intentos por IP y por usuario con
-espera creciente, respuesta de tiempo constante para no revelar qué usuarios
-existen, credenciales de registry cifradas con AES-256-GCM, y CSP estricta.
+- Do not open its port on the router. Publish it on the LAN only.
+- If you want remote access, put it behind the DSM reverse proxy with HTTPS and a
+  certificate, and turn on `CU_SECURE_COOKIES=1`.
+- The initial password must be changed on first sign-in.
 
-### Si pierdes `CU_ENCRYPTION_KEY`
+What the app does on its side: Argon2id password hashing, sessions with an
+`httpOnly` cookie and an opaque token, attempt limits per IP and per username
+with growing backoff, constant-time responses so it does not leak which usernames
+exist, registry credentials encrypted with AES-256-GCM, and a strict CSP.
 
-Las credenciales de registry guardadas son irrecuperables, por diseño. La
-aplicación **arranca igual** en modo degradado: no borra nada, marca esos
-registries como pendientes de credenciales, sigue comprobando los públicos y
-muestra un aviso. Volver a introducirlas es una acción manual tuya; nunca se
-borra nada de forma automática.
+### If you lose `CU_ENCRYPTION_KEY`
 
-## Cómo decide actualizar
+The stored registry credentials are unrecoverable, by design. The app **still
+starts** in degraded mode: it deletes nothing, marks those registries as needing
+credentials, keeps checking the public ones and shows a warning. Entering them
+again is a manual action on your part; nothing is ever deleted automatically.
 
-Para cada contenedor mira sus labels de Compose:
+## How it decides to update
 
-- **El YAML es accesible** → `docker compose up -d`, exactamente lo que haría
-  Container Manager. Por defecto solo recrea el servicio afectado (`--no-deps`),
-  porque casi nunca quieres tumbar la base de datos para actualizar el frontend.
-  Antes valida el fichero con `compose config`, ya que Container Manager guarda
-  las variables del proyecto en su propio almacén y puede no haber un `.env`.
-- **No lo es** → recrea el contenedor por la API: descarga, renombra el viejo,
-  crea el nuevo con la misma configuración, comprueba que arranca bien y solo
-  entonces borra el anterior. Si el contenedor nuevo no levanta, **restaura el
-  anterior automáticamente**.
+For each container it looks at its Compose labels:
 
-Las actualizaciones se ejecutan **en segundo plano**. Al pulsar el botón la
-petición vuelve al instante y el trabajo sigue por su cuenta: puedes cerrar el
-diálogo, cambiar de pantalla o irte del navegador. En **Actualizaciones** se ve
-el trabajo en curso con la salida del terminal en vivo, y si lanzas varios se
-encolan y se ejecutan de uno en uno (dos invocaciones de Compose sobre el mismo
-proyecto corromperían su estado).
+- **The YAML is reachable** → `docker compose up -d`, exactly what Container
+  Manager would do. By default it only recreates the affected service
+  (`--no-deps`), because you almost never want to take the database down to
+  update the frontend. It validates the file with `compose config` first, since
+  Container Manager keeps the project variables in its own store and there may be
+  no `.env` at all.
+- **It is not** → it recreates the container through the API: pull, rename the
+  old one, create the new one with the same configuration, check it comes up
+  properly and only then delete the previous one. If the new container fails to
+  start, **it restores the previous one automatically**.
 
-Algunos contenedores se rechazan de entrada porque no se pueden reproducir con
-garantías: los que comparten pila de red con otro (`network_mode: container:`),
-los que usan `--link` heredado y los gestionados por Swarm o Kubernetes. La
-aplicación lo dice y te remite a Container Manager en vez de intentarlo.
+Updates run **in the background**. When you press the button the request returns
+immediately and the job carries on by itself: you can close the dialog, switch
+screens or walk away from the browser. Under **Updates** you see the running job
+with live terminal output, and if you launch several they queue up and run one at
+a time (two Compose invocations against the same project would corrupt its
+state).
 
-### Sobre "forzar"
+Some containers are refused up front because they cannot be reproduced reliably:
+those sharing a network stack with another (`network_mode: container:`), those
+using legacy `--link`, and those managed by Swarm or Kubernetes. The app says so
+and points you at Container Manager rather than trying.
 
-Pediste borrar la imagen, descargarla de nuevo y refrescar. El orden literal
-tiene un problema: no se puede borrar una imagen en uso, así que obliga a
-destruir el contenedor antes, y deja una ventana en la que si la descarga falla
-no queda imagen a la que volver.
+### About "force"
 
-Por eso el comportamiento por defecto de forzar es: descargar primero (lo que
-refresca el digest local aunque el tag no cambie), recrear, y limpiar al final
-la imagen vieja ya huérfana. El resultado que ves es el mismo y admite
-restauración. El borrado literal previo sigue disponible como casilla marcable,
-con el aviso de que ahí no hay red de seguridad, y solo desde la web: el bot no
-lo ofrece.
+The literal sequence of delete the image, pull it again and refresh has a
+problem: an image in use cannot be deleted, so it forces destroying the container
+first, and it leaves a window where a failed pull means there is no image left to
+go back to.
 
-### Actualizarse a sí misma
+So the default behaviour of force is: pull first (which refreshes the local
+digest even when the tag does not change), recreate, and clean up the now orphan
+old image at the end. The result you see is the same and it can be rolled back.
+The literal delete-first is still available as a checkbox, with the warning that
+there is no safety net there, and only from the web: the bot does not offer it.
 
-Sí puede, desde la pantalla de Imágenes. No lo hace el propio proceso, porque
-moriría a mitad: lanza un **contenedor ayudante** que sobrevive al reinicio.
+### Updating itself
 
-1. Descarga la imagen nueva mientras sigue funcionando y valida el proyecto. Si
-   algo falla aquí, no se ha tocado nada.
-2. Lanza el ayudante **con la imagen vieja**, la que ya se sabe que arranca.
-3. El ayudante para el panel, lo recrea con la versión nueva y comprueba que
-   responde. Si no responde, restaura la anterior.
-4. La pantalla espera y se recarga sola cuando el panel vuelve.
+It can, from the Images screen. The process does not do it itself, because it
+would die halfway through: it launches a **helper container** that survives the
+restart.
 
-**Hay unos 30 segundos sin panel.** Es inevitable: alguien tiene que sobrevivir
-al reinicio y no puede ser el que se reinicia. Todo lo que hace el ayudante
-queda en `/data/self-update.log`, que es lo que hay que mirar si algo sale mal.
+1. It pulls the new image while still running and validates the project. If
+   anything fails here, nothing has been touched.
+2. It launches the helper **with the old image**, the one already known to start.
+3. The helper stops the panel, recreates it with the new version and checks that
+   it answers. If it does not, it restores the previous one.
+4. The screen waits and reloads on its own when the panel comes back.
 
-Con Docker Compose **no hay vuelta atrás automática**: Compose borra el
-contenedor anterior y volver requeriría cambiar la etiqueta del YAML, que es
-tuyo. La interfaz lo avisa antes de que confirmes. Con recreación directa sí hay
-restauración automática.
+**There are about 30 seconds without a panel.** That is unavoidable: somebody has
+to survive the restart and it cannot be the one restarting. Everything the helper
+does goes to `/data/self-update.log`, which is what to look at if it goes wrong.
 
-Desde el bot de Telegram no se ofrece: el panel se cae unos segundos y desde el
-móvil no podrías ver qué ha pasado.
+With Docker Compose there is **no automatic rollback**: Compose deletes the
+previous container and going back would mean changing the tag in your YAML, which
+is yours. The interface warns you before you confirm. With direct recreation
+there is automatic restore.
 
-## Acciones sobre un servicio
+It is not offered from the Telegram bot: the panel goes down for a few seconds
+and from a phone you would have no way to see what happened.
 
-En **Proyectos**, cada servicio tiene un menú con lo que normalmente harías por
-SSH: recrear, reiniciar, parar, arrancar y descargar la imagen. Solo aparece
-cuando el fichero del proyecto es accesible.
+## Actions on a service
 
-**Recrear** resuelve el caso típico de un servicio que se ha quedado colgado y
-que arreglabas así:
+Under **Projects**, each service has a menu with what you would normally do over
+SSH: recreate, restart, stop, start and pull the image. It only shows up when the
+project file is reachable.
+
+**Recreate** solves the typical case of a service that has got stuck and that you
+used to fix like this:
 
 ```bash
-cd /volume1/docker/medios
-docker compose rm -f -s reproductor
-docker compose up -d reproductor
+cd /volume1/docker/media
+docker compose rm -f -s player
+docker compose up -d player
 ```
 
-Hace exactamente esos dos pasos, y no `up --force-recreate`, por un motivo
-concreto: `--force-recreate` **también recrearía las dependencias**. Si tu
-servicio va detrás de una VPN o depende de una base de datos, con esta secuencia
-esas quedan intactas y solo se arrancan si estaban paradas.
+It does exactly those two steps, and not `up --force-recreate`, for one specific
+reason: `--force-recreate` **would also recreate the dependencies**. If your
+service sits behind a VPN or depends on a database, with this sequence those are
+left untouched and are only started if they were stopped.
 
-Ejemplo de un proyecto donde la diferencia importa:
+An example of a project where the difference matters:
 
 ```yaml
-# /volume1/docker/medios/docker-compose.yml
+# /volume1/docker/media/docker-compose.yml
 services:
   vpn:
     image: qmcgaw/gluetun:latest
-    container_name: medios-vpn
+    container_name: media-vpn
 
-  reproductor:
-    image: ghcr.io/ejemplo/reproductor:latest
-    container_name: medios-reproductor
+  player:
+    image: ghcr.io/example/player:latest
+    container_name: media-player
     network_mode: service:vpn
     depends_on:
       - vpn
 ```
 
-Recrear `reproductor` desde el panel no toca `vpn`. Un `--force-recreate` sí la
-tumbaría, y con ella la conexión de todo lo que vaya por detrás.
+Recreating `player` from the panel does not touch `vpn`. A `--force-recreate`
+would take it down, and with it the connection of everything sitting behind it.
 
-Todas estas acciones pasan por la misma cola que las actualizaciones: se ejecutan
-de una en una, quedan en el historial y puedes ver su salida en directo.
+All these actions go through the same queue as the updates: they run one at a
+time, they stay in the history and you can watch their output live.
 
-## Ayuda dentro de la aplicación
+## Creating projects from the web
 
-El botón **Ayuda** de la barra lateral abre la documentación sin salir del panel,
-con índice y buscador, en español e inglés. Cubre cómo se detectan las
-actualizaciones, las acciones por servicio, los registries privados, el bot y qué
-hacer cuando algo falla.
+Under **Projects**, the **New project** button opens an editor with two tabs: the
+`docker-compose.yml` and the `.env`. In both you can type, paste, upload a file or
+drop one on top.
 
-## Bot de Telegram
+The name you give it does two things: it names the Compose project and it names
+its folder. That is why it only accepts lowercase, digits, dash and underscore.
 
-Créalo con [@BotFather](https://t.me/BotFather), pon el token en
-`CU_TELEGRAM_BOT_TOKEN` y reinicia. En Ajustes, pulsa "Vincular una cuenta":
-se genera un código de un solo uso que caduca en 10 minutos. Solo las cuentas de
-esa lista pueden usar el bot; cualquier otra recibe una negativa y queda
-registrada.
+```
+/volume1/docker/projects/player/docker-compose.yml
+/volume1/docker/projects/player/.env
+```
 
-| Comando | Qué hace |
+Before anything is taken as good it is validated with Compose itself, with the
+files already in place (which is the only way `${VARIABLE}` can be resolved
+against the `.env` next to it). If the file has an error you are told which one
+and no half-made folder is left behind. If you tick bring it up, it starts in the
+background and progress shows under **Updates**.
+
+Projects created here can be edited afterwards, from the three-dot menu. The ones
+you made in Container Manager or over SSH are visible and manageable, but their
+files are left alone: overwriting something somebody else wrote is the kind of
+surprise nobody wants on a NAS.
+
+### What happens to the `.env`
+
+Compose has to read it in the clear, and so does anyone else bringing that stack
+up over SSH, so **encrypting it on disk is not an option**: only this app could
+start the project. What is done instead:
+
+- It is written with `0600` permissions, readable only by its owner.
+- On the project card, values whose key looks like it names a secret
+  (`PASSWORD`, `TOKEN`, `SECRET`, `KEY`...) come up covered, with a button to
+  show them **one at a time**.
+- Every save archives the previous version **encrypted** in the database, with
+  the same envelope as the registry credentials, in case you need to go back.
+- Reading the file to edit it and showing a particular value both go into the
+  audit log.
+
+## In-app help
+
+The **Help** button in the sidebar opens the documentation without leaving the
+panel, with an index and a search box, in Spanish and English. It covers how
+updates are detected, the per-service actions, private registries, the bot and
+what to do when something fails.
+
+## Telegram bot
+
+Create it with [@BotFather](https://t.me/BotFather), put the token in
+`CU_TELEGRAM_BOT_TOKEN` and restart. Under Settings, press "Link an account":
+a single-use code is generated that expires in 10 minutes. Only the accounts on
+that list can use the bot; any other gets a refusal and is logged.
+
+| Command | What it does |
 |---|---|
-| `/imagenes` | Lista tus imágenes y su estado |
-| `/estado` | CPU, memoria y resumen de contenedores |
-| `/comprobar` | Busca actualizaciones ahora |
-| `/actualizar <imagen>` | Actualiza esa imagen, con confirmación |
-| `/forzar <imagen>` | La vuelve a descargar y recrea aunque no haya novedad |
-| `/auto <imagen> on\|off` | Activa o desactiva la actualización automática |
-| `/proyectos` | Proyectos y su estado |
-| `/logs <contenedor> [n]` | Últimas líneas del registro |
-| `/idioma es\|en` | Cambia el idioma de ese chat |
+| `/images` | Lists your images and their status |
+| `/status` | CPU, memory and a container summary |
+| `/check` | Looks for updates now |
+| `/update <image>` | Updates that image, with confirmation |
+| `/force <image>` | Pulls and recreates it even with no changes |
+| `/auto <image> on\|off` | Turns automatic updating on or off |
+| `/projects` | Projects and their status |
+| `/logs <container> [n]` | Last lines of the log |
+| `/language es\|en` | Changes the language of that chat |
 
-Los comandos tienen alias en inglés (`/images`, `/status`, `/check`, `/update`,
-`/force`, `/projects`, `/language`).
+The commands have Spanish aliases (`/imagenes`, `/estado`, `/comprobar`,
+`/actualizar`, `/forzar`, `/proyectos`, `/idioma`).
 
-Las notificaciones **no se repiten**: la clave de deduplicación incluye el
-digest remoto, así que mientras `latest` apunte a la misma imagen no se vuelve a
-avisar, pero en cuanto apunte a una nueva el aviso sale solo.
+Notifications **do not repeat**: the dedupe key includes the remote digest, so
+while `latest` points at the same image nothing is sent again, but as soon as it
+points at a new one the notification goes out by itself.
 
-## Desarrollo
+## Development
 
 ```bash
 npm install
-npm run dev:server   # API en :8099
-npm run dev:web      # interfaz en :5173, con proxy a la API
-npm test             # tests unitarios
+npm run dev:server   # API on :8099
+npm run dev:web      # interface on :5173, proxying to the API
+npm test             # unit tests
 npm run typecheck
 ```
 
-Construir la imagen en local:
+Building the image locally:
 
 ```bash
-npm run docker:build     # solo tu arquitectura, tag container-updater:local
-npm run docker:push      # amd64 + arm64 a GHCR, normalmente lo hace el workflow
+npm run docker:build     # your architecture only, tag container-updater:local
+npm run docker:push      # amd64 + arm64 to GHCR, normally done by the workflow
 ```
 
-## Publicación
+## Publishing
 
-La imagen se publica sola en `ghcr.io/mateof/container-updater`. **La versión del
-`package.json` de la raíz es la que manda.** En cada push a `main`, el workflow:
+The image publishes itself to `ghcr.io/mateof/container-updater`. **The version in
+the root `package.json` is what decides.** On every push to `main`, the workflow:
 
-1. Ejecuta typecheck, tests y build.
-2. Lee la versión del `package.json`.
-3. Si el tag `v{versión}` **no existe**, construye la imagen para `amd64` y
-   `arm64`, la sube a GHCR y crea la release en GitHub.
-4. Si **ya existe**, no publica nada y lo indica en el resumen de la ejecución.
+1. Runs typecheck, tests and build.
+2. Reads the version from `package.json`.
+3. If the tag `v{version}` **does not exist**, builds the image for `amd64` and
+   `arm64`, pushes it to GHCR and creates the GitHub release.
+4. If it **already exists**, it publishes nothing and says so in the run summary.
 
-No falla cuando la versión no cambia: un push que solo toca documentación no
-debería pintar Actions en rojo, y acostumbrarse a ver fallos hace que se acaben
-ignorando los de verdad.
+It does not fail when the version has not changed: a push that only touches
+documentation should not paint Actions red, and getting used to seeing failures
+is how real ones end up ignored.
 
-Para publicar una versión nueva basta con subirla antes de mergear:
+To publish a new version, bump it before merging:
 
 ```bash
-npm run version:patch    # corrección
-npm run version:minor    # funcionalidad nueva
-npm run version:major    # rompe configuración existente
+npm run version:patch    # fix
+npm run version:minor    # new functionality
+npm run version:major    # breaks existing configuration
 ```
 
-Esos scripts tocan solo el `package.json` de la raíz y no crean tag; el tag lo
-crea el workflow. La versión se inyecta en la imagen, así que la que muestra
-Ajustes es la real.
+Those scripts only touch the root `package.json` and create no tag; the tag is
+created by the workflow. The version is injected into the image, so the one shown
+under Settings is the real one.
 
-No hace falta configurar ningún secreto: el workflow usa el `GITHUB_TOKEN` que
-Actions ya proporciona. Solo asegúrate de que en **Settings → Actions → General →
-Workflow permissions** esté marcado *Read and write permissions*.
+No secrets need configuring: the workflow uses the `GITHUB_TOKEN` that Actions
+already provides. Just make sure **Settings → Actions → General → Workflow
+permissions** has *Read and write permissions* ticked.
 
-Para republicar una versión ya subida (por ejemplo si una release salió mal),
-lanza el workflow a mano desde la pestaña Actions marcando la casilla de forzar.
+To republish a version that already went out (say a release went wrong), run the
+workflow by hand from the Actions tab with the force checkbox ticked.
 
-## Documentación
+## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): cómo está montado por dentro.
-- [docs/SYNOLOGY.md](docs/SYNOLOGY.md): particularidades de DSM y problemas
-  frecuentes.
-- [docs/PLATAFORMAS.md](docs/PLATAFORMAS.md): compose por entorno para Linux,
-  Podman, TrueNAS SCALE, Unraid y demás, y qué está comprobado de verdad.
-- [docs/DECISIONS.md](docs/DECISIONS.md): por qué cada decisión técnica, y qué
-  se descartó.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how it is put together inside.
+- [docs/SYNOLOGY.md](docs/SYNOLOGY.md): DSM specifics and common problems.
+- [docs/PLATFORMS.md](docs/PLATFORMS.md): compose per environment for Linux,
+  Podman, TrueNAS SCALE, Unraid and the rest, and what is actually verified.
+- [docs/DECISIONS.md](docs/DECISIONS.md): why each technical decision, and what
+  was ruled out.
 
-## Licencia
+Every document is also available in Spanish, with the `.es` suffix.
+
+## Licence
 
 MIT.

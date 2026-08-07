@@ -10,6 +10,7 @@
  * tampoco tiene CPU para dos descargas en paralelo.
  */
 import type {
+  ProjectAction,
   RecreateScope,
   ServiceAction,
   UpdateJob,
@@ -53,6 +54,8 @@ export interface UpdateRequest {
   actorChatId?: number | null;
   /** Presente solo cuando el trabajo es una accion sobre un servicio. */
   serviceAction?: { projectKey: string; serviceName: string; action: ServiceAction };
+  /** Presente solo cuando el trabajo actua sobre el proyecto entero. */
+  projectAction?: { projectKey: string; action: ProjectAction };
 }
 
 export type JobListener = (job: UpdateJob) => void;
@@ -395,7 +398,9 @@ export class UpdaterService {
     try {
       const targetTag = request.targetTag ?? imageRow?.candidate_tag ?? null;
 
-      if (request.serviceAction) {
+      if (request.projectAction) {
+        await this.#runProjectAction(request, progress, jobId);
+      } else if (request.serviceAction) {
         await this.#runServiceAction(request, progress, jobId);
       } else if (plan.strategy === 'compose') {
         await this.#runCompose(request, plan, progress, targetTag, jobId);
@@ -643,37 +648,115 @@ export class UpdaterService {
   }
 
   /**
-   * Reinicia o vuelve a aplicar un proyecto entero. Es lo que el usuario
-   * entiende por "refrescar el proyecto".
+   * Encola una operacion sobre el proyecto entero.
+   *
+   * Antes esto se ejecutaba en la propia peticion HTTP, que es el mismo error
+   * que ya se corrigio en las actualizaciones: levantar un stack puede tardar
+   * minutos, el navegador o el proxy cortan antes, y mientras tanto no habia
+   * forma de ver por donde iba. Ahora comparte cola, historial y salida en
+   * directo con todo lo demas.
    */
-  async applyProject(projectKey: string, restartOnly: boolean): Promise<void> {
-    if (this.#busy) throw new UpdateInProgressError();
-
-    const project = this.inventory.snapshot.projects.find((p) => p.key === projectKey);
+  async enqueueProjectAction(input: {
+    projectKey: string;
+    action: ProjectAction;
+    actorUserId?: number | null;
+    actorChatId?: number | null;
+  }): Promise<{ job: UpdateJob; done: Promise<UpdateJob> }> {
+    const project = this.inventory.snapshot.projects.find((p) => p.key === input.projectKey);
     if (!project) throw new Error('No se encuentra el proyecto');
     if (!project.yamlAccessible) {
       throw new UnsafePathError('El fichero del proyecto no es accesible desde el contenedor');
     }
+    // Bajar o recrear el stack donde vive esta misma aplicacion la mataria a
+    // mitad de responder. La auto-actualizacion tiene su propio camino.
     if (project.containers.some((container) => container.isSelf)) {
       throw new SelfUpdateRejectedError();
     }
 
-    this.#busy = true;
-    try {
-      const target = {
-        projectName: project.name,
-        workingDir: project.workingDir,
-        configFiles: project.configFiles,
-      };
-      await this.compose.validate(target);
-      if (restartOnly) {
-        await this.compose.restart(target, { scope: 'project' });
-      } else {
-        await this.compose.up(target, { scope: 'project' });
-      }
-      await this.inventory.refresh();
-    } finally {
-      this.#busy = false;
+    if (this.#queue.length >= MAX_QUEUE) throw new UpdateInProgressError();
+
+    const jobId = this.repos.history.createJob({
+      imageRef: project.name,
+      containerId: null,
+      containerName: null,
+      projectKey: input.projectKey,
+      mode: input.action,
+      strategy: 'compose',
+      trigger: 'manual',
+      actorUserId: input.actorUserId ?? null,
+      actorChatId: input.actorChatId ?? null,
+      fromDigest: null,
+      fromTag: null,
+    });
+
+    let resolveDone!: (job: UpdateJob) => void;
+    let rejectDone!: (error: unknown) => void;
+    const done = new Promise<UpdateJob>((resolve, reject) => {
+      resolveDone = resolve;
+      rejectDone = reject;
+    });
+    done.catch(() => undefined);
+
+    this.#queue.push({
+      jobId,
+      request: {
+        imageRef: project.name,
+        mode: input.action,
+        trigger: 'manual',
+        projectAction: { projectKey: input.projectKey, action: input.action },
+      },
+      plan: {
+        strategy: 'compose',
+        containerId: null,
+        containerName: null,
+        serviceName: null,
+        projectKey: input.projectKey,
+        reason: null,
+      },
+      resolve: resolveDone,
+      reject: rejectDone,
+    });
+
+    this.#emit(jobId);
+    void this.#drainQueue();
+
+    const job = this.repos.history.getJob(jobId);
+    if (!job) throw new Error('No se ha podido crear el trabajo');
+    return { job, done };
+  }
+
+  async #runProjectAction(
+    request: UpdateRequest,
+    progress: (line: string) => void,
+    jobId: number,
+  ): Promise<void> {
+    const spec = request.projectAction!;
+    const project = this.inventory.snapshot.projects.find((p) => p.key === spec.projectKey);
+    if (!project) throw new Error('No se encuentra el proyecto');
+
+    const target = {
+      projectName: project.name,
+      workingDir: project.workingDir,
+      configFiles: project.configFiles,
+    };
+    const options = { scope: 'project' as const, onOutput: progress, jobId };
+
+    progress('Validando el fichero del proyecto');
+    await this.compose.validate(target);
+
+    switch (spec.action) {
+      case 'up':
+        progress('Levantando el proyecto');
+        await this.compose.up(target, options);
+        break;
+      case 'restart':
+        progress('Reiniciando el proyecto');
+        await this.compose.restart(target, options);
+        break;
+      case 'down':
+        progress('Parando el proyecto');
+        await this.compose.down(target, options);
+        break;
     }
   }
 

@@ -63,8 +63,23 @@ services:
 
       # Carpetas dentro de las cuales se acepta ejecutar compose. Acepta lista
       # separada por comas si tienes proyectos en varios volumenes.
+      #
+      # Opcional desde 0.6.0: sin definirla se deduce de donde el propio Docker
+      # dice que estan tus proyectos. Definirla desactiva esa deduccion.
       CU_COMPOSE_ROOTS: /volume1/docker
 
+      # Carpeta donde se crean los proyectos que hagas desde la aplicacion.
+      #
+      # Va aparte de la anterior porque ESTA tiene que admitir escritura, y la
+      # de arriba se monta en solo lectura a proposito. Asi un fallo creando un
+      # proyecto no puede sobrescribir un stack que ya te funciona.
+      #
+      # Si la quitas, no se pueden crear proyectos desde la web y la aplicacion
+      # lo explica en Ajustes, Entorno. Todo lo demas sigue igual.
+      CU_PROJECTS_DIR: /volume1/docker/proyectos
+
+      # Opcional desde 0.6.0: sin definirlo se sondean los sockets habituales
+      # de Docker y de Podman.
       DOCKER_HOST: unix:///var/run/docker.sock
       CU_HOST_PROC: /host/proc
 
@@ -88,6 +103,14 @@ services:
       # YAML. Los volumenes que declaren los servicios los resuelve el daemon
       # del NAS, no pasan por este montaje.
       - /volume1/docker:/volume1/docker:ro
+
+      # Carpeta de los proyectos creados desde la aplicacion. CON ESCRITURA.
+      #
+      # Es el unico sitio del anfitrion donde la aplicacion escribe. Va despues
+      # del montaje de arriba y en una subcarpeta suya, de forma que la lectura
+      # sigue cubriendo todo /volume1/docker pero la escritura se limita a esta.
+      # Si la quitas se pierde solo la creacion de proyectos.
+      - /volume1/docker/proyectos:/volume1/docker/proyectos
 
       # Metricas reales del NAS (CPU, memoria, carga, uptime). Sin este montaje
       # la aplicacion funciona, pero muestra metricas aproximadas y lo indica.

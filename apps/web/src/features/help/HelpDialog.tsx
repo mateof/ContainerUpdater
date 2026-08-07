@@ -68,8 +68,15 @@ export function HelpDialog({ onClose }: { onClose: () => void }): ReactNode {
     >
       <div className="flex min-h-[50vh] gap-4">
         {/* Indice. Oculto en pantallas estrechas: ahi el contenido ya se lee
-            de corrido y un indice a un lado dejaria el texto sin espacio. */}
-        <nav className="hidden w-52 shrink-0 border-r border-[var(--border)] pr-3 sm:block">
+            de corrido y un indice a un lado dejaria el texto sin espacio.
+
+            `sticky` con `self-start` es lo que hace que acompane al scroll en
+            vez de irse hacia arriba con el cuerpo: quien salta a una seccion
+            del final se quedaba sin indice justo cuando queria seguir saltando.
+            El `self-start` es imprescindible, porque por defecto un hijo de
+            flex se estira a toda la altura y entonces no hay nada que fijar.
+            Scroll propio por si el indice crece mas que la ventana. */}
+        <nav className="sticky top-0 hidden max-h-[80vh] w-52 shrink-0 self-start overflow-y-auto border-r border-[var(--border)] pr-3 sm:block">
           <div className="relative mb-2">
             <IconSearch
               size={14}

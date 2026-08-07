@@ -1,10 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import {
-  imagePolicySchema,
-  projectApplySchema,
-  serviceActionSchema,
-  updateRequestSchema,
-} from '@cu/shared';
+import { imagePolicySchema, serviceActionSchema, updateRequestSchema } from '@cu/shared';
 import type { AppContext } from '../../app.js';
 import {
   RecreateUnsupportedError,
@@ -91,32 +86,6 @@ export async function registerUpdateRoutes(
         return reply.code(422).send({ error: 'recreate-unsupported', reason: error.reason });
       }
       return reply.code(500).send({ error: 'update-failed', message: (error as Error).message });
-    }
-  });
-
-  // Mismo motivo que en service-action: la clave va en el cuerpo para no
-  // desbordar la URL con la ruta del proyecto.
-  fastify.post('/api/projects/apply', { onRequest: [fastify.requireOperator] }, async (request, reply) => {
-    const { projectKey: key, restartOnly } = projectApplySchema.parse(request.body);
-
-    try {
-      await app.updater.applyProject(key, restartOnly);
-      app.repos.history.audit({
-        actorType: 'user',
-        actorId: String(request.currentUser!.id),
-        action: restartOnly ? 'project.restart' : 'project.up',
-        target: key,
-        ip: request.ip,
-      });
-      return { ok: true };
-    } catch (error) {
-      if (error instanceof SelfUpdateRejectedError) {
-        return reply.code(409).send({ error: 'self-update-rejected' });
-      }
-      if (error instanceof UpdateInProgressError) {
-        return reply.code(409).send({ error: 'update-in-progress' });
-      }
-      return reply.code(500).send({ error: 'project-apply-failed', message: (error as Error).message });
     }
   });
 

@@ -12,6 +12,9 @@ import type {
   CurrentUser,
   ImagePolicy,
   MetricsSnapshot,
+  ProjectAction,
+  ProjectFiles,
+  ProjectsDirInfo,
   RegistryConfig,
   ServiceAction,
   TelegramUser,
@@ -211,8 +214,35 @@ export const api = {
     },
   ) => post<{ job: UpdateJob; queued: number }>(`/images/${encodeRef(ref)}/update`, body),
 
-  applyProject: (projectKey: string, restartOnly: boolean) =>
-    post<{ ok: true }>('/projects/apply', { projectKey, restartOnly }),
+  /** Levantar, reiniciar o parar el proyecto entero. 202: corre en segundo plano. */
+  projectAction: (projectKey: string, action: ProjectAction) =>
+    post<{ job: UpdateJob; queued: number }>('/projects/action', { projectKey, action }),
+
+  /** Si se pueden crear proyectos, y si no, por que no. */
+  projectsDir: () => get<ProjectsDirInfo>('/projects/dir'),
+
+  createProject: (body: { name: string; compose: string; env?: string; start: boolean }) =>
+    post<{ name: string; dir: string; job: UpdateJob | null; startError?: string }>(
+      '/projects/create',
+      body,
+    ),
+
+  /** Ficheros del proyecto, con los valores sensibles ya ocultos. */
+  projectFiles: (name: string) =>
+    get<{ files: ProjectFiles }>(`/projects/${encodeURIComponent(name)}/files`),
+
+  /** El .env en texto plano. Se pide solo al entrar a editar, y queda auditado. */
+  projectEnvRaw: (name: string) =>
+    get<{ content: string }>(`/projects/${encodeURIComponent(name)}/env`),
+
+  revealEnvValue: (name: string, key: string) =>
+    post<{ value: string }>('/projects/env/reveal', { name, key }),
+
+  saveProjectFiles: (body: { name: string; compose: string; env?: string; apply: boolean }) =>
+    put<{ ok: true; job: UpdateJob | null; applyError?: string }>('/projects/files', body),
+
+  /** Deja de gestionarlo. NO borra nada del disco. */
+  forgetProject: (name: string) => del<{ ok: true }>(`/projects/${encodeURIComponent(name)}`),
 
   /** Accion de Compose sobre un servicio. Devuelve 202: corre en segundo plano. */
   serviceAction: (projectKey: string, serviceName: string, action: ServiceAction) =>

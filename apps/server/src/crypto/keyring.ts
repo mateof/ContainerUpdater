@@ -132,6 +132,17 @@ export class Keyring {
   static registryAad(registryId: number, keyVersion = KEY_VERSION): string {
     return `registries:${registryId}:${keyVersion}`;
   }
+
+  /**
+   * AAD de una version archivada de un fichero de proyecto.
+   *
+   * Mismo razonamiento que en los registries: ata el ciphertext a su proyecto y
+   * a su tipo de fichero, de modo que colar el `.env` cifrado de un proyecto
+   * como si fuera el de otro falle al autenticar en vez de descifrarse.
+   */
+  static projectFileAad(projectId: number, kind: string, keyVersion = KEY_VERSION): string {
+    return `project_files:${projectId}:${kind}:${keyVersion}`;
+  }
 }
 
 export interface SerializedSealed {

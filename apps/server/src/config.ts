@@ -55,6 +55,19 @@ const schema = z.object({
    * Docker. Un valor por defecto fijo solo acertaba en una plataforma.
    */
   CU_COMPOSE_ROOTS: z.string().optional(),
+
+  /**
+   * Carpeta donde se crean los proyectos nuevos. Tiene que admitir ESCRITURA.
+   *
+   * Va aparte de CU_COMPOSE_ROOTS porque el montaje recomendado pone las
+   * carpetas de proyectos en solo lectura, y esa sigue siendo la recomendacion:
+   * asi un fallo aqui no puede sobrescribir un stack que ya funciona. Sin
+   * definir, se usa la primera carpeta de proyectos que resulte escribible, que
+   * normalmente sera ninguna y la creacion quedara desactivada hasta que se
+   * monte una a proposito.
+   */
+  CU_PROJECTS_DIR: z.string().optional(),
+
   CU_DOCKER_BIN: z.string().default('docker'),
   CU_COMPOSE_TIMEOUT_MS: z.coerce.number().int().default(15 * 60_000),
 
@@ -92,6 +105,8 @@ export interface Config {
   /** Vacio significa deducirlos de los proyectos detectados. */
   composeRoots: string[];
   composeRootsExplicit: boolean;
+  /** Sin valor, se busca una carpeta de proyectos escribible. */
+  projectsDir: string | undefined;
   dockerBin: string;
   composeTimeoutMs: number;
   hostProc: string | null;
@@ -135,6 +150,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dockerHost: raw.DOCKER_HOST,
     composeRoots: raw.CU_COMPOSE_ROOTS ? splitList(raw.CU_COMPOSE_ROOTS) : [],
     composeRootsExplicit: Boolean(raw.CU_COMPOSE_ROOTS),
+    projectsDir: raw.CU_PROJECTS_DIR,
     dockerBin: raw.CU_DOCKER_BIN,
     composeTimeoutMs: raw.CU_COMPOSE_TIMEOUT_MS,
     hostProc: raw.CU_HOST_PROC || null,

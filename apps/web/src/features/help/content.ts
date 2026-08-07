@@ -243,6 +243,62 @@ const es: HelpSection[] = [
     ],
   },
   {
+    id: 'crear',
+    title: 'Crear un proyecto',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Desde Proyectos, el boton Nuevo proyecto abre un editor con dos pestanas: el docker-compose.yml y el .env. En las dos puedes escribir directamente, pegar, subir un fichero o arrastrarlo encima.',
+      },
+      {
+        type: 'p',
+        text: 'El nombre que le des hace dos cosas: da nombre al proyecto de Compose y da nombre a su carpeta. Por eso solo admite minusculas, digitos, guion y guion bajo.',
+      },
+      { type: 'code', text: '/volume1/docker/proyectos/reproductor/docker-compose.yml\n/volume1/docker/proyectos/reproductor/.env' },
+      {
+        type: 'p',
+        text: 'Al crearlo se valida con el propio Compose antes de dar nada por bueno. Si el fichero tiene un error, se te dice cual (Compose suele senalar la linea) y no queda ninguna carpeta a medias. Si marcas levantarlo, arranca en segundo plano y el progreso se ve en Actualizaciones, igual que una actualizacion.',
+      },
+      { type: 'h', text: 'Hace falta una carpeta con permiso de escritura' },
+      {
+        type: 'p',
+        text: 'El montaje recomendado pone la carpeta de proyectos en solo lectura, porque hasta ahora solo habia que leer el YAML. Para crear proyectos hay que montar ademas una carpeta con escritura y apuntarla con CU_PROJECTS_DIR.',
+      },
+      { type: 'code', text: 'volumes:\n  - /volume1/docker:/volume1/docker:ro\n  - /volume1/docker/proyectos:/volume1/docker/proyectos\n\nenvironment:\n  CU_PROJECTS_DIR: /volume1/docker/proyectos' },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Son dos montajes a proposito',
+        text: 'La escritura se limita a una subcarpeta, asi que un fallo creando un proyecto no puede tocar los stacks que ya te funcionan. Sin la carpeta escribible la aplicacion funciona igual, solo que el boton de crear sale desactivado y explica por que.',
+      },
+      { type: 'h', text: 'Editar despues' },
+      {
+        type: 'p',
+        text: 'En el menu de los tres puntos de cada proyecto tienes Editar ficheros. Al guardar puedes volver a aplicar el proyecto para que los cambios surtan efecto, o dejarlo para luego.',
+      },
+      {
+        type: 'p',
+        text: 'Solo se pueden editar los proyectos creados aqui. Los que hiciste en Container Manager o por SSH se ven y se manejan, pero sus ficheros no se tocan: sobrescribir algo que escribio otro es la clase de sorpresa que no interesa en un NAS.',
+      },
+      { type: 'h', text: 'Que pasa con el .env' },
+      {
+        type: 'ul',
+        items: [
+          'Se guarda con permisos 0600, o sea legible solo por su propietario.',
+          'En la ficha del proyecto, los valores cuya clave parece un secreto salen tapados, con un boton para mostrarlos de uno en uno.',
+          'Cada vez que se guarda, la version anterior queda cifrada en la base de datos por si hay que volver atras.',
+          'Leer el fichero para editarlo y mostrar un valor concreto quedan los dos registrados en la auditoria.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'En disco no puede ir cifrado',
+        text: 'Compose tiene que leer el .env en claro, y tambien lo necesita si algun dia levantas ese stack por SSH. Cifrarlo en disco significaria que solo esta aplicacion podria arrancar el proyecto, que es peor remedio que enfermedad.',
+      },
+    ],
+  },
+  {
     id: 'entorno',
     title: 'Donde puede funcionar',
     blocks: [
@@ -531,6 +587,62 @@ const en: HelpSection[] = [
       {
         type: 'p',
         text: 'Notifications do not repeat: while a tag points at the same image nothing is sent again, but as soon as it points at a different one the notification goes out by itself.',
+      },
+    ],
+  },
+  {
+    id: 'crear',
+    title: 'Creating a project',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Under Projects, the New project button opens an editor with two tabs: the docker-compose.yml and the .env. In both you can type straight in, paste, upload a file or drop one on top.',
+      },
+      {
+        type: 'p',
+        text: 'The name you give it does two things: it names the Compose project and it names its folder. That is why it only accepts lowercase, digits, dash and underscore.',
+      },
+      { type: 'code', text: '/volume1/docker/projects/player/docker-compose.yml\n/volume1/docker/projects/player/.env' },
+      {
+        type: 'p',
+        text: 'On creation it is validated with Compose itself before anything is taken as good. If the file has an error you are told which one (Compose usually points at the line) and no half-made folder is left behind. If you tick bring it up, it starts in the background and progress shows under Updates, same as an update.',
+      },
+      { type: 'h', text: 'A writable folder is required' },
+      {
+        type: 'p',
+        text: 'The recommended mount puts the projects folder read-only, because until now only the YAML had to be read. To create projects you also need to mount a writable folder and point CU_PROJECTS_DIR at it.',
+      },
+      { type: 'code', text: 'volumes:\n  - /volume1/docker:/volume1/docker:ro\n  - /volume1/docker/projects:/volume1/docker/projects\n\nenvironment:\n  CU_PROJECTS_DIR: /volume1/docker/projects' },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Two mounts on purpose',
+        text: 'Writing is confined to one subfolder, so a mistake while creating a project cannot touch the stacks that already work. Without the writable folder the app works exactly the same, only the create button comes up disabled and says why.',
+      },
+      { type: 'h', text: 'Editing later' },
+      {
+        type: 'p',
+        text: 'The three-dot menu on each project has Edit files. When you save you can re-apply the project so the changes take effect, or leave it for later.',
+      },
+      {
+        type: 'p',
+        text: 'Only projects created here can be edited. The ones you made in Container Manager or over SSH are visible and manageable, but their files are left alone: overwriting something somebody else wrote is the kind of surprise nobody wants on a NAS.',
+      },
+      { type: 'h', text: 'What happens to the .env' },
+      {
+        type: 'ul',
+        items: [
+          'It is saved with 0600 permissions, meaning only its owner can read it.',
+          'On the project card, values whose key looks like a secret come up covered, with a button to show them one at a time.',
+          'Every time it is saved, the previous version is kept encrypted in the database in case you need to go back.',
+          'Reading the file to edit it and showing a particular value both go into the audit log.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'It cannot be encrypted on disk',
+        text: 'Compose has to read the .env in the clear, and so does anything else if you ever bring that stack up over SSH. Encrypting it on disk would mean only this app could start the project, which is a worse cure than the disease.',
       },
     ],
   },
