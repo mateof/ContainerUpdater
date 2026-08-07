@@ -223,6 +223,22 @@ export const en: Translated<Catalog> = {
     focusRef: 'Image',
     goToContainers: 'View the containers using it',
     usedByCount: '{{count}} containers',
+    filterStopped: 'Stopped only',
+    filterOrphan: 'Unused',
+    usageRunning: 'In use',
+    usageStopped: 'Stopped only',
+    usageStoppedHelp:
+      'No container using it is running. Affected if you delete it: {{names}}.',
+    usageOrphan: 'Unused',
+    usageOrphanHelp: 'No container uses it. It only takes up disk.',
+    delete: 'Delete image',
+    deleted: 'Image deleted',
+    deleteInUse: 'Cannot: there are running containers using it. Stop them first.',
+    deleteNeedsForce: 'More confirmation is needed to delete it.',
+    confirmDeleteOrphan:
+      '{{ref}} will be removed from disk. No container uses it, so nothing breaks. If it is needed again it will be pulled afresh.',
+    confirmDeleteStopped:
+      '{{ref}} will be removed. WARNING: these stopped containers use it and will no longer be able to start until it is pulled again: {{names}}.',
     filterAll: 'All',
     filterUpdates: 'With updates',
     filterAuto: 'Auto-updating',

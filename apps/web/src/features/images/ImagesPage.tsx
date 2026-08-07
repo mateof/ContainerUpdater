@@ -9,8 +9,8 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   EmptyState,
-  Input,
   Menu,
   Skeleton,
   Tooltip,
@@ -20,14 +20,14 @@ import {
 import { IconCheck, IconDownload, IconImage, IconMore, IconRefresh } from '@/components/icons';
 import { CrossLink, FilterPills, FocusBanner, SearchBox } from '@/components/Filters';
 import { displayImage, formatBytes, formatRelative, shortDigest } from '@/lib/format';
-import { UPDATE_STATUS_LABEL, UPDATE_STATUS_TONE } from '@/lib/labels';
+import { IMAGE_USAGE_LABEL, IMAGE_USAGE_TONE, UPDATE_STATUS_LABEL, UPDATE_STATUS_TONE } from '@/lib/labels';
 import { ImageDetailDialog } from './ImageDetailDialog';
 import { UpdateDialog } from './UpdateDialog';
 import { SelfUpdateDialog } from './SelfUpdateDialog';
 import { JobIndicator } from '@/components/JobIndicator';
 import { useLive } from '@/hooks/LiveContext';
 
-type Filter = 'all' | 'updates' | 'auto' | 'unknown';
+type Filter = 'all' | 'updates' | 'auto' | 'unknown' | 'stopped' | 'orphan';
 
 export function ImagesPage(): ReactNode {
   const { t } = useTranslation();
@@ -118,6 +118,25 @@ export function ImagesPage(): ReactNode {
    * Se filtra por referencia exacta en vez de resaltar la fila: con veinte
    * imagenes, resaltar una obliga a buscarla igualmente.
    */
+  const [confirmDelete, setConfirmDelete] = useState<TrackedImage | null>(null);
+
+  const remove = useMutation({
+    mutationFn: ({ ref, force }: { ref: string; force: boolean }) => api.deleteImage(ref, force),
+    onSuccess: () => {
+      notify(t('images.deleted'), 'ok');
+      setConfirmDelete(null);
+      invalidate();
+    },
+    onError: (error) => {
+      const code = error instanceof ApiError ? error.code : '';
+      const messages: Record<string, string> = {
+        'image-in-use': t('images.deleteInUse'),
+        'needs-force': t('images.deleteNeedsForce'),
+      };
+      notify(messages[code] ?? t('common.error'), 'danger');
+    },
+  });
+
   const [params, setParams] = useSearchParams();
   const focusRef = params.get('ref');
   const clearFocus = (): void => setParams({}, { replace: true });
@@ -135,6 +154,10 @@ export function ImagesPage(): ReactNode {
         return image.policy.autoUpdate;
       case 'unknown':
         return image.status === 'unknown' || image.status === 'error';
+      case 'stopped':
+        return image.usage === 'stopped';
+      case 'orphan':
+        return image.usage === 'orphan';
       default:
         return true;
     }
@@ -163,6 +186,8 @@ export function ImagesPage(): ReactNode {
           ['updates', 'images.filterUpdates'],
           ['auto', 'images.filterAuto'],
           ['unknown', 'images.filterUnknown'],
+          ['stopped', 'images.filterStopped'],
+          ['orphan', 'images.filterOrphan'],
         ] as const
       ).map(([key, label]) => ({
         key,
@@ -216,6 +241,7 @@ export function ImagesPage(): ReactNode {
                 else setUpdateTarget({ image, force });
               }}
               onDetail={() => setDetail(image)}
+              onDelete={() => setConfirmDelete(image)}
               isSelf={image.ref === selfImageRef}
               activeJob={live.activeByImage.get(image.ref)}
             />
@@ -228,6 +254,37 @@ export function ImagesPage(): ReactNode {
       ) : null}
 
       {selfUpdate ? <SelfUpdateDialog onClose={() => setSelfUpdate(false)} /> : null}
+
+      {/* Borrar una imagen con contenedores parados los deja sin poder
+          arrancar. Se nombran uno a uno antes de confirmar: decir "se borrara
+          la imagen" y callarse eso seria una trampa. */}
+      {confirmDelete ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(open) => !open && setConfirmDelete(null)}
+          title={t('images.delete')}
+          description={
+            confirmDelete.usage === 'orphan'
+              ? t('images.confirmDeleteOrphan', { ref: displayImage(confirmDelete.ref) })
+              : t('images.confirmDeleteStopped', {
+                  ref: displayImage(confirmDelete.ref),
+                  names: confirmDelete.inUseBy.join(', '),
+                })
+          }
+          confirmLabel={t('common.delete')}
+          cancelLabel={t('common.cancel')}
+          danger
+          loading={remove.isPending}
+          onConfirm={() =>
+            remove.mutate({
+              ref: confirmDelete.ref,
+              // Solo se fuerza cuando hay contenedores parados de por medio,
+              // que es exactamente el caso que el usuario acaba de confirmar.
+              force: confirmDelete.usage === 'stopped',
+            })
+          }
+        />
+      ) : null}
 
       {updateTarget ? (
         <UpdateDialog
@@ -251,6 +308,7 @@ function ImageRow({
   onToggleAuto,
   onUpdate,
   onDetail,
+  onDelete,
   isSelf,
   activeJob,
 }: {
@@ -260,6 +318,7 @@ function ImageRow({
   onToggleAuto: (value: boolean) => void;
   onUpdate: (force: boolean) => void;
   onDetail: () => void;
+  onDelete: () => void;
   isSelf: boolean;
   activeJob: UpdateJob | undefined;
 }): ReactNode {
@@ -292,6 +351,22 @@ function ImageRow({
               {image.policy.autoUpdate ? (
                 <Tooltip content={t('images.autoUpdate')}>
                   <Badge tone="info">auto</Badge>
+                </Tooltip>
+              ) : null}
+              {/* Solo cuando NO esta en marcha: que una imagen se este usando
+                  es lo normal, y etiquetarlo en cada fila seria ruido. Lo que
+                  interesa senalar es lo que se puede limpiar. */}
+              {image.usage !== 'running' ? (
+                <Tooltip
+                  content={
+                    image.usage === 'orphan'
+                      ? t('images.usageOrphanHelp')
+                      : t('images.usageStoppedHelp', { names: image.inUseBy.join(', ') })
+                  }
+                >
+                  <Badge tone={IMAGE_USAGE_TONE[image.usage]}>
+                    {t(IMAGE_USAGE_LABEL[image.usage])}
+                  </Badge>
                 </Tooltip>
               ) : null}
               {image.candidateTag ? (
@@ -403,6 +478,14 @@ function ImageRow({
                 danger: true,
                 disabled: !actionable,
                 onSelect: () => onUpdate(true),
+              },
+              {
+                key: 'delete',
+                label: t('images.delete'),
+                danger: true,
+                // Con algo en marcha el daemon se niega, asi que ni se ofrece.
+                disabled: image.usage === 'running' || isSelf,
+                onSelect: onDelete,
               },
             ]}
           />

@@ -227,6 +227,22 @@ export const es = {
     focusRef: 'Imagen',
     goToContainers: 'Ver los contenedores que la usan',
     usedByCount: '{{count}} contenedores',
+    filterStopped: 'Solo con parados',
+    filterOrphan: 'Sin usar',
+    usageRunning: 'En uso',
+    usageStopped: 'Solo parados',
+    usageStoppedHelp:
+      'Ningun contenedor que la usa esta en marcha. Los afectados si la borras: {{names}}.',
+    usageOrphan: 'Sin usar',
+    usageOrphanHelp: 'No la usa ningun contenedor. Solo ocupa disco.',
+    delete: 'Eliminar imagen',
+    deleted: 'Imagen eliminada',
+    deleteInUse: 'No se puede: hay contenedores en marcha usandola. Paralos primero.',
+    deleteNeedsForce: 'Hacen falta mas confirmaciones para borrarla.',
+    confirmDeleteOrphan:
+      'Se eliminara {{ref}} del disco. No la usa ningun contenedor, asi que no se rompe nada. Si vuelve a hacer falta, se descargara de nuevo.',
+    confirmDeleteStopped:
+      'Se eliminara {{ref}}. ATENCION: estos contenedores parados la usan y dejaran de poder arrancar hasta que se vuelva a descargar: {{names}}.',
     filterAll: 'Todas',
     filterUpdates: 'Con actualizacion',
     filterAuto: 'Auto-actualizables',

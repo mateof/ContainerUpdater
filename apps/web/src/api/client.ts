@@ -203,6 +203,17 @@ export const api = {
   checkImage: (ref: string) => post<{ run: CheckRun }>(`/images/${encodeRef(ref)}/check`),
   savePolicy: (ref: string, patch: Partial<ImagePolicy>) =>
     put<{ policy: ImagePolicy }>(`/images/${encodeRef(ref)}/policy`, patch),
+  /**
+   * Borra la imagen local.
+   *
+   * `force` hace falta cuando quedan contenedores parados que la usan, y
+   * borrarla los deja sin poder arrancar. El servidor responde 409 con la lista
+   * de contenedores afectados si se pide sin forzar, para poder nombrarlos
+   * antes de confirmar.
+   */
+  deleteImage: (ref: string, force: boolean) =>
+    del<{ ok: true }>(`/images/${encodeRef(ref)}?force=${force ? 1 : 0}`),
+
   /** Devuelve 202 en cuanto encola: el progreso llega despues por SSE. */
   updateImage: (
     ref: string,

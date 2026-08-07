@@ -23,6 +23,9 @@ reúne en un sitio lo que hasta ahora obligaba a entrar por SSH.
 - **Auto-actualización por imagen**: marcas las que quieres que se actualicen
   solas y el resto solo avisan.
 - **Forzado**: vuelve a descargar y recrea aunque no haya novedad.
+- **Limpieza de imágenes**: marca las que no usa nadie o solo usan contenedores
+  parados, y las borra. Con contenedores parados avisa nombrándolos, porque
+  dejarán de poder arrancar.
 - **Rendimiento** del NAS y de cada contenedor, en vivo.
 - **Bot de Telegram** restringido a las cuentas que autorices, que notifica sin
   repetirse y acepta comandos.

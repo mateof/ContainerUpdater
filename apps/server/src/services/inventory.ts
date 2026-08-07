@@ -14,6 +14,7 @@ import type {
   ContainerState,
   ContainerSummary,
   HealthState,
+  ImageUsage,
   TrackedImage,
   UpdateStrategy,
 } from '@cu/shared';
@@ -69,12 +70,19 @@ export class InventoryService {
    */
   listImages(): TrackedImage[] {
     const usage = new Map<string, string[]>();
+    const runningUsage = new Map<string, string[]>();
     for (const container of this.#snapshot.containers) {
-      const ref = safeNormalize(container.image);
+      const ref = container.imageRef;
       if (!ref) continue;
       const list = usage.get(ref);
       if (list) list.push(container.name);
       else usage.set(ref, [container.name]);
+
+      if (container.state === 'running') {
+        const live = runningUsage.get(ref);
+        if (live) live.push(container.name);
+        else runningUsage.set(ref, [container.name]);
+      }
     }
 
     return this.repos.inventory.listImages().map((row) => ({
@@ -97,6 +105,11 @@ export class InventoryService {
       lastCheckedAt: row.last_checked_at,
       lastError: row.last_error,
       inUseBy: usage.get(row.normalized_ref) ?? [],
+      inUseByRunning: runningUsage.get(row.normalized_ref) ?? [],
+      usage: usageOf(
+        usage.get(row.normalized_ref) ?? [],
+        runningUsage.get(row.normalized_ref) ?? [],
+      ),
       policy: this.repos.inventory.getPolicy(row.normalized_ref),
     }));
   }
@@ -343,13 +356,17 @@ export class InventoryService {
   }
 
   /**
-   * Sincroniza las imagenes en uso.
+   * Sincroniza las imagenes.
    *
-   * Solo se registran las que usa algun contenedor: el objetivo es vigilar lo
-   * que esta desplegado, no todo lo que quedo en el disco tras una prueba.
+   * Se registran las que usa algun contenedor Y las que no usa ninguno. Las
+   * segundas no se comprueban contra el registry (`inUse: false`), porque
+   * preguntar por la version nueva de algo que nadie ejecuta gasta cuota para
+   * nada, pero si se listan: son las que ocupan disco y las que el usuario
+   * quiere poder borrar.
    */
   #syncImages(images: ImageListItem[], containers: ContainerListItem[]): TrackedImage[] {
     const usedRefs = new Map<string, string[]>();
+    const runningRefs = new Map<string, string[]>();
     for (const container of containers) {
       const ref = safeNormalize(container.Image);
       if (!ref) continue;
@@ -357,6 +374,28 @@ export class InventoryService {
       const list = usedRefs.get(ref);
       if (list) list.push(name);
       else usedRefs.set(ref, [name]);
+
+      if (normalizeState(container.State) === 'running') {
+        const live = runningRefs.get(ref);
+        if (live) live.push(name);
+        else runningRefs.set(ref, [name]);
+      }
+    }
+
+    /**
+     * Imagenes con etiqueta que no usa ningun contenedor.
+     *
+     * Se dejan fuera las colgantes (`<none>:<none>`, sin etiqueta util): no
+     * tienen referencia con la que identificarlas, que es la clave primaria de
+     * la tabla, y mostrarlas exigiria un modelo distinto. Para esas sigue
+     * estando `docker image prune`.
+     */
+    for (const image of images) {
+      for (const tag of image.RepoTags ?? []) {
+        if (tag.endsWith('<none>') || tag.startsWith('<none>')) continue;
+        const ref = safeNormalize(tag);
+        if (ref && !usedRefs.has(ref)) usedRefs.set(ref, []);
+      }
     }
 
     const byId = new Map(images.map((image) => [image.Id, image]));
@@ -398,6 +437,7 @@ export class InventoryService {
         source,
         sizeBytes: image?.Size ?? null,
         imageCreatedAt: image ? image.Created * 1000 : null,
+        inUse: usedBy.length > 0,
       });
 
       // Al descubrir una imagen nueva se le asigna el modo de seguimiento que
@@ -461,17 +501,30 @@ export class InventoryService {
         lastCheckedAt: row.last_checked_at,
         lastError: row.last_error,
         inUseBy: usedBy,
+        inUseByRunning: runningRefs.get(normalizedRef) ?? [],
+        usage: usageOf(usedBy, runningRefs.get(normalizedRef) ?? []),
         policy: this.repos.inventory.getPolicy(normalizedRef),
       });
     }
 
-    // Se conservan las imagenes descargadas pero sin usar, marcadas como tales,
-    // porque el usuario puede querer verlas en el listado.
     void byId;
 
     result.sort((a, b) => a.ref.localeCompare(b.ref));
     return result;
   }
+}
+
+/**
+ * Relacion de una imagen con los contenedores que la usan.
+ *
+ * Es lo que decide si se puede borrar y con que consecuencias, asi que se
+ * calcula en un solo sitio y se reutiliza en los dos caminos que construyen
+ * `TrackedImage` (el que lee de Docker y el que lee de la base de datos).
+ */
+export function usageOf(all: string[], running: string[]): ImageUsage {
+  if (running.length > 0) return 'running';
+  if (all.length > 0) return 'stopped';
+  return 'orphan';
 }
 
 function parseJsonArray(json: string): string[] {

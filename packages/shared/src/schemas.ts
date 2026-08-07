@@ -76,6 +76,20 @@ export const updateRequestSchema = z.object({
 });
 
 /**
+ * Borrado de una imagen.
+ *
+ * `force` no es un atajo: es lo que hace falta cuando quedan contenedores
+ * parados que la usan, y borrarla los deja sin poder arrancar. Va como
+ * parametro explicito para que nadie lo mande sin querer.
+ */
+export const imageDeleteSchema = z.object({
+  force: z
+    .union([z.boolean(), z.enum(['1', '0', 'true', 'false'])])
+    .transform((value) => value === true || value === '1' || value === 'true')
+    .default(false),
+});
+
+/**
  * La clave del proyecto viaja en el cuerpo y no en la ruta: es `nombre +
  * directorio`, y las rutas de un NAS son lo bastante largas como para que la
  * URL codificada supere el limite y el servidor devuelva 414.

@@ -24,6 +24,9 @@ it gathers in one place the things that used to mean opening an SSH session.
 - **Per-image auto-update**: you mark the ones you want updated on their own and
   the rest just notify.
 - **Force**: pulls again and recreates even when nothing changed.
+- **Image cleanup**: marks the ones nobody uses, or that only stopped
+  containers use, and deletes them. With stopped containers it names them
+  first, because they will no longer be able to start.
 - **Performance** of the NAS and of each container, live.
 - **Telegram bot** restricted to the accounts you authorise, which notifies
   without repeating itself and takes commands.

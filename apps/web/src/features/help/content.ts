@@ -74,6 +74,29 @@ const es: HelpSection[] = [
         title: 'Al comparar versiones no se mezclan sabores',
         text: 'Una etiqueta 20-alpine solo se compara con otras NN-alpine, nunca con 20-bookworm ni con 20 a secas: son imagenes distintas aunque el numero se parezca.',
       },
+      { type: 'h', text: 'Imagenes que se pueden borrar' },
+      {
+        type: 'p',
+        text: 'Cada imagen dice su relacion con los contenedores, y solo se etiqueta cuando NO esta en uso, que es lo que interesa mirar para limpiar:',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Sin usar: no la usa ningun contenedor. Solo ocupa disco y se puede borrar sin romper nada.',
+          'Solo parados: hay contenedores que la usan pero ninguno en marcha. Borrarla los deja sin poder arrancar, asi que se nombran antes de confirmar.',
+          'En uso: hay algo en marcha. No se ofrece borrarla, porque Docker se negaria igualmente.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'Los filtros Sin usar y Solo con parados dejan a la vista justo lo que se puede limpiar. La opcion de borrar esta en el menu de los tres puntos de cada imagen.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Las imagenes sin usar no se comprueban',
+        text: 'Se listan para poder borrarlas, pero no se pregunta al registry si tienen version nueva: gastaria peticiones (y cuota de Docker Hub) por algo que no ejecuta nadie.',
+      },
       { type: 'h', text: 'Imagenes que no se pueden comprobar' },
       {
         type: 'p',
@@ -443,6 +466,29 @@ const en: HelpSection[] = [
         tone: 'info',
         title: 'Version comparison does not mix flavours',
         text: 'A 20-alpine tag is only compared against other NN-alpine tags, never against 20-bookworm or plain 20: those are different images even though the number looks alike.',
+      },
+      { type: 'h', text: 'Images you can delete' },
+      {
+        type: 'p',
+        text: 'Each image says how it relates to the containers, and it is only labelled when it is NOT in use, which is what matters when cleaning up:',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Unused: no container uses it. It only takes up disk and can be deleted without breaking anything.',
+          'Stopped only: containers use it but none is running. Deleting it leaves them unable to start, so they are named before you confirm.',
+          'In use: something is running. Deleting is not offered, because Docker would refuse anyway.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'The Unused and Stopped only filters leave exactly what can be cleaned up in view. The delete option is in the three-dot menu of each image.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Unused images are not checked',
+        text: 'They are listed so you can delete them, but the registry is not asked whether they have a new version: that would spend requests (and Docker Hub quota) on something nobody runs.',
       },
       { type: 'h', text: 'Images that cannot be checked' },
       {

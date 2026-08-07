@@ -7,6 +7,7 @@
  * de forma visible. Con un mapa, TypeScript obliga a cubrir el caso.
  */
 import type {
+  ImageUsage,
   ContainerState,
   HealthState,
   JobStatus,
@@ -93,4 +94,23 @@ export const STRATEGY_TONE: Record<UpdateStrategy, Tone> = {
   compose: 'ok',
   recreate: 'info',
   unsupported: 'warn',
+};
+
+/**
+ * Estado de uso de una imagen.
+ *
+ * Se muestra solo cuando NO esta en marcha: que una imagen este en uso es lo
+ * normal, y una etiqueta en cada fila para decir lo esperable es ruido. Lo que
+ * interesa senalar es lo que se puede limpiar.
+ */
+export const IMAGE_USAGE_LABEL: Record<ImageUsage, string> = {
+  running: 'images.usageRunning',
+  stopped: 'images.usageStopped',
+  orphan: 'images.usageOrphan',
+};
+
+export const IMAGE_USAGE_TONE: Record<ImageUsage, Tone> = {
+  running: 'ok',
+  stopped: 'warn',
+  orphan: 'neutral',
 };

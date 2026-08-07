@@ -29,6 +29,7 @@ export interface ImageRow {
   last_error: string | null;
   first_seen_at: number;
   last_seen_at: number;
+  in_use: number;
 }
 
 export interface ProjectRow {
@@ -70,9 +71,9 @@ export function createInventoryRepository(db: Db) {
   const upsertImage = db.prepare(
     `INSERT INTO tracked_images
        (normalized_ref, host, repository, tag, image_id, architecture, os, variant,
-        local_digests, source, size_bytes, image_created_at, first_seen_at, last_seen_at)
+        local_digests, source, size_bytes, image_created_at, in_use, first_seen_at, last_seen_at)
      VALUES (@ref, @host, @repository, @tag, @imageId, @architecture, @os, @variant,
-             @localDigests, @source, @sizeBytes, @imageCreatedAt, @now, @now)
+             @localDigests, @source, @sizeBytes, @imageCreatedAt, @inUse, @now, @now)
      ON CONFLICT(normalized_ref) DO UPDATE SET
        image_id = excluded.image_id,
        architecture = excluded.architecture,
@@ -88,6 +89,7 @@ export function createInventoryRepository(db: Db) {
                 END,
        size_bytes = excluded.size_bytes,
        image_created_at = excluded.image_created_at,
+       in_use = excluded.in_use,
        last_seen_at = excluded.last_seen_at`,
   );
 
@@ -105,9 +107,12 @@ export function createInventoryRepository(db: Db) {
       source: ImageSource;
       sizeBytes: number | null;
       imageCreatedAt: number | null;
+      /** Si algun contenedor la usa. Las que no, no se comprueban. */
+      inUse: boolean;
     }): void {
       upsertImage.run({
         ...input,
+        inUse: input.inUse ? 1 : 0,
         localDigests: JSON.stringify(input.localDigests),
         now: Date.now(),
       });
@@ -139,9 +144,20 @@ export function createInventoryRepository(db: Db) {
     },
 
     /** Imagenes que tiene sentido comprobar: las locales y las fijadas no. */
+    /**
+     * Las que merece la pena consultar contra el registry.
+     *
+     * Se excluyen las huerfanas: preguntar por la version nueva de una imagen
+     * que no usa ningun contenedor gasta peticiones (y cuota de Docker Hub)
+     * para nada. Se siguen listando en la interfaz, solo que sin comprobar.
+     */
     listCheckable(): ImageRow[] {
       return db
-        .prepare(`SELECT * FROM tracked_images WHERE source = 'registry' ORDER BY normalized_ref`)
+        .prepare(
+          `SELECT * FROM tracked_images
+            WHERE source = 'registry' AND in_use = 1
+            ORDER BY normalized_ref`,
+        )
         .all() as ImageRow[];
     },
 

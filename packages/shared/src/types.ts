@@ -55,6 +55,16 @@ export interface ImagePolicy {
   ignoredDigest: string | null;
 }
 
+/**
+ * Relacion de una imagen con los contenedores del sistema.
+ *
+ * - `running`: algun contenedor que la usa esta en marcha. No se puede borrar.
+ * - `stopped`: hay contenedores pero ninguno en marcha. Borrarla exige forzar y
+ *   deja esos contenedores inservibles, asi que se avisa nombrandolos.
+ * - `orphan`: no la usa ningun contenedor. Se puede borrar sin consecuencias.
+ */
+export type ImageUsage = 'running' | 'stopped' | 'orphan';
+
 export interface TrackedImage {
   ref: string;
   host: string;
@@ -75,7 +85,11 @@ export interface TrackedImage {
   candidateTag: string | null;
   lastCheckedAt: number | null;
   lastError: string | null;
+  /** Nombres de los contenedores que la usan, en marcha o no. */
   inUseBy: string[];
+  /** De los anteriores, cuales estan en marcha. Decide si se puede borrar. */
+  inUseByRunning: string[];
+  usage: ImageUsage;
   policy: ImagePolicy;
 }
 

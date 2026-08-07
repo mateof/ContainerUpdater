@@ -1,5 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { imagePolicySchema, serviceActionSchema, updateRequestSchema } from '@cu/shared';
+import {
+  imageDeleteSchema,
+  imagePolicySchema,
+  serviceActionSchema,
+  updateRequestSchema,
+} from '@cu/shared';
+import { localImageName, parseImageReference } from '../../registry/reference.js';
 import type { AppContext } from '../../app.js';
 import {
   RecreateUnsupportedError,
@@ -28,6 +34,63 @@ export async function registerUpdateRoutes(
     });
 
     return { policy: updated };
+  });
+
+  /**
+   * Borra una imagen local.
+   *
+   * Las reglas salen de lo que hace Docker, no de una preferencia:
+   *
+   * - Con algun contenedor EN MARCHA, el daemon se niega y hace bien. Se
+   *   rechaza aqui antes de intentarlo, para poder explicarlo.
+   * - Con contenedores PARADOS, el daemon tambien se niega salvo que se fuerce.
+   *   Forzar borra la imagen y deja esos contenedores inservibles: no podran
+   *   volver a arrancar. Por eso hay que pedirlo explicitamente y la interfaz
+   *   nombra los contenedores afectados antes de confirmar.
+   * - Sin contenedores, se borra sin mas.
+   *
+   * La propia imagen de la aplicacion queda cubierta por la primera regla: su
+   * contenedor esta en marcha por definicion mientras se atiende esta peticion.
+   */
+  fastify.delete('/api/images/:ref', { onRequest: [fastify.requireOperator] }, async (request, reply) => {
+    const ref = decodeURIComponent((request.params as { ref: string }).ref);
+    const { force } = imageDeleteSchema.parse(request.query ?? {});
+
+    const image = app.inventory.listImages().find((candidate) => candidate.ref === ref);
+    if (!image) return reply.code(404).send({ error: 'not-found' });
+
+    if (image.usage === 'running') {
+      return reply
+        .code(409)
+        .send({ error: 'image-in-use', containers: image.inUseByRunning });
+    }
+    if (image.usage === 'stopped' && !force) {
+      // No es un error, es una confirmacion que falta: la interfaz usa esta
+      // lista para decir exactamente que contenedores se quedaran inservibles.
+      return reply.code(409).send({ error: 'needs-force', containers: image.inUseBy });
+    }
+
+    try {
+      // El daemon conoce la imagen por su nombre local, no por la referencia
+      // normalizada. Confundirlos ya rompio el recreate una vez.
+      await app.docker.removeImage(localImageName(parseImageReference(ref)), force);
+    } catch (error) {
+      return reply
+        .code(422)
+        .send({ error: 'delete-failed', message: (error as Error).message });
+    }
+
+    app.repos.history.audit({
+      actorType: 'user',
+      actorId: String(request.currentUser!.id),
+      action: 'image.deleted',
+      target: ref,
+      detail: force ? 'forzado' : null,
+      ip: request.ip,
+    });
+
+    await app.inventory.refresh().catch(() => undefined);
+    return { ok: true };
   });
 
   fastify.get('/api/images/:ref/plan', { onRequest: [fastify.requireAuth] }, async (request) => {
