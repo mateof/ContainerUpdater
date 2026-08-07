@@ -185,6 +185,7 @@ export class InventoryService {
       id: container.Id,
       name,
       image: container.Image,
+      imageRef: safeNormalize(container.Image),
       imageId: container.ImageID,
       state: normalizeState(container.State),
       status: container.Status,

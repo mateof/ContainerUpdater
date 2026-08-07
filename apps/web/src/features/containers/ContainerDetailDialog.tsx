@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import type { ContainerSummary } from '@cu/shared';
 import { api } from '@/api/client';
 import { useLive } from '@/hooks/LiveContext';
+import { Link } from 'react-router-dom';
 import { Badge, Button, Card, Modal, Spinner, StatusDot, cx } from '@/components/ui';
 import { Meter } from '@/components/Chart';
 import {
@@ -66,6 +67,24 @@ export function ContainerDetailDialog({
       description={displayImage(container.image)}
       footer={
         <>
+          {/* Saltos a la imagen y al proyecto. Van en el pie porque son
+              navegacion, no acciones sobre el contenedor, y ahi no compiten con
+              el boton de registros. Cierran el modal: dejarlo abierto sobre
+              otra pantalla desorienta. */}
+          {container.imageRef ? (
+            <Link
+              to={`/images?ref=${encodeURIComponent(container.imageRef)}`}
+              onClick={onClose}
+              className="mr-auto"
+            >
+              <Button variant="ghost">{t('containers.goToImage')}</Button>
+            </Link>
+          ) : null}
+          {container.projectKey ? (
+            <Link to={`/projects?key=${encodeURIComponent(container.projectKey)}`} onClick={onClose}>
+              <Button variant="ghost">{t('containers.goToProject')}</Button>
+            </Link>
+          ) : null}
           <Button variant="ghost" onClick={onShowLogs}>
             {t('containers.logs')}
           </Button>

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
 import type { TrackedImage, UpdateJob } from '@cu/shared';
@@ -16,7 +17,8 @@ import {
   cx,
   useToast,
 } from '@/components/ui';
-import { IconDownload, IconImage, IconMore, IconRefresh, IconSearch } from '@/components/icons';
+import { IconCheck, IconDownload, IconImage, IconMore, IconRefresh } from '@/components/icons';
+import { CrossLink, FilterPills, FocusBanner, SearchBox } from '@/components/Filters';
 import { displayImage, formatBytes, formatRelative, shortDigest } from '@/lib/format';
 import { UPDATE_STATUS_LABEL, UPDATE_STATUS_TONE } from '@/lib/labels';
 import { ImageDetailDialog } from './ImageDetailDialog';
@@ -110,74 +112,79 @@ export function ImagesPage(): ReactNode {
     onSettled: invalidate,
   });
 
+  /**
+   * Foco desde otra pantalla: se llega pulsando la imagen de un contenedor.
+   *
+   * Se filtra por referencia exacta en vez de resaltar la fila: con veinte
+   * imagenes, resaltar una obliga a buscarla igualmente.
+   */
+  const [params, setParams] = useSearchParams();
+  const focusRef = params.get('ref');
+  const clearFocus = (): void => setParams({}, { replace: true });
+
+  const focused = useMemo(
+    () => (focusRef ? images.filter((image) => image.ref === focusRef) : images),
+    [images, focusRef],
+  );
+
+  const matches = (image: TrackedImage, which: Filter): boolean => {
+    switch (which) {
+      case 'updates':
+        return image.status === 'update-available';
+      case 'auto':
+        return image.policy.autoUpdate;
+      case 'unknown':
+        return image.status === 'unknown' || image.status === 'error';
+      default:
+        return true;
+    }
+  };
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return images.filter((image) => {
-      if (needle && !image.ref.toLowerCase().includes(needle)) return false;
-      if (filter === 'updates') return image.status === 'update-available';
-      if (filter === 'auto') return image.policy.autoUpdate;
-      if (filter === 'unknown') return image.status === 'unknown' || image.status === 'error';
-      return true;
+    return focused.filter((image) => {
+      if (
+        needle &&
+        !image.ref.toLowerCase().includes(needle) &&
+        !image.inUseBy.some((name) => name.toLowerCase().includes(needle))
+      ) {
+        return false;
+      }
+      return matches(image, filter);
     });
-  }, [images, search, filter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused, search, filter]);
 
-  const counts = useMemo(
-    () => ({
-      all: images.length,
-      updates: images.filter((image) => image.status === 'update-available').length,
-      auto: images.filter((image) => image.policy.autoUpdate).length,
-      unknown: images.filter((image) => image.status === 'unknown' || image.status === 'error')
-        .length,
-    }),
-    [images],
+  const options = useMemo(
+    () =>
+      (
+        [
+          ['all', 'images.filterAll'],
+          ['updates', 'images.filterUpdates'],
+          ['auto', 'images.filterAuto'],
+          ['unknown', 'images.filterUnknown'],
+        ] as const
+      ).map(([key, label]) => ({
+        key,
+        label: t(label),
+        count: focused.filter((image) => matches(image, key)).length,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [focused, t],
   );
 
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">{t('images.title')}</h1>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <IconSearch
-              size={15}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-faint)]"
-            />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={t('common.search')}
-              className="pl-8 w-48 sm:w-60"
-              type="search"
-            />
-          </div>
-        </div>
+        <SearchBox value={search} onChange={setSearch} placeholder={t('images.searchHint')} />
       </header>
 
-      <div className="flex flex-wrap gap-1.5">
-        {(
-          [
-            ['all', 'images.filterAll'],
-            ['updates', 'images.filterUpdates'],
-            ['auto', 'images.filterAuto'],
-            ['unknown', 'images.filterUnknown'],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setFilter(key)}
-            className={cx(
-              'rounded-full px-3 py-1 text-[0.75rem] font-medium transition-colors duration-[var(--dur-fast)]',
-              filter === key
-                ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                : 'bg-[var(--bg-inset)] text-[var(--text-muted)] hover:text-[var(--text)]',
-            )}
-          >
-            {t(label)}
-            <span className="ml-1.5 tabular-nums opacity-60">{counts[key]}</span>
-          </button>
-        ))}
-      </div>
+      {focusRef ? (
+        <FocusBanner label={t('images.focusRef')} value={focusRef} onClear={clearFocus} />
+      ) : null}
+
+      <FilterPills value={filter} onChange={setFilter} options={options} />
 
       {isLoading ? (
         <div className="space-y-2">
@@ -298,11 +305,6 @@ function ImageRow({
             </div>
 
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.6875rem] text-[var(--text-muted)]">
-              {image.inUseBy.length > 0 ? (
-                <span className="truncate">
-                  {t('images.usedBy')}: {image.inUseBy.join(', ')}
-                </span>
-              ) : null}
               {image.sizeBytes ? <span>{formatBytes(image.sizeBytes)}</span> : null}
               {image.localDigests[0] ? (
                 <span className="font-mono">{shortDigest(image.localDigests[0], 10)}</span>
@@ -325,6 +327,21 @@ function ImageRow({
             ) : null}
           </div>
         </button>
+
+        {/* Quien usa esta imagen, y un salto directo a esos contenedores.
+            Fuera del boton de detalle porque un enlace no puede ir dentro. */}
+        {image.inUseBy.length > 0 ? (
+          <div className="hidden max-w-[26%] shrink-0 text-right text-[0.6875rem] md:block">
+            <CrossLink
+              to={`/containers?image=${encodeURIComponent(image.ref)}`}
+              title={t('images.goToContainers')}
+            >
+              {image.inUseBy.length === 1
+                ? image.inUseBy[0]
+                : t('images.usedByCount', { count: image.inUseBy.length })}
+            </CrossLink>
+          </div>
+        ) : null}
 
         <div className="flex shrink-0 items-center gap-1">
           {/* Mientras hay un trabajo vivo se sustituye el boton por el

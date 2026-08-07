@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
 import type { ComposeProject, ProjectAction, ServiceAction } from '@cu/shared';
@@ -19,12 +20,15 @@ import {
 } from '@/components/ui';
 import { IconDownload, IconMore, IconPlus, IconProject, IconRefresh, IconRestart } from '@/components/icons';
 import { ProjectEditor } from './ProjectEditor';
+import { CrossLink, FilterPills, FocusBanner, SearchBox } from '@/components/Filters';
 import { displayImage } from '@/lib/format';
 import { JobIndicator } from '@/components/JobIndicator';
 import { useLive } from '@/hooks/LiveContext';
 import { CONTAINER_STATE_LABEL, STRATEGY_HELP, STRATEGY_LABEL, STRATEGY_TONE } from '@/lib/labels';
 
 /** Etiquetas de las acciones de servicio, declaradas una vez. */
+type Filter = 'all' | 'updates' | 'stopped' | 'norecreate' | 'editable';
+
 const ACTION_LABEL: Record<ServiceAction, string> = {
   recreate: 'projects.actionRecreate',
   restart: 'containers.restart',
@@ -71,6 +75,14 @@ export function ProjectsPage(): ReactNode {
 
   const dir = useQuery({ queryKey: ['projects-dir'], queryFn: () => api.projectsDir() });
 
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<Filter>('all');
+
+  /** Foco desde otra pantalla: se llega pulsando el proyecto de un contenedor. */
+  const [params, setParams] = useSearchParams();
+  const focusKey = params.get('key');
+  const clearFocus = (): void => setParams({}, { replace: true });
+
   const serviceAction = useMutation({
     mutationFn: ({
       projectKey,
@@ -100,7 +112,72 @@ export function ProjectsPage(): ReactNode {
   });
 
   const { data, isLoading } = useQuery({ queryKey: ['projects'], queryFn: () => api.projects() });
-  const projects = data?.projects ?? [];
+  const all = data?.projects ?? [];
+
+  const focused = useMemo(
+    () => (focusKey ? all.filter((project) => project.key === focusKey) : all),
+    [all, focusKey],
+  );
+
+  const matches = (project: ComposeProject, which: Filter): boolean => {
+    switch (which) {
+      case 'updates':
+        return project.updatesAvailable > 0;
+      case 'stopped':
+        // Un proyecto con algun servicio caido es lo que interesa mirar. Uno
+        // sin contenedores todavia (recien creado) tambien cuenta: esta parado.
+        return (
+          project.containers.length === 0 ||
+          project.containers.some((container) => container.state !== 'running')
+        );
+      case 'norecreate':
+        return project.strategy !== 'compose';
+      case 'editable':
+        return project.editable;
+      default:
+        return true;
+    }
+  };
+
+  const projects = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return focused.filter((project) => {
+      if (
+        needle &&
+        !project.name.toLowerCase().includes(needle) &&
+        !project.workingDir.toLowerCase().includes(needle) &&
+        !project.containers.some(
+          (container) =>
+            container.name.toLowerCase().includes(needle) ||
+            (container.serviceName ?? '').toLowerCase().includes(needle) ||
+            container.image.toLowerCase().includes(needle),
+        )
+      ) {
+        return false;
+      }
+      return matches(project, filter);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused, search, filter]);
+
+  const options = useMemo(
+    () =>
+      (
+        [
+          ['all', 'projects.filterAll'],
+          ['updates', 'projects.filterUpdates'],
+          ['stopped', 'projects.filterStopped'],
+          ['norecreate', 'projects.filterNoCompose'],
+          ['editable', 'projects.filterEditable'],
+        ] as const
+      ).map(([key, label]) => ({
+        key,
+        label: t(label),
+        count: focused.filter((project) => matches(project, key)).length,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [focused, t],
+  );
 
   const apply = useMutation({
     mutationFn: ({ key, action }: { key: string; action: ProjectAction }) =>
@@ -130,6 +207,8 @@ export function ProjectsPage(): ReactNode {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">{t('projects.title')}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+        <SearchBox value={search} onChange={setSearch} placeholder={t('projects.searchHint')} />
         <Tooltip content={dir.data?.writable ? t('projects.newProjectHelp') : (dir.data?.reason ?? '')}>
           <span>
             <Button
@@ -142,7 +221,18 @@ export function ProjectsPage(): ReactNode {
             </Button>
           </span>
         </Tooltip>
+        </div>
       </div>
+
+      {focusKey ? (
+        <FocusBanner
+          label={t('projects.focusKey')}
+          value={focused[0]?.name ?? focusKey}
+          onClear={clearFocus}
+        />
+      ) : null}
+
+      <FilterPills value={filter} onChange={setFilter} options={options} />
 
       {/* Sin carpeta escribible no se puede crear nada, y el motivo casi siempre
           es el montaje en solo lectura. Decirlo aqui evita que el boton
@@ -189,6 +279,16 @@ export function ProjectsPage(): ReactNode {
                   <p className="mt-0.5 truncate font-mono text-[0.6875rem] text-[var(--text-muted)]">
                     {project.workingDir}
                   </p>
+                  {project.containers.length > 0 ? (
+                    <p className="mt-0.5 text-[0.6875rem]">
+                      <CrossLink
+                        to={`/containers?project=${encodeURIComponent(project.key)}`}
+                        title={t('projects.goToContainers')}
+                      >
+                        {t('projects.containerCount', { count: project.containers.length })}
+                      </CrossLink>
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="flex shrink-0 gap-1">
@@ -270,8 +370,20 @@ export function ProjectsPage(): ReactNode {
                     >
                       <StatusDot state={running ? 'running' : 'stopped'} />
                       <span className="min-w-0 flex-1 truncate">{service || container.name}</span>
-                      <span className="hidden truncate font-mono text-[0.6875rem] text-[var(--text-muted)] lg:block lg:max-w-[38%]">
-                        {displayImage(container.image)}
+                      <span className="hidden truncate text-[0.6875rem] lg:block lg:max-w-[38%]">
+                        {container.imageRef ? (
+                          <CrossLink
+                            to={`/images?ref=${encodeURIComponent(container.imageRef)}`}
+                            title={t('containers.goToImage')}
+                            mono
+                          >
+                            {displayImage(container.image)}
+                          </CrossLink>
+                        ) : (
+                          <span className="font-mono text-[var(--text-muted)]">
+                            {displayImage(container.image)}
+                          </span>
+                        )}
                       </span>
 
                       {activeJob ? (

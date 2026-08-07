@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
 import type { ContainerSummary } from '@cu/shared';
@@ -11,12 +12,10 @@ import {
   Card,
   ConfirmDialog,
   EmptyState,
-  Input,
   Menu,
   Skeleton,
   StatusDot,
   Tooltip,
-  cx,
   useToast,
 } from '@/components/ui';
 import { Meter } from '@/components/Chart';
@@ -26,16 +25,16 @@ import {
   IconMore,
   IconPlay,
   IconRestart,
-  IconSearch,
   IconStop,
 } from '@/components/icons';
+import { CrossLink, FilterPills, FocusBanner, SearchBox } from '@/components/Filters';
 import { displayImage, formatBytes, formatPercent, formatRate, formatRelative } from '@/lib/format';
 import { CONTAINER_STATE_LABEL, CONTAINER_STATE_TONE, HEALTH_LABEL } from '@/lib/labels';
 import { JobIndicator } from '@/components/JobIndicator';
 import { LogsDialog } from './LogsDialog';
 import { ContainerDetailDialog } from './ContainerDetailDialog';
 
-type Filter = 'all' | 'running' | 'stopped' | 'unhealthy';
+type Filter = 'all' | 'running' | 'stopped' | 'unhealthy' | 'updates' | 'orphan';
 
 export function ContainersPage(): ReactNode {
   const { t } = useTranslation();
@@ -45,6 +44,18 @@ export function ContainersPage(): ReactNode {
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+
+  /**
+   * Filtro que llega desde otra pantalla.
+   *
+   * Se llega aqui pulsando la imagen o el proyecto de una fila, y hay que
+   * ensenar SOLO lo que corresponde: dejar la lista entera obligaria a buscar a
+   * mano justo lo que se acaba de pedir.
+   */
+  const [params, setParams] = useSearchParams();
+  const focusImage = params.get('image');
+  const focusProject = params.get('project');
+  const clearFocus = (): void => setParams({}, { replace: true });
   const [logsFor, setLogsFor] = useState<ContainerSummary | null>(null);
   const [detailFor, setDetailFor] = useState<ContainerSummary | null>(null);
   const [confirm, setConfirm] = useState<{
@@ -54,6 +65,23 @@ export function ContainersPage(): ReactNode {
 
   const { data, isLoading } = useQuery({ queryKey: ['containers'], queryFn: () => api.containers() });
   const containers = data?.containers ?? [];
+
+  /**
+   * Imagenes, solo para saber cuales tienen actualizacion.
+   *
+   * React Query la comparte con la pantalla de Imagenes, asi que no supone una
+   * peticion extra si ya se ha visitado.
+   */
+  const { data: imageData } = useQuery({ queryKey: ['images'], queryFn: () => api.images() });
+  const updatableImages = useMemo(
+    () =>
+      new Set(
+        (imageData?.images ?? [])
+          .filter((image) => image.status === 'update-available')
+          .flatMap((image) => image.inUseBy),
+      ),
+    [imageData],
+  );
 
   const act = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'start' | 'stop' | 'restart' }) =>
@@ -72,66 +100,90 @@ export function ContainersPage(): ReactNode {
     return new Map((latest?.containers ?? []).map((metric) => [metric.id, metric]));
   }, [live.metrics]);
 
+  /** Lo que llega de otra pantalla se aplica antes que nada. */
+  const focused = useMemo(() => {
+    // Por la referencia normalizada y no por `image`: son cadenas distintas y
+    // comparar la cruda dejaba la lista vacia en casi todos los casos.
+    if (focusImage) return containers.filter((container) => container.imageRef === focusImage);
+    if (focusProject) return containers.filter((container) => container.projectKey === focusProject);
+    return containers;
+  }, [containers, focusImage, focusProject]);
+
+  const matches = (container: ContainerSummary, which: Filter): boolean => {
+    switch (which) {
+      case 'running':
+        return container.state === 'running';
+      case 'stopped':
+        return container.state !== 'running';
+      case 'unhealthy':
+        return container.health === 'unhealthy' || container.state === 'dead';
+      case 'updates':
+        return updatableImages.has(container.name);
+      case 'orphan':
+        return container.projectKey === null;
+      default:
+        return true;
+    }
+  };
+
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return containers.filter((container) => {
+    return focused.filter((container) => {
       if (
         needle &&
         !container.name.toLowerCase().includes(needle) &&
-        !container.image.toLowerCase().includes(needle)
+        !container.image.toLowerCase().includes(needle) &&
+        !(container.projectName ?? '').toLowerCase().includes(needle) &&
+        !(container.serviceName ?? '').toLowerCase().includes(needle)
       ) {
         return false;
       }
-      if (filter === 'running') return container.state === 'running';
-      if (filter === 'stopped') return container.state !== 'running';
-      if (filter === 'unhealthy') return container.health === 'unhealthy' || container.state === 'dead';
-      return true;
+      return matches(container, filter);
     });
-  }, [containers, search, filter]);
+    // `matches` se redefine en cada render pero solo depende de lo que ya esta
+    // en la lista de dependencias.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused, search, filter, updatableImages]);
+
+  const options = useMemo(
+    () =>
+      (
+        [
+          ['all', 'containers.filterAll'],
+          ['running', 'containers.filterRunning'],
+          ['stopped', 'containers.filterStopped'],
+          ['unhealthy', 'containers.filterUnhealthy'],
+          ['updates', 'containers.filterUpdates'],
+          ['orphan', 'containers.filterOrphan'],
+        ] as const
+      ).map(([key, label]) => ({
+        key,
+        label: t(label),
+        count: focused.filter((container) => matches(container, key)).length,
+      })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [focused, updatableImages, t],
+  );
 
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">{t('containers.title')}</h1>
-        <div className="relative">
-          <IconSearch
-            size={15}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-faint)]"
-          />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={t('common.search')}
-            className="pl-8 w-48 sm:w-60"
-            type="search"
-          />
-        </div>
+        <SearchBox value={search} onChange={setSearch} placeholder={t('containers.searchHint')} />
       </header>
 
-      <div className="flex flex-wrap gap-1.5">
-        {(
-          [
-            ['all', 'containers.filterAll'],
-            ['running', 'containers.filterRunning'],
-            ['stopped', 'containers.filterStopped'],
-            ['unhealthy', 'containers.filterUnhealthy'],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setFilter(key)}
-            className={cx(
-              'rounded-full px-3 py-1 text-[0.75rem] font-medium transition-colors duration-[var(--dur-fast)]',
-              filter === key
-                ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                : 'bg-[var(--bg-inset)] text-[var(--text-muted)] hover:text-[var(--text)]',
-            )}
-          >
-            {t(label)}
-          </button>
-        ))}
-      </div>
+      {focusImage ? (
+        <FocusBanner label={t('containers.focusImage')} value={focusImage} onClear={clearFocus} />
+      ) : null}
+      {focusProject ? (
+        <FocusBanner
+          label={t('containers.focusProject')}
+          value={focused[0]?.projectName ?? focusProject}
+          onClear={clearFocus}
+        />
+      ) : null}
+
+      <FilterPills value={filter} onChange={setFilter} options={options} />
 
       {isLoading ? (
         <div className="space-y-2">
@@ -165,10 +217,11 @@ export function ContainersPage(): ReactNode {
 
                     {/* La fila entera abre el detalle. Es donde el usuario
                         pulsa por instinto cuando quiere saber mas. */}
+                    <div className="min-w-0 flex-1">
                     <button
                       type="button"
                       onClick={() => setDetailFor(container)}
-                      className="min-w-0 flex-1 text-left"
+                      className="w-full min-w-0 text-left"
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="truncate text-[0.8125rem] font-medium">{container.name}</span>
@@ -187,9 +240,31 @@ export function ContainersPage(): ReactNode {
                         ) : null}
                       </div>
 
+                    </button>
+
+                      {/* Los metadatos van FUERA del boton: un enlace dentro de
+                          un boton no es HTML valido, y aqui la imagen y el
+                          proyecto tienen que poder navegar cada uno a su sitio. */}
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[0.6875rem] text-[var(--text-muted)]">
-                        <span className="truncate font-mono">{displayImage(container.image)}</span>
-                        {container.projectName ? <span>{container.projectName}</span> : null}
+                        {container.imageRef ? (
+                          <CrossLink
+                            to={`/images?ref=${encodeURIComponent(container.imageRef)}`}
+                            title={t('containers.goToImage')}
+                            mono
+                          >
+                            {displayImage(container.image)}
+                          </CrossLink>
+                        ) : (
+                          <span className="truncate font-mono">{displayImage(container.image)}</span>
+                        )}
+                        {container.projectName && container.projectKey ? (
+                          <CrossLink
+                            to={`/projects?key=${encodeURIComponent(container.projectKey)}`}
+                            title={t('containers.goToProject')}
+                          >
+                            {container.projectName}
+                          </CrossLink>
+                        ) : null}
                         {container.ports.length > 0 ? (
                           <span>
                             {container.ports
@@ -200,7 +275,7 @@ export function ContainersPage(): ReactNode {
                         ) : null}
                         <span>{formatRelative(container.createdAt)}</span>
                       </div>
-                    </button>
+                    </div>
 
                     {/* Metricas en vivo, solo si el contenedor esta activo. */}
                     {running && metrics ? (

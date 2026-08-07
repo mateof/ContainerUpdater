@@ -97,7 +97,19 @@ export type HealthState = 'healthy' | 'unhealthy' | 'starting' | 'none';
 export interface ContainerSummary {
   id: string;
   name: string;
+  /** Lo que dice el daemon, tal cual. Es lo que se muestra. */
   image: string;
+  /**
+   * La misma imagen ya normalizada, o null si no se ha podido interpretar.
+   *
+   * Existe porque `image` y la referencia con la que se identifica una imagen
+   * en la pantalla de Imagenes NO son la misma cadena: el daemon dice
+   * `docker.io/prom/prometheus:v2.53.0` y la normalizada es
+   * `registry-1.docker.io/prom/prometheus:v2.53.0`. Comprobado contra un
+   * entorno real: de 21 contenedores solo coincidian 3, asi que cruzar las dos
+   * pantallas por `image` fallaba en casi todos.
+   */
+  imageRef: string | null;
   imageId: string;
   state: ContainerState;
   status: string;
