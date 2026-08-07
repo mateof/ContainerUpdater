@@ -301,10 +301,36 @@ Se consideró y se descartó materializar el fichero solo durante la ejecución 
 Compose y borrarlo después: rompería cualquier uso fuera de la aplicación, y un
 stack que no puedes arrancar por SSH es una trampa para quien lo herede.
 
-## Solo se pueden editar los proyectos creados aquí
+## Se puede editar cualquier proyecto, no solo los creados aquí
 
-Los ficheros de un proyecto hecho en Container Manager o por SSH se leen, nunca se
-escriben. Técnicamente sería fácil permitirlo y parecería una mejora, pero
-sobrescribir desde un panel web un fichero que escribió otro es la clase de
-sorpresa que destruye la confianza en una herramienta que tiene el socket de
-Docker.
+La primera versión solo dejaba editar lo creado desde la aplicación, con el
+argumento de que sobrescribir un fichero que escribió otro destruye la confianza.
+Ese argumento no se sostiene: en un NAS personal ese "otro" es el propio usuario,
+y la aplicación ya podía hacerle a esos proyectos cosas bastante más
+destructivas (`down`, recrear servicios) que editar un fichero de texto.
+
+El resultado práctico era que la funcionalidad quedaba inservible justo para
+quien la necesitaba: en un NAS real todos los proyectos los hizo el usuario en
+Container Manager, así que el botón salía siempre desactivado.
+
+Ahora lo que decide es lo que de verdad determina si se puede escribir:
+
+1. El YAML es accesible desde el contenedor.
+2. Hay un único fichero de compose. Con varios no está claro cuál editar, y
+   elegir uno sería adivinar sobre la configuración del usuario.
+3. La carpeta admite escritura.
+
+Los tres motivos viajan hasta la interfaz, que explica cuál falla en vez de dejar
+un botón apagado sin decir nada, que es exactamente lo que hacía antes.
+
+### Consecuencia en el modelo de datos
+
+`managed_projects.name` dejó de ser UNIQUE. Mientras solo se registraban
+proyectos creados aquí, con nombre validado, la restricción valía; en cuanto
+entran los de fuera, rechazaría el segundo proyecto llamado `docker`, que es un
+caso real y documentado (ADR-004). La identidad pasó a ser el directorio, y la
+columna `created_here` distingue lo creado aquí, que hay que seguir mostrando
+aunque no tenga contenedores, de lo que solo se ha editado.
+
+Por lo mismo, los ficheros se direccionan por **clave de proyecto** y no por
+nombre. Direccionar por nombre habría vuelto a pisar ADR-004 desde otra puerta.

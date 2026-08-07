@@ -1,10 +1,18 @@
 /**
- * Proyectos creados desde la aplicacion.
+ * Proyectos cuyos ficheros ha escrito esta aplicacion.
  *
- * El inventario deduce los proyectos de las labels de los contenedores, asi que
- * uno recien creado que todavia no se ha levantado no existiria para nadie.
- * Esta tabla es lo que lo mantiene visible mientras tanto, y ademas es lo que
- * distingue lo que se puede editar aqui de lo que solo se lee.
+ * Cubre dos cosas distintas:
+ *
+ * - Los creados aqui (`created_here`), que hay que mantener visibles aunque
+ *   todavia no tengan contenedores: el inventario deduce los proyectos de las
+ *   labels de los CONTENEDORES, asi que uno recien creado o cuyo arranque ha
+ *   fallado no existiria para nadie, que es justo cuando hay que entrar a
+ *   corregir el YAML.
+ * - Los de fuera que se han editado alguna vez, que se registran al guardar
+ *   para poder colgar de ellos las versiones archivadas.
+ *
+ * La identidad es el DIRECTORIO, no el nombre: Container Manager deriva el
+ * nombre de la carpeta y dos stacks distintos pueden llamarse igual (ADR-004).
  */
 import type { Db } from '../index.js';
 import { Keyring, KeyringLockedError, type SerializedSealed } from '../../crypto/keyring.js';
@@ -16,6 +24,8 @@ export interface ManagedProjectRow {
   created_at: number;
   updated_at: number;
   created_by: number | null;
+  /** 1 si se creo desde la aplicacion, 0 si solo se ha editado. */
+  created_here: number;
 }
 
 export type ProjectFileKind = 'compose' | 'env';
@@ -35,22 +45,54 @@ export function createManagedProjectRepository(db: Db, keyring: Keyring) {
         .all() as ManagedProjectRow[];
     },
 
-    findByName(name: string): ManagedProjectRow | undefined {
-      return db.prepare('SELECT * FROM managed_projects WHERE name = ?').get(name) as
+    /** Solo los creados aqui: son los que hay que mostrar sin contenedores. */
+    listCreatedHere(): ManagedProjectRow[] {
+      return db
+        .prepare('SELECT * FROM managed_projects WHERE created_here = 1 ORDER BY name')
+        .all() as ManagedProjectRow[];
+    },
+
+    /** Por directorio, que es la identidad real. */
+    findByDir(dir: string): ManagedProjectRow | undefined {
+      return db.prepare('SELECT * FROM managed_projects WHERE dir = ?').get(dir) as
         | ManagedProjectRow
         | undefined;
     },
 
-    create(input: { name: string; dir: string; createdBy: number | null }): ManagedProjectRow {
+    create(input: {
+      name: string;
+      dir: string;
+      createdBy: number | null;
+      createdHere: boolean;
+    }): ManagedProjectRow {
       const now = Date.now();
       db.prepare(
-        `INSERT INTO managed_projects (name, dir, created_at, updated_at, created_by)
-         VALUES (?, ?, ?, ?, ?)`,
-      ).run(input.name, input.dir, now, now, input.createdBy);
+        `INSERT INTO managed_projects (name, dir, created_at, updated_at, created_by, created_here)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      ).run(input.name, input.dir, now, now, input.createdBy, input.createdHere ? 1 : 0);
 
-      const row = this.findByName(input.name);
+      const row = this.findByDir(input.dir);
       if (!row) throw new Error('No se ha podido registrar el proyecto');
       return row;
+    },
+
+    /**
+     * Devuelve la fila del proyecto, creandola si hace falta.
+     *
+     * Se usa al editar uno de fuera: hace falta una fila a la que colgar las
+     * versiones archivadas, pero no se marca como creado aqui porque no lo es y
+     * eso cambiaria si debe seguir visible sin contenedores.
+     */
+    ensure(input: { name: string; dir: string; actorUserId: number | null }): ManagedProjectRow {
+      return (
+        this.findByDir(input.dir) ??
+        this.create({
+          name: input.name,
+          dir: input.dir,
+          createdBy: input.actorUserId,
+          createdHere: false,
+        })
+      );
     },
 
     touch(id: number): void {

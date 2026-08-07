@@ -111,8 +111,19 @@ export const projectCreateSchema = z.object({
   start: z.boolean().default(true),
 });
 
+/**
+ * Los ficheros se direccionan por CLAVE DE PROYECTO, no por nombre.
+ *
+ * Los nombres colisionan: Container Manager los deriva de la carpeta y dos
+ * stacks distintos pueden llamarse los dos `docker` (ADR-004). Y va en el
+ * cuerpo, no en la ruta, por el mismo motivo que en `serviceActionSchema`.
+ */
+export const projectFilesReadSchema = z.object({
+  projectKey: z.string().min(1).max(1024),
+});
+
 export const projectFilesUpdateSchema = z.object({
-  name: projectNameSchema,
+  projectKey: z.string().min(1).max(1024),
   compose: z.string().min(1).max(FILE_MAX),
   env: z.string().max(FILE_MAX).optional(),
   /** Volver a aplicar el proyecto tras guardar. */
@@ -126,7 +137,7 @@ export const projectActionSchema = z.object({
 
 /** Ver en claro una sola variable, no el fichero entero. */
 export const envRevealSchema = z.object({
-  name: projectNameSchema,
+  projectKey: z.string().min(1).max(1024),
   key: z.string().min(1).max(255),
 });
 

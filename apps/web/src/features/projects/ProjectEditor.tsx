@@ -37,19 +37,19 @@ DB_PASSWORD=cambiame
 `;
 
 export function ProjectEditor({
-  /** Nombre del proyecto a editar. Sin el, es una creacion. */
-  name,
+  /** Proyecto a editar. Sin el, es una creacion. */
+  project,
   onClose,
 }: {
-  name?: string;
+  project?: { key: string; name: string };
   onClose: () => void;
 }): ReactNode {
   const { t } = useTranslation();
   const notify = useToast();
   const queryClient = useQueryClient();
-  const editing = name !== undefined;
+  const editing = project !== undefined;
 
-  const [projectName, setProjectName] = useState(name ?? '');
+  const [projectName, setProjectName] = useState(project?.name ?? '');
   const [compose, setCompose] = useState('');
   const [env, setEnv] = useState('');
   const [start, setStart] = useState(true);
@@ -75,8 +75,8 @@ export function ProjectEditor({
     void (async () => {
       try {
         const [files, envRaw] = await Promise.all([
-          api.projectFiles(name),
-          api.projectEnvRaw(name).catch(() => ({ content: '' })),
+          api.projectFiles(project.key),
+          api.projectEnvRaw(project.key).catch(() => ({ content: '' })),
         ]);
         if (cancelled) return;
         setCompose(files.files.compose);
@@ -93,12 +93,12 @@ export function ProjectEditor({
     return () => {
       cancelled = true;
     };
-  }, [editing, loaded, name, notify, onClose, t]);
+  }, [editing, loaded, project, notify, onClose, t]);
 
   const save = useMutation({
     mutationFn: async () => {
       if (editing) {
-        return api.saveProjectFiles({ name, compose, env, apply: start });
+        return api.saveProjectFiles({ projectKey: project.key, compose, env, apply: start });
       }
       return api.createProject({ name: projectName, compose, env, start });
     },
@@ -139,7 +139,7 @@ export function ProjectEditor({
         setSaveError(message || t('projects.composeInvalid'));
         return;
       }
-      if (code === 'not-writable') {
+      if (code === 'not-writable' || code === 'not-editable') {
         setSaveError(message);
         return;
       }
@@ -158,7 +158,7 @@ export function ProjectEditor({
       wide
       resizable
       storageKey="project-editor"
-      title={editing ? t('projects.editFiles', { name }) : t('projects.newProject')}
+      title={editing ? t('projects.editFiles', { name: project.name }) : t('projects.newProject')}
       description={editing ? t('projects.editFilesHelp') : t('projects.newProjectHelp')}
       footer={
         <>
@@ -399,18 +399,18 @@ function countEntries(text: string): number {
  * Se usa en la ficha del proyecto: enseña que variables hay sin enseñar lo que
  * valen, que es lo que hace falta el noventa por ciento de las veces.
  */
-export function EnvSummary({ name }: { name: string }): ReactNode {
+export function EnvSummary({ projectKey }: { projectKey: string }): ReactNode {
   const { t } = useTranslation();
   const notify = useToast();
   const [revealed, setRevealed] = useState<Record<string, string>>({});
 
   const { data } = useQuery({
-    queryKey: ['project-files', name],
-    queryFn: () => api.projectFiles(name),
+    queryKey: ['project-files', projectKey],
+    queryFn: () => api.projectFiles(projectKey),
   });
 
   const reveal = useMutation({
-    mutationFn: (key: string) => api.revealEnvValue(name, key),
+    mutationFn: (key: string) => api.revealEnvValue(projectKey, key),
     onSuccess: (result, key) => setRevealed((current) => ({ ...current, [key]: result.value })),
     onError: () => notify(t('common.error'), 'danger'),
   });

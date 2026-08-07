@@ -5,16 +5,22 @@
  * que aqui se concentran las reglas que impiden que un fallo o una entrada
  * maliciosa acaben tocando lo que no debe:
  *
- * 1. Todo cuelga de una unica carpeta raiz, distinta de las carpetas de
- *    proyectos ya existentes. El compose de ejemplo monta esas en solo lectura
- *    justo para que un error aqui no pueda sobrescribir un stack en produccion.
- * 2. El nombre se valida con una expresion estricta ANTES de construir ninguna
- *    ruta, y despues la ruta resultante se vuelve a comprobar con `realpath`:
- *    validar el nombre no basta si la carpeta del proyecto resulta ser un
- *    enlace simbolico que apunta a otro sitio.
+ * 1. Al CREAR, todo cuelga de una unica carpeta raiz. El nombre se valida con
+ *    una expresion estricta ANTES de construir ninguna ruta, y despues la ruta
+ *    resultante se comprueba con `realpath`: validar el nombre no basta si la
+ *    carpeta resulta ser un enlace simbolico que apunta a otro sitio.
+ * 2. Al EDITAR, la ruta no la elegimos nosotros: viene del proyecto, y ya ha
+ *    pasado por `checkComposeAccessibility`, que resuelve enlaces y comprueba
+ *    que caiga dentro de las carpetas permitidas. Aqui solo se escribe sobre
+ *    ficheros que ya existen, nunca se crean rutas nuevas.
  * 3. El `.env` se escribe con permisos 0600. No se puede cifrar en disco porque
  *    Compose tiene que leerlo (y tambien si algun dia se levanta el stack por
  *    SSH), pero al menos no queda legible para el resto del sistema.
+ *
+ * Se puede editar cualquier proyecto cuyo YAML sea accesible y cuya carpeta
+ * admita escritura, lo haya creado esta aplicacion o no. Limitarlo a lo creado
+ * aqui dejaba la funcionalidad inservible en un NAS real, donde los proyectos
+ * los hizo el usuario desde Container Manager.
  */
 import { access, chmod, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
@@ -38,12 +44,55 @@ export class ProjectFilesError extends Error {
       | 'invalid-name'
       | 'already-exists'
       | 'not-found'
-      | 'not-managed'
+      | 'not-editable'
       | 'outside-root',
   ) {
     super(message);
     this.name = 'ProjectFilesError';
   }
+}
+
+/**
+ * Un proyecto ya resuelto, listo para leer o escribir sus ficheros.
+ *
+ * Se recibe resuelto en vez de buscarlo por nombre porque los nombres
+ * colisionan: Container Manager los deriva de la carpeta y dos stacks distintos
+ * pueden llamarse los dos `docker` (ADR-004). El fichero se toma tal cual lo
+ * declara el proyecto, que no siempre se llama `docker-compose.yml`.
+ */
+export interface ProjectTarget {
+  name: string;
+  dir: string;
+  composeFile: string;
+}
+
+/**
+ * Si los ficheros de un proyecto se pueden editar, y si no, por que.
+ *
+ * Se calcula para todos los proyectos al refrescar el inventario, de forma que
+ * la interfaz pueda explicar cada caso en vez de dejar un boton apagado sin
+ * motivo, que es exactamente lo que hacia antes.
+ */
+export async function editability(project: {
+  workingDir: string;
+  configFiles: string[];
+  yamlAccessible: boolean;
+}): Promise<{ editable: boolean; reason: string | null }> {
+  if (!project.yamlAccessible) {
+    return { editable: false, reason: 'yaml-not-accessible' };
+  }
+  // Con varios ficheros no esta claro cual editar, y elegir uno por nuestra
+  // cuenta seria adivinar sobre la configuracion del usuario.
+  if (project.configFiles.length !== 1) {
+    return { editable: false, reason: 'multiple-files' };
+  }
+  try {
+    await access(project.workingDir, constants.W_OK | constants.X_OK);
+    await access(project.configFiles[0]!, constants.W_OK);
+  } catch {
+    return { editable: false, reason: 'read-only-mount' };
+  }
+  return { editable: true, reason: null };
 }
 
 /**
@@ -186,8 +235,8 @@ export class ProjectFilesService {
   }): Promise<{ dir: string; composeFile: string }> {
     const dir = await this.resolveDir(input.name);
 
-    if (this.repos.managedProjects.findByName(input.name)) {
-      throw new ProjectFilesError(`Ya hay un proyecto llamado ${input.name}`, 'already-exists');
+    if (this.repos.managedProjects.findByDir(dir)) {
+      throw new ProjectFilesError(`Ya hay un proyecto en ${dir}`, 'already-exists');
     }
     // Tambien se comprueba el disco: la carpeta puede existir de antes aunque
     // la aplicacion no sepa nada de ella, y pisarla seria destructivo.
@@ -213,6 +262,7 @@ export class ProjectFilesService {
       name: input.name,
       dir,
       createdBy: input.actorUserId,
+      createdHere: true,
     });
 
     return { dir, composeFile };
@@ -240,24 +290,18 @@ export class ProjectFilesService {
   }
 
   /** Lee los ficheros de un proyecto, con los secretos ya ocultos. */
-  async read(name: string): Promise<ProjectFiles> {
-    const row = this.repos.managedProjects.findByName(name);
-    if (!row) throw new ProjectFilesError(`El proyecto ${name} no lo gestiona esta aplicacion`, 'not-managed');
-
-    const composeFile = join(row.dir, COMPOSE_FILENAME);
-    const envFile = join(row.dir, ENV_FILENAME);
-
+  async read(target: ProjectTarget): Promise<ProjectFiles> {
     let compose: string;
     try {
-      compose = await readFile(composeFile, 'utf8');
+      compose = await readFile(target.composeFile, 'utf8');
     } catch {
-      throw new ProjectFilesError(`No se encuentra ${composeFile}`, 'not-found');
+      throw new ProjectFilesError(`No se encuentra ${target.composeFile}`, 'not-found');
     }
 
     let env: EnvEntry[] = [];
     let envExists = false;
     try {
-      env = maskEnv(parseEnv(await readFile(envFile, 'utf8')));
+      env = maskEnv(parseEnv(await readFile(join(target.dir, ENV_FILENAME), 'utf8')));
       envExists = true;
     } catch {
       // Sin .env, que es perfectamente valido.
@@ -265,13 +309,13 @@ export class ProjectFilesService {
 
     let writable = false;
     try {
-      await access(row.dir, constants.W_OK);
+      await access(target.dir, constants.W_OK);
       writable = true;
     } catch {
       // Se muestra igual, pero solo de lectura.
     }
 
-    return { name, dir: row.dir, compose, env, envExists, writable };
+    return { name: target.name, dir: target.dir, compose, env, envExists, writable };
   }
 
   /**
@@ -281,12 +325,9 @@ export class ProjectFilesService {
    * concreta, y asi cada revelado es un evento de auditoria con nombre propio
    * en vez de un volcado del fichero entero.
    */
-  async revealEnvValue(name: string, key: string): Promise<string | null> {
-    const row = this.repos.managedProjects.findByName(name);
-    if (!row) throw new ProjectFilesError(`El proyecto ${name} no lo gestiona esta aplicacion`, 'not-managed');
-
+  async revealEnvValue(target: ProjectTarget, key: string): Promise<string | null> {
     try {
-      const entries = parseEnv(await readFile(join(row.dir, ENV_FILENAME), 'utf8'));
+      const entries = parseEnv(await readFile(join(target.dir, ENV_FILENAME), 'utf8'));
       return entries.find((entry) => entry.key === key)?.value ?? null;
     } catch {
       return null;
@@ -294,11 +335,9 @@ export class ProjectFilesService {
   }
 
   /** Devuelve el `.env` completo en texto, para editarlo. */
-  async readEnvRaw(name: string): Promise<string> {
-    const row = this.repos.managedProjects.findByName(name);
-    if (!row) throw new ProjectFilesError(`El proyecto ${name} no lo gestiona esta aplicacion`, 'not-managed');
+  async readEnvRaw(target: ProjectTarget): Promise<string> {
     try {
-      return await readFile(join(row.dir, ENV_FILENAME), 'utf8');
+      return await readFile(join(target.dir, ENV_FILENAME), 'utf8');
     } catch {
       return '';
     }
@@ -310,26 +349,46 @@ export class ProjectFilesService {
    * El archivado va primero: si falla la escritura, la copia sobra y no estorba;
    * si fuera al reves, un fallo entre escribir y archivar dejaria el cambio
    * aplicado y sin forma de volver atras, que es el caso que importa.
+   *
+   * Vale para cualquier proyecto, creado aqui o no. Para los de fuera se crea la
+   * fila al vuelo, porque hace falta algo de lo que colgar las versiones
+   * archivadas, pero NO se marca como creado aqui: eso cambiaria si tiene que
+   * seguir apareciendo cuando se queda sin contenedores.
    */
   async update(input: {
-    name: string;
+    target: ProjectTarget;
     compose: string;
     env?: string;
     actorUserId: number | null;
   }): Promise<{ dir: string }> {
-    const row = this.repos.managedProjects.findByName(input.name);
-    if (!row) {
+    const { target } = input;
+
+    // Se comprueba aqui tambien, y no solo en la ruta HTTP: es la ultima linea
+    // antes de escribir, y un fallo de permisos a medias dejaria el compose
+    // guardado y el .env no.
+    const previousCompose = await readFile(target.composeFile, 'utf8').catch(() => null);
+    if (previousCompose === null) {
+      throw new ProjectFilesError(`No se encuentra ${target.composeFile}`, 'not-found');
+    }
+    try {
+      await access(target.composeFile, constants.W_OK);
+    } catch {
       throw new ProjectFilesError(
-        `El proyecto ${input.name} no lo gestiona esta aplicacion`,
-        'not-managed',
+        `${target.composeFile} no admite escritura desde aqui. Suele ser que la carpeta esta ` +
+          'montada en solo lectura.',
+        'not-writable',
       );
     }
 
-    const composeFile = join(row.dir, COMPOSE_FILENAME);
-    const envFile = join(row.dir, ENV_FILENAME);
+    const row = this.repos.managedProjects.ensure({
+      name: target.name,
+      dir: target.dir,
+      actorUserId: input.actorUserId,
+    });
 
-    const previousCompose = await readFile(composeFile, 'utf8').catch(() => null);
-    if (previousCompose !== null && previousCompose !== normalizeText(input.compose)) {
+    const envFile = join(target.dir, ENV_FILENAME);
+
+    if (previousCompose !== normalizeText(input.compose)) {
       this.#archive(row.id, 'compose', previousCompose, input.actorUserId);
     }
 
@@ -340,7 +399,7 @@ export class ProjectFilesService {
       }
     }
 
-    await writeFile(composeFile, normalizeText(input.compose), { mode: 0o644 });
+    await writeFile(target.composeFile, normalizeText(input.compose), { mode: 0o644 });
 
     if (input.env !== undefined) {
       if (input.env.trim()) {
@@ -353,7 +412,7 @@ export class ProjectFilesService {
     }
 
     this.repos.managedProjects.touch(row.id);
-    return { dir: row.dir };
+    return { dir: target.dir };
   }
 
   /**
@@ -364,8 +423,8 @@ export class ProjectFilesService {
    * deshace volviendo a crearlo. Borrar en cascada seria irreversible desde un
    * boton de la interfaz.
    */
-  forget(name: string): void {
-    const row = this.repos.managedProjects.findByName(name);
+  forget(dir: string): void {
+    const row = this.repos.managedProjects.findByDir(dir);
     if (row) this.repos.managedProjects.remove(row.id);
   }
 
@@ -379,7 +438,7 @@ export class ProjectFilesService {
   async listPending(knownDirs: Set<string>): Promise<Array<{ name: string; dir: string; configFiles: string[] }>> {
     const pending: Array<{ name: string; dir: string; configFiles: string[] }> = [];
 
-    for (const row of this.repos.managedProjects.list()) {
+    for (const row of this.repos.managedProjects.listCreatedHere()) {
       if (knownDirs.has(row.dir)) continue;
       const composeFile = join(row.dir, COMPOSE_FILENAME);
       try {

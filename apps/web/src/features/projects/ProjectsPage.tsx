@@ -66,8 +66,8 @@ export function ProjectsPage(): ReactNode {
     service: string;
     action: ServiceAction;
   } | null>(null);
-  /** `undefined` en `name` significa crear; una cadena, editar ese proyecto. */
-  const [editor, setEditor] = useState<{ name?: string } | null>(null);
+  /** Sin `project` significa crear; con el, editar ese proyecto. */
+  const [editor, setEditor] = useState<{ project?: { key: string; name: string } } | null>(null);
 
   const dir = useQuery({ queryKey: ['projects-dir'], queryFn: () => api.projectsDir() });
 
@@ -223,11 +223,14 @@ export function ProjectsPage(): ReactNode {
                     items={[
                       {
                         key: 'edit',
+                        // Cualquier proyecto cuyo YAML sea accesible y escribible,
+                        // lo creara esta aplicacion o no. Cuando no se puede, el
+                        // motivo se explica debajo en vez de dejar el boton
+                        // apagado sin decir nada.
                         label: t('projects.editFilesShort'),
-                        // Solo lo creado aqui: sobrescribir el YAML de un stack
-                        // que hizo otro es la clase de sorpresa que no se quiere.
-                        disabled: !project.managed,
-                        onSelect: () => setEditor({ name: project.name }),
+                        disabled: !project.editable,
+                        onSelect: () =>
+                          setEditor({ project: { key: project.key, name: project.name } }),
                       },
                       { type: 'separator', key: 'sep' },
                       {
@@ -245,6 +248,12 @@ export function ProjectsPage(): ReactNode {
               {!project.yamlAccessible ? (
                 <Banner tone="warn" title={t('projects.strategyRecreate')}>
                   {t('projects.yamlNotAccessible')}
+                </Banner>
+              ) : project.editableReason ? (
+                // El YAML se lee pero no se puede editar. Sin esto el usuario
+                // solo ve un boton apagado y no tiene forma de saber por que.
+                <Banner tone="info" title={t('projects.notEditable')}>
+                  {t(`projects.notEditable_${project.editableReason}`)}
                 </Banner>
               ) : null}
 
@@ -349,7 +358,7 @@ export function ProjectsPage(): ReactNode {
         />
       ) : null}
 
-      {editor ? <ProjectEditor name={editor.name} onClose={() => setEditor(null)} /> : null}
+      {editor ? <ProjectEditor project={editor.project} onClose={() => setEditor(null)} /> : null}
 
       {confirmAction ? (
         <ConfirmDialog

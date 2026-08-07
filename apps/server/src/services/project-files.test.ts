@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   ProjectFilesError,
   ProjectFilesService,
+  editability,
   isSecretKey,
   maskEnv,
   parseEnv,
@@ -28,9 +29,17 @@ function fakeRepos() {
     repos: {
       managedProjects: {
         list: () => rows,
-        findByName: (name: string) => rows.find((row) => row.name === name),
+        findByDir: (dir: string) => rows.find((row) => row.dir === dir),
         create: (input: { name: string; dir: string }) => {
-          const row = { id: rows.length + 1, ...input };
+          const row = { id: rows.length + 1, name: input.name, dir: input.dir };
+          rows.push(row);
+          return row;
+        },
+        listCreatedHere: () => rows,
+        ensure: (input: { name: string; dir: string }) => {
+          const found = rows.find((row) => row.dir === input.dir);
+          if (found) return found;
+          const row = { id: rows.length + 1, name: input.name, dir: input.dir };
           rows.push(row);
           return row;
         },
@@ -129,6 +138,13 @@ describe('ProjectFilesService', () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  /** El proyecto ya resuelto, como lo entrega el inventario. */
+  const target = (name: string) => ({
+    name,
+    dir: join(realRoot, name),
+    composeFile: join(realRoot, name, 'docker-compose.yml'),
+  });
+
   it('crea la carpeta con el compose y el .env', async () => {
     const { dir } = await service.create({
       name: 'reproductor',
@@ -215,7 +231,7 @@ describe('ProjectFilesService', () => {
 
   it('archiva la version anterior antes de sobrescribir', async () => {
     await service.create({ name: 'app', compose: 'version: 1\n', env: 'A=1\n', actorUserId: null });
-    await service.update({ name: 'app', compose: 'version: 2\n', env: 'A=2\n', actorUserId: null });
+    await service.update({ target: target('app'), compose: 'version: 2\n', env: 'A=2\n', actorUserId: null });
 
     expect(fake.archived).toEqual([
       { kind: 'compose', content: 'version: 1\n' },
@@ -225,7 +241,7 @@ describe('ProjectFilesService', () => {
 
   it('no archiva si el contenido no ha cambiado', async () => {
     await service.create({ name: 'app', compose: 'version: 1\n', actorUserId: null });
-    await service.update({ name: 'app', compose: 'version: 1\n', actorUserId: null });
+    await service.update({ target: target('app'), compose: 'version: 1\n', actorUserId: null });
     expect(fake.archived).toEqual([]);
   });
 
@@ -236,7 +252,7 @@ describe('ProjectFilesService', () => {
       env: 'A=1',
       actorUserId: null,
     });
-    await service.update({ name: 'app', compose: 'services: {}', env: '', actorUserId: null });
+    await service.update({ target: target('app'), compose: 'services: {}', env: '', actorUserId: null });
     await expect(stat(join(dir, '.env'))).rejects.toThrow();
   });
 
@@ -248,7 +264,7 @@ describe('ProjectFilesService', () => {
       env: 'DB_PASSWORD=secreta',
       actorUserId: null,
     });
-    await service.update({ name: 'app', compose: 'services: {v: 1}', actorUserId: null });
+    await service.update({ target: target('app'), compose: 'services: {v: 1}', actorUserId: null });
     expect(await readFile(join(dir, '.env'), 'utf8')).toContain('secreta');
   });
 
@@ -260,16 +276,43 @@ describe('ProjectFilesService', () => {
       actorUserId: null,
     });
 
-    const files = await service.read('app');
+    const files = await service.read(target('app'));
     expect(files.env.find((e) => e.key === 'TZ')?.value).toBe('Europe/Madrid');
     expect(files.env.find((e) => e.key === 'DB_PASSWORD')?.value).not.toContain('secreta');
-    expect(await service.revealEnvValue('app', 'DB_PASSWORD')).toBe('secreta');
+    expect(await service.revealEnvValue(target('app'), 'DB_PASSWORD')).toBe('secreta');
   });
 
-  it('no deja leer los ficheros de un proyecto que no gestiona', async () => {
+  it('lee y edita tambien un proyecto que no creo la aplicacion', async () => {
+    // Es el caso normal en un NAS: los proyectos los hizo el usuario en
+    // Container Manager. Limitarlo a lo creado aqui dejaba la funcionalidad
+    // inservible justo para quien mas la necesita.
     await mkdir(join(root, 'ajeno'), { recursive: true });
     await writeFile(join(root, 'ajeno', 'docker-compose.yml'), 'services: {}\n');
-    await expect(service.read('ajeno')).rejects.toMatchObject({ code: 'not-managed' });
+    await writeFile(join(root, 'ajeno', '.env'), 'DB_PASSWORD=de-fuera\n');
+
+    const files = await service.read(target('ajeno'));
+    expect(files.compose).toContain('services');
+    expect(files.env.find((e) => e.key === 'DB_PASSWORD')?.value).not.toContain('de-fuera');
+
+    await service.update({ target: target('ajeno'), compose: 'services: {v: 2}\n', actorUserId: null });
+    expect(await readFile(join(root, 'ajeno', 'docker-compose.yml'), 'utf8')).toContain('v: 2');
+    // Y al editarlo se registra, para poder colgar de el las versiones.
+    expect(fake.archived).toEqual([{ kind: 'compose', content: 'services: {}\n' }]);
+  });
+
+  it('respeta el nombre real del fichero de compose', async () => {
+    // Un proyecto de fuera puede llamarlo compose.yaml, y asumir el nombre
+    // habitual haria que la edicion escribiera en un fichero que nadie lee.
+    await mkdir(join(root, 'otro'), { recursive: true });
+    await writeFile(join(root, 'otro', 'compose.yaml'), 'services: {}\n');
+
+    const t = {
+      name: 'otro',
+      dir: join(realRoot, 'otro'),
+      composeFile: join(realRoot, 'otro', 'compose.yaml'),
+    };
+    await service.update({ target: t, compose: 'services: {v: 9}\n', actorUserId: null });
+    expect(await readFile(join(root, 'otro', 'compose.yaml'), 'utf8')).toContain('v: 9');
   });
 
   it('olvidar no borra nada del disco', async () => {
@@ -278,7 +321,7 @@ describe('ProjectFilesService', () => {
       compose: 'services: {}',
       actorUserId: null,
     });
-    service.forget('app');
+    service.forget(join(realRoot, 'app'));
     expect(await readFile(join(dir, 'docker-compose.yml'), 'utf8')).toContain('services');
   });
 
@@ -320,5 +363,56 @@ describe('resolveProjectsDir', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('editability', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'cu-edit-'));
+    await writeFile(join(dir, 'docker-compose.yml'), 'services: {}\n');
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('deja editar un proyecto normal aunque no lo creara la aplicacion', async () => {
+    const result = await editability({
+      workingDir: dir,
+      configFiles: [join(dir, 'docker-compose.yml')],
+      yamlAccessible: true,
+    });
+    expect(result).toEqual({ editable: true, reason: null });
+  });
+
+  it('no deja editar si el YAML no es accesible', async () => {
+    const result = await editability({
+      workingDir: dir,
+      configFiles: [join(dir, 'docker-compose.yml')],
+      yamlAccessible: false,
+    });
+    expect(result.reason).toBe('yaml-not-accessible');
+  });
+
+  it('no deja editar cuando hay varios ficheros', async () => {
+    // Elegir uno por nuestra cuenta seria adivinar sobre la configuracion del
+    // usuario, y escribir en el que no lee nadie.
+    const result = await editability({
+      workingDir: dir,
+      configFiles: [join(dir, 'docker-compose.yml'), join(dir, 'override.yml')],
+      yamlAccessible: true,
+    });
+    expect(result.reason).toBe('multiple-files');
+  });
+
+  it('no deja editar lo que no existe o no admite escritura', async () => {
+    const result = await editability({
+      workingDir: '/no/existe',
+      configFiles: ['/no/existe/docker-compose.yml'],
+      yamlAccessible: true,
+    });
+    expect(result.reason).toBe('read-only-mount');
   });
 });

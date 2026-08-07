@@ -24,7 +24,7 @@ import {
   composeProjectKey,
   readComposeMembership,
 } from '../docker/projects.js';
-import { COMPOSE_FILENAME } from './project-files.js';
+import { COMPOSE_FILENAME, editability } from './project-files.js';
 import { digestsForRepository, parseImageReference } from '../registry/reference.js';
 import { defaultTrackMode } from '../registry/semver.js';
 import type { Repositories } from '../db/repositories/index.js';
@@ -233,7 +233,9 @@ export class InventoryService {
     }
 
     const imagesByRef = new Map(this.repos.inventory.listImages().map((row) => [row.normalized_ref, row]));
-    const managedDirs = new Set(this.repos.managedProjects.list().map((row) => row.dir));
+    const managedDirs = new Set(
+      this.repos.managedProjects.listCreatedHere().map((row) => row.dir),
+    );
     const projects: ComposeProject[] = [];
 
     for (const [key, group] of grouped) {
@@ -257,6 +259,11 @@ export class InventoryService {
       }
 
       const strategy: UpdateStrategy = check.accessible ? 'compose' : 'recreate';
+      const edit = await editability({
+        workingDir: group.workingDir,
+        configFiles: group.configFiles,
+        yamlAccessible: check.accessible,
+      });
 
       projects.push({
         key,
@@ -268,6 +275,8 @@ export class InventoryService {
         containers: group.members,
         updatesAvailable,
         managed: managedDirs.has(group.workingDir),
+        editable: edit.editable,
+        editableReason: edit.reason as ComposeProject['editableReason'],
       });
     }
 
@@ -308,6 +317,12 @@ export class InventoryService {
         this.composeRoots,
       );
 
+      const edit = await editability({
+        workingDir: row.dir,
+        configFiles: [composeFile],
+        yamlAccessible: check.accessible,
+      });
+
       pending.push({
         key: composeProjectKey(row.name, row.dir),
         name: row.name,
@@ -318,6 +333,8 @@ export class InventoryService {
         containers: [],
         updatesAvailable: 0,
         managed: true,
+        editable: edit.editable,
+        editableReason: edit.reason as ComposeProject['editableReason'],
       });
     }
 

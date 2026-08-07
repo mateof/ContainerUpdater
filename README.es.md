@@ -250,10 +250,25 @@ en su sitio (que es lo único que permite resolver las `${VARIABLE}` contra el
 ninguna carpeta a medias. Si marcas levantarlo, arranca en segundo plano y el
 progreso se ve en **Actualizaciones**.
 
-Los proyectos creados aquí se pueden editar después, desde el menú de los tres
-puntos. Los que hiciste en Container Manager o por SSH se ven y se manejan, pero
-sus ficheros no se tocan: sobrescribir algo que escribió otro es la clase de
-sorpresa que no interesa en un NAS.
+### Editar los que ya tienes
+
+Desde el menú de los tres puntos de cada proyecto, **da igual quién lo creara**.
+Se pueden editar los que hiciste en Container Manager o por SSH exactamente
+igual que los creados aquí.
+
+Lo que decide si se puede es lo que de verdad importa, no la procedencia:
+
+- Que su fichero sea accesible desde el contenedor.
+- Que sea **uno solo**. Con varios (`-f a.yml -f b.yml`) no está claro cuál
+  habría que editar, y elegir uno por nuestra cuenta sería adivinar sobre tu
+  configuración.
+- Que su carpeta admita escritura, o sea que no esté montada con `:ro`.
+
+Cuando no se puede, la ficha del proyecto dice cuál de las tres falla, en vez de
+dejarte un botón apagado sin explicación.
+
+Se respeta el nombre real del fichero: si tu proyecto usa `compose.yaml`, se
+edita ese y no se crea un `docker-compose.yml` al lado que no leería nadie.
 
 ### Qué se hace con el `.env`
 

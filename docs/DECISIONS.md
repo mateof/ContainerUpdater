@@ -299,9 +299,37 @@ Materialising the file only for the duration of the Compose run and deleting it
 afterwards was considered and ruled out: it would break every use outside the
 app, and a stack you cannot start over SSH is a trap for whoever inherits it.
 
-## Only projects created here can be edited
+## Any project can be edited, not only the ones created here
 
-The files of a project made in Container Manager or over SSH are read, never
-written. It would be technically easy to allow it and it would look like a
-feature, but overwriting a file somebody else wrote, from a web panel, is the
-kind of surprise that destroys trust in a tool that has the Docker socket.
+The first version only allowed editing what the app had created, on the argument
+that overwriting a file somebody else wrote destroys trust. That argument does
+not hold: on a personal NAS that "somebody else" is the user, and the app could
+already do considerably more destructive things to those projects (`down`,
+recreating services) than editing a text file.
+
+The practical result was that the feature was useless to precisely the people who
+needed it: on a real NAS every project was made by the user in Container Manager,
+so the button was always disabled.
+
+What decides now is what actually determines whether writing is possible:
+
+1. The YAML is reachable from the container.
+2. There is a single compose file. With several it is not clear which to edit,
+   and picking one would be guessing about the user's configuration.
+3. The folder is writable.
+
+All three reasons travel to the interface, which says which one is failing rather
+than leaving a disabled button saying nothing, which is exactly what it did
+before.
+
+### Consequence in the data model
+
+`managed_projects.name` stopped being UNIQUE. While only projects created here
+were recorded, with validated names, the constraint was fine; as soon as outside
+ones come in, it would reject the second project called `docker`, which is a real
+and documented case (ADR-004). Identity moved to the directory, and a
+`created_here` column tells apart what was created here, which has to stay
+visible even with no containers, from what has merely been edited.
+
+For the same reason, files are addressed by **project key** rather than by name.
+Addressing by name would have walked back into ADR-004 through another door.

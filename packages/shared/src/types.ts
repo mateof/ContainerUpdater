@@ -132,13 +132,19 @@ export interface ComposeProject {
   strategy: UpdateStrategy;
   containers: ContainerSummary[];
   updatesAvailable: number;
-  /**
-   * Creado desde la aplicacion, con lo que sus ficheros se pueden editar aqui.
-   * Un proyecto creado en Container Manager o por SSH no lo es, y sus ficheros
-   * solo se leen: sobrescribir algo que no hemos escrito nosotros es la clase
-   * de sorpresa que nadie quiere en un NAS.
-   */
+  /** Creado desde esta aplicacion. Se muestra tal cual, no decide nada. */
   managed: boolean;
+  /**
+   * Si sus ficheros se pueden editar desde aqui.
+   *
+   * Depende de lo que de verdad importa (que el YAML sea accesible, que sea uno
+   * solo y que la carpeta admita escritura), no de quien lo creo. Antes solo se
+   * dejaba editar lo creado aqui, lo que dejaba la funcionalidad inservible en
+   * un NAS donde los proyectos los hizo el usuario en Container Manager.
+   */
+  editable: boolean;
+  /** Por que no se puede editar, para poder explicarlo en vez de apagar un boton. */
+  editableReason: 'yaml-not-accessible' | 'multiple-files' | 'read-only-mount' | null;
 }
 
 // ---------------------------------------------------------------------------

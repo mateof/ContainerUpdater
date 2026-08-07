@@ -227,6 +227,13 @@ export const es = {
       'Pega o sube un docker-compose.yml y, si hace falta, un .env. Se crea la carpeta con el nombre que le des y se levanta.',
     editFiles: 'Ficheros de {{name}}',
     editFilesShort: 'Editar ficheros',
+    notEditable: 'Los ficheros de este proyecto no se pueden editar aqui',
+    'notEditable_yaml-not-accessible':
+      'Su fichero no es accesible desde el contenedor. Montalo con la misma ruta que en el sistema anfitrion.',
+    'notEditable_multiple-files':
+      'El proyecto usa varios ficheros de compose y no esta claro cual habria que editar.',
+    'notEditable_read-only-mount':
+      'Su carpeta esta montada en solo lectura. Quitale el ":ro" al montaje para poder editarla.',
     editFilesHelp: 'Al guardar puedes volver a aplicar el proyecto para que los cambios tengan efecto.',
     nameHelp:
       'Da nombre al proyecto y a su carpeta. Minusculas, digitos, guion y guion bajo.',

@@ -227,22 +227,31 @@ export const api = {
       body,
     ),
 
-  /** Ficheros del proyecto, con los valores sensibles ya ocultos. */
-  projectFiles: (name: string) =>
-    get<{ files: ProjectFiles }>(`/projects/${encodeURIComponent(name)}/files`),
+  /**
+   * Ficheros del proyecto, con los valores sensibles ya ocultos.
+   *
+   * Por POST porque la clave (nombre + directorio) va en el cuerpo: en la ruta,
+   * las rutas largas de un NAS desbordan el limite y devuelven 414.
+   */
+  projectFiles: (projectKey: string) =>
+    post<{ files: ProjectFiles }>('/projects/files/read', { projectKey }),
 
   /** El .env en texto plano. Se pide solo al entrar a editar, y queda auditado. */
-  projectEnvRaw: (name: string) =>
-    get<{ content: string }>(`/projects/${encodeURIComponent(name)}/env`),
+  projectEnvRaw: (projectKey: string) =>
+    post<{ content: string }>('/projects/files/env', { projectKey }),
 
-  revealEnvValue: (name: string, key: string) =>
-    post<{ value: string }>('/projects/env/reveal', { name, key }),
+  revealEnvValue: (projectKey: string, key: string) =>
+    post<{ value: string }>('/projects/env/reveal', { projectKey, key }),
 
-  saveProjectFiles: (body: { name: string; compose: string; env?: string; apply: boolean }) =>
-    put<{ ok: true; job: UpdateJob | null; applyError?: string }>('/projects/files', body),
+  saveProjectFiles: (body: {
+    projectKey: string;
+    compose: string;
+    env?: string;
+    apply: boolean;
+  }) => put<{ ok: true; job: UpdateJob | null; applyError?: string }>('/projects/files', body),
 
   /** Deja de gestionarlo. NO borra nada del disco. */
-  forgetProject: (name: string) => del<{ ok: true }>(`/projects/${encodeURIComponent(name)}`),
+  forgetProject: (projectKey: string) => post<{ ok: true }>('/projects/forget', { projectKey }),
 
   /** Accion de Compose sobre un servicio. Devuelve 202: corre en segundo plano. */
   serviceAction: (projectKey: string, serviceName: string, action: ServiceAction) =>

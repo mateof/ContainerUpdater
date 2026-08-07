@@ -275,14 +275,26 @@ const es: HelpSection[] = [
         title: 'Un stack tuyo no se puede pisar',
         text: 'No depende del montaje sino del codigo: crear un proyecto sobre una carpeta que ya existe se rechaza, y solo se pueden editar los proyectos creados desde aqui. El :ro es una capa de mas, no la proteccion principal. Sin ninguna carpeta escribible todo lo demas funciona igual y el boton de crear sale desactivado explicando por que.',
       },
-      { type: 'h', text: 'Editar despues' },
+      { type: 'h', text: 'Editar los que ya tienes' },
       {
         type: 'p',
-        text: 'En el menu de los tres puntos de cada proyecto tienes Editar ficheros. Al guardar puedes volver a aplicar el proyecto para que los cambios surtan efecto, o dejarlo para luego.',
+        text: 'En el menu de los tres puntos de cada proyecto tienes Editar ficheros, da igual quien lo creara. Los que hiciste en Container Manager o por SSH se editan igual que los creados aqui. Al guardar puedes volver a aplicar el proyecto para que los cambios surtan efecto, o dejarlo para luego.',
       },
       {
         type: 'p',
-        text: 'Solo se pueden editar los proyectos creados aqui. Los que hiciste en Container Manager o por SSH se ven y se manejan, pero sus ficheros no se tocan: sobrescribir algo que escribio otro es la clase de sorpresa que no interesa en un NAS.',
+        text: 'Lo que decide si se puede editar no es quien lo creo, sino tres cosas:',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Que su fichero sea accesible desde el contenedor.',
+          'Que sea uno solo. Con varios no esta claro cual habria que editar, y elegirlo por ti seria adivinar sobre tu configuracion.',
+          'Que su carpeta admita escritura, o sea que no este montada con :ro.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'Cuando no se puede, la ficha del proyecto dice cual de las tres falla. Se respeta ademas el nombre real del fichero: si tu proyecto usa compose.yaml, se edita ese.',
       },
       { type: 'h', text: 'Que pasa con el .env' },
       {
@@ -627,14 +639,26 @@ const en: HelpSection[] = [
         title: 'One of your stacks cannot be overwritten',
         text: 'That does not come from the mount but from the code: creating a project over a folder that already exists is refused, and only projects created here can be edited. The :ro is one more layer, not the main protection. With no writable folder at all everything else works the same and the create button comes up disabled saying why.',
       },
-      { type: 'h', text: 'Editing later' },
+      { type: 'h', text: 'Editing the ones you already have' },
       {
         type: 'p',
-        text: 'The three-dot menu on each project has Edit files. When you save you can re-apply the project so the changes take effect, or leave it for later.',
+        text: 'The three-dot menu on each project has Edit files, regardless of who created it. The ones you made in Container Manager or over SSH edit just like the ones created here. When you save you can re-apply the project so the changes take effect, or leave it for later.',
       },
       {
         type: 'p',
-        text: 'Only projects created here can be edited. The ones you made in Container Manager or over SSH are visible and manageable, but their files are left alone: overwriting something somebody else wrote is the kind of surprise nobody wants on a NAS.',
+        text: 'What decides whether you can edit is not who created it, but three things:',
+      },
+      {
+        type: 'ul',
+        items: [
+          'That its file is reachable from inside the container.',
+          'That there is only one. With several it is not clear which to edit, and picking for you would be guessing about your configuration.',
+          'That its folder is writable, meaning it is not mounted with :ro.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'When you cannot, the project card says which of the three is failing. The real filename is respected too: if your project uses compose.yaml, that is what gets edited.',
       },
       { type: 'h', text: 'What happens to the .env' },
       {

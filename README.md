@@ -246,10 +246,26 @@ against the `.env` next to it). If the file has an error you are told which one
 and no half-made folder is left behind. If you tick bring it up, it starts in the
 background and progress shows under **Updates**.
 
-Projects created here can be edited afterwards, from the three-dot menu. The ones
-you made in Container Manager or over SSH are visible and manageable, but their
-files are left alone: overwriting something somebody else wrote is the kind of
-surprise nobody wants on a NAS.
+### Editing the ones you already have
+
+From the three-dot menu on each project, **regardless of who created it**. The
+ones you made in Container Manager or over SSH can be edited exactly like the
+ones created here.
+
+What decides whether you can is what actually matters, not the provenance:
+
+- That its file is reachable from inside the container.
+- That there is **only one**. With several (`-f a.yml -f b.yml`) it is not clear
+  which one to edit, and picking one ourselves would be guessing about your
+  configuration.
+- That its folder is writable, meaning it is not mounted with `:ro`.
+
+When you cannot, the project card says which of the three is failing, rather than
+leaving you a disabled button with no explanation.
+
+The real filename is respected: if your project uses `compose.yaml`, that is what
+gets edited rather than creating a `docker-compose.yml` next to it that nothing
+would read.
 
 ### What happens to the `.env`
 

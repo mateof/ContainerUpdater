@@ -223,6 +223,13 @@ export const en: Translated<Catalog> = {
       'Paste or upload a docker-compose.yml and, if you need one, an .env. A folder is created with the name you give it and the stack is brought up.',
     editFiles: 'Files for {{name}}',
     editFilesShort: 'Edit files',
+    notEditable: 'This project files cannot be edited here',
+    'notEditable_yaml-not-accessible':
+      'Its file is not reachable from the container. Mount it at the same path as on the host.',
+    'notEditable_multiple-files':
+      'The project uses several compose files and it is not clear which one to edit.',
+    'notEditable_read-only-mount':
+      'Its folder is mounted read-only. Drop the ":ro" from the mount to be able to edit it.',
     editFilesHelp: 'When you save you can re-apply the project so the changes take effect.',
     nameHelp: 'Names both the project and its folder. Lowercase, digits, dash and underscore.',
     nameTaken: 'There is already a project with that name',
