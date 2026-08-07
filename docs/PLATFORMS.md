@@ -12,9 +12,11 @@ starting is enough.
 This document explains what gets detected, what is actually verified, and what
 the compose looks like for each environment.
 
-The examples also mount a writable folder (`CU_PROJECTS_DIR`), which is what
-makes creating projects from the web possible. Drop it and everything else keeps
-working the same.
+The examples mount the stacks folder **writable**, which is what makes creating
+projects from the web possible: new ones are created right beside the existing
+ones. Add `:ro` instead if you are not going to create projects, and everything
+else keeps working the same. `CU_PROJECTS_DIR` is only needed if you want new
+projects to land somewhere other than where the existing ones live.
 
 ---
 
@@ -110,14 +112,12 @@ services:
     environment:
       TZ: Europe/Madrid
       CU_ENCRYPTION_KEY: ${CU_ENCRYPTION_KEY}
-      CU_PROJECTS_DIR: /srv/stacks/own
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/data
-      # Wherever your stacks are, same path on both sides.
-      - /srv/stacks:/srv/stacks:ro
-      # Writing only here, so projects can be created from the web.
-      - /srv/stacks/own:/srv/stacks/own
+      # Wherever your stacks are, same path on both sides. Writable so new
+      # projects can be created alongside them; add :ro if you do not want that.
+      - /srv/stacks:/srv/stacks
       - /proc:/host/proc:ro
 ```
 
@@ -221,7 +221,6 @@ services:
       # Your stacks, not the ones from the apps interface. Setting it explicitly
       # stops detection pulling in /mnt/.ix-apps when it sees containers there.
       CU_COMPOSE_ROOTS: /mnt/tank/stacks
-      CU_PROJECTS_DIR: /mnt/tank/stacks
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /mnt/tank/apps/container-updater:/data
@@ -254,6 +253,8 @@ services:
     environment:
       TZ: Europe/Madrid
       CU_ENCRYPTION_KEY: ${CU_ENCRYPTION_KEY}
+      # Unraid has no Compose folders to derive, so if you want to create
+      # projects from the web you have to say where.
       CU_PROJECTS_DIR: /mnt/user/appdata/cu-projects
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -295,7 +296,6 @@ services:
       - "8099:8080"
     environment:
       CU_ENCRYPTION_KEY: ${CU_ENCRYPTION_KEY}
-      CU_PROJECTS_DIR: /Users/ana/projects/own
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/data
@@ -320,7 +320,7 @@ up:
 | Project folders empty | There are no containers with Compose labels, or none of their folders is reachable. |
 | Platform "Unverified" | Support is inferred from that platform's documentation, not tested on it. It should work; if it does not, that is a bug worth hearing about. |
 | System metrics unavailable | `/proc:/host/proc:ro` is missing. The app works the same, with approximate metrics. |
-| Projects cannot be created | There is no writable folder. Mount one and point `CU_PROJECTS_DIR` at it. |
+| Projects cannot be created | No project folder is writable. Drop the `:ro` from the stacks mount, or mount a writable folder and point `CU_PROJECTS_DIR` at it. |
 
 ---
 

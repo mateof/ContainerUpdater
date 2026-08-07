@@ -1,6 +1,6 @@
 {
   "name": "container-updater",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Panel autoalojado para vigilar y actualizar las imagenes Docker de un NAS Synology",
   "license": "MIT",

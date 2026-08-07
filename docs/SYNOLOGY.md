@@ -61,28 +61,37 @@ in sync. The interface tells you which method each project will use and why.
 If your projects are on `volume2`, adjust the mount and `CU_COMPOSE_ROOTS`, which
 takes a comma-separated list.
 
-### Read-only
+### Read-only, or not
 
-That mount can and should be `:ro`. Compose only needs to **read** the YAML; the
-volumes the services declare are resolved by the NAS daemon and never go through
-this mount.
+If you are **not** going to create projects from the web, that mount can and
+should be `:ro`. Compose only needs to **read** the YAML; the volumes the
+services declare are resolved by the NAS daemon and never go through this mount.
 
-### The writable folder for new projects
+If you **do** want to create projects, drop the `:ro` and that is it:
 
-Creating projects from the web does need write access, and that is why it goes in
-a **separate** mount:
+```yaml
+- /volume1/docker:/volume1/docker
+```
+
+It is the same folder your stacks already live in, and new projects are created
+right beside them, each in its own subfolder. `CU_PROJECTS_DIR` is not needed:
+without it, the first writable project folder is used.
+
+That the app cannot overwrite one of your stacks does not come from this mount
+but from the code: it refuses to create over a folder that already exists, and
+only lets you edit projects created from the web. The `:ro` is one more layer,
+not the main protection.
+
+If you want both (your stacks staying read-only and being able to create
+projects), mount both paths and point `CU_PROJECTS_DIR` at the second:
 
 ```yaml
 - /volume1/docker:/volume1/docker:ro
 - /volume1/docker/projects:/volume1/docker/projects
 ```
 
-Reading still covers all of `/volume1/docker`, but writing is confined to that
-subfolder. It is deliberate: a mistake while creating a project cannot overwrite
-a stack that already works. Point `CU_PROJECTS_DIR` at it.
-
-If you leave that mount out, everything else works exactly the same and the app
-says why the create button is disabled.
+With no writable folder at all, everything else works exactly the same and the
+app says why the create button is disabled.
 
 ## "No IP address pools available"
 

@@ -47,11 +47,10 @@ reúne en un sitio lo que hasta ahora obligaba a entrar por SSH.
 Si no pusiste `CU_ADMIN_PASSWORD`, la contraseña inicial se escribe una sola vez
 en los logs: `docker logs container-updater`.
 
-### Los tres montajes que hay que entender
+### Los dos montajes que hay que entender
 
 ```yaml
-- /volume1/docker:/volume1/docker:ro
-- /volume1/docker/proyectos:/volume1/docker/proyectos
+- /volume1/docker:/volume1/docker
 - /proc:/host/proc:ro
 ```
 
@@ -66,15 +65,30 @@ Va en **solo lectura** a propósito: Compose únicamente necesita leer el YAML.
 Los volúmenes que declaren los servicios los resuelve el daemon del NAS y no
 pasan por este montaje.
 
-El segundo es el único sitio del anfitrión donde la aplicación **escribe**, y es
-lo que permite crear proyectos desde la web. Va en una subcarpeta del anterior a
-propósito: la lectura sigue cubriendo todo `/volume1/docker`, pero la escritura
-se limita a esa carpeta, de forma que un fallo creando un proyecto no puede
-tocar un stack que ya te funciona. Si lo quitas se pierde solo la creación de
-proyectos y la aplicación lo explica en la propia pantalla.
+Va **sin `:ro`** para poder crear proyectos desde la web. Es la misma carpeta
+donde ya viven tus stacks: los nuevos se crean ahí al lado, cada uno en su
+subcarpeta, que es donde esperarías encontrarlos. Si no vas a crear proyectos
+desde aquí, ponle `:ro`: Compose solo necesita **leer** el YAML, y los volúmenes
+que declaren los servicios los resuelve el daemon del NAS sin pasar por este
+montaje.
 
-El tercero da las métricas reales del NAS. Sin él la aplicación funciona, pero
-muestra métricas aproximadas derivadas de Docker y lo indica en la interfaz.
+Que la aplicación no pise un stack tuyo no depende de este montaje sino del
+código: se niega a crear sobre una carpeta que ya existe, y solo deja editar los
+proyectos creados desde la web. El `:ro` es una capa de más, no la protección
+principal.
+
+Si aun así prefieres que la carpeta de tus stacks siga siendo de solo lectura y
+además poder crear proyectos, monta las dos y apunta `CU_PROJECTS_DIR` a la
+segunda:
+
+```yaml
+- /volume1/docker:/volume1/docker:ro
+- /volume1/docker/proyectos:/volume1/docker/proyectos
+```
+
+El montaje de `/proc` es el que da las métricas reales del NAS. Sin él la
+aplicación funciona, pero muestra métricas aproximadas derivadas de Docker y lo
+indica en la interfaz.
 
 Si tu volumen no es `volume1`, ajusta el montaje y `CU_COMPOSE_ROOTS`, que
 acepta una lista separada por comas.
@@ -226,8 +240,8 @@ El nombre que le des hace dos cosas: nombra el proyecto de Compose y nombra su
 carpeta. Por eso solo admite minúsculas, dígitos, guion y guion bajo.
 
 ```
-/volume1/docker/proyectos/reproductor/docker-compose.yml
-/volume1/docker/proyectos/reproductor/.env
+/volume1/docker/reproductor/docker-compose.yml
+/volume1/docker/reproductor/.env
 ```
 
 Antes de dar nada por bueno se valida con el propio Compose, ya con los ficheros

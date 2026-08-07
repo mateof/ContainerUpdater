@@ -61,28 +61,37 @@ interfaz indica qué método usará cada proyecto y por qué.
 Si tus proyectos están en `volume2`, ajusta el montaje y `CU_COMPOSE_ROOTS`, que
 acepta una lista separada por comas.
 
-### Solo lectura
+### Solo lectura, o no
 
-Ese montaje puede y debe ir `:ro`. Compose únicamente necesita **leer** el YAML;
-los volúmenes que declaren los servicios los resuelve el daemon del NAS y no
-pasan por este montaje.
+Si **no** vas a crear proyectos desde la web, ese montaje puede y debe ir `:ro`.
+Compose únicamente necesita **leer** el YAML; los volúmenes que declaren los
+servicios los resuelve el daemon del NAS y no pasan por este montaje.
 
-### La carpeta con escritura para los proyectos nuevos
+Si **sí** quieres crear proyectos, quítale el `:ro` y ya está:
 
-Crear proyectos desde la web sí necesita escritura, y por eso va en un montaje
-**aparte**:
+```yaml
+- /volume1/docker:/volume1/docker
+```
+
+Es la misma carpeta donde ya viven tus stacks, y los proyectos nuevos se crean
+ahí al lado, cada uno en su subcarpeta. No hace falta `CU_PROJECTS_DIR`: sin
+definirla se usa la primera carpeta de proyectos que admita escritura.
+
+Que la aplicación no pise un stack tuyo no depende de este montaje sino del
+código: se niega a crear sobre una carpeta que ya existe, y solo deja editar los
+proyectos creados desde la web. El `:ro` es una capa de más, no la protección
+principal.
+
+Si quieres las dos cosas (que tus stacks sigan en solo lectura y poder crear
+proyectos), monta las dos rutas y apunta `CU_PROJECTS_DIR` a la segunda:
 
 ```yaml
 - /volume1/docker:/volume1/docker:ro
 - /volume1/docker/proyectos:/volume1/docker/proyectos
 ```
 
-La lectura sigue cubriendo todo `/volume1/docker`, pero la escritura se limita a
-esa subcarpeta. Es deliberado: un fallo creando un proyecto no puede sobrescribir
-un stack en producción. Apunta ahí `CU_PROJECTS_DIR`.
-
-Si no pones ese montaje, todo lo demás funciona igual y la aplicación explica por
-qué el botón de crear sale desactivado.
+Sin ninguna carpeta escribible, todo lo demás funciona igual y la aplicación
+explica por qué el botón de crear sale desactivado.
 
 ## "No hay rangos de IP disponibles"
 

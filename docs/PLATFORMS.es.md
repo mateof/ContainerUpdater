@@ -99,14 +99,12 @@ services:
     environment:
       TZ: Europe/Madrid
       CU_ENCRYPTION_KEY: ${CU_ENCRYPTION_KEY}
-      CU_PROJECTS_DIR: /srv/stacks/propios
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/data
-      # Donde tengas tus stacks, con la misma ruta a ambos lados.
-      - /srv/stacks:/srv/stacks:ro
-      # Escritura solo aqui, para poder crear proyectos desde la web.
-      - /srv/stacks/propios:/srv/stacks/propios
+      # Donde tengas tus stacks, con la misma ruta a ambos lados. Con escritura
+      # para poder crear proyectos al lado; ponle :ro si no lo quieres.
+      - /srv/stacks:/srv/stacks
       - /proc:/host/proc:ro
 ```
 
@@ -298,7 +296,7 @@ de WSL, no rutas `C:\`.
 | Carpetas de proyectos vacío | No hay contenedores con labels de Compose, o ninguna de sus carpetas es accesible. |
 | Plataforma "Sin comprobar" | El soporte está deducido de la documentación de esa plataforma, no probado en ella. Debería funcionar; si no lo hace, es un fallo que interesa conocer. |
 | Métricas del sistema no disponibles | Falta `/proc:/host/proc:ro`. La aplicación funciona igual, con métricas aproximadas. |
-| No se pueden crear proyectos | No hay ninguna carpeta con permiso de escritura. Monta una y apúntala con `CU_PROJECTS_DIR`. |
+| No se pueden crear proyectos | Ninguna carpeta de proyectos admite escritura. Quítale el `:ro` al montaje de los stacks, o monta una carpeta con escritura y apúntala con `CU_PROJECTS_DIR`. |
 
 ---
 

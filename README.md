@@ -48,11 +48,10 @@ it gathers in one place the things that used to mean opening an SSH session.
 If you did not set `CU_ADMIN_PASSWORD`, the initial password is written once to
 the logs: `docker logs container-updater`.
 
-### The three mounts worth understanding
+### The two mounts worth understanding
 
 ```yaml
-- /volume1/docker:/volume1/docker:ro
-- /volume1/docker/projects:/volume1/docker/projects
+- /volume1/docker:/volume1/docker
 - /proc:/host/proc:ro
 ```
 
@@ -63,19 +62,29 @@ the container if the mount point matches exactly. Mounting it somewhere else doe
 not break the app, but every project would fall back to being updated by
 recreating the container through the API instead of with Compose.
 
-It is **read-only** on purpose: Compose only needs to read the YAML. The volumes
-the services declare are resolved by the NAS daemon and never go through this
-mount.
+It goes **without `:ro`** so projects can be created from the web. It is the same
+folder your stacks already live in: new ones are created right beside them, each
+in its own subfolder, which is where you would expect to find them. If you are
+not going to create projects from here, add `:ro`: Compose only needs to **read**
+the YAML, and the volumes the services declare are resolved by the NAS daemon
+without going through this mount.
 
-The second is the only place on the host where the app **writes**, and it is what
-makes creating projects from the web possible. It sits in a subfolder of the
-first on purpose: reading still covers all of `/volume1/docker`, but writing is
-confined to that folder, so a mistake while creating a project cannot touch a
-stack that already works. Drop it and you lose only project creation, and the app
-says so on the screen itself.
+That the app cannot overwrite one of your stacks does not come from this mount
+but from the code: it refuses to create over a folder that already exists, and
+only lets you edit projects created from the web. The `:ro` is one more layer,
+not the main protection.
 
-The third gives you the real NAS metrics. Without it the app still works, but
-shows approximate figures derived from Docker and says so in the interface.
+If you would still rather keep your stacks folder read-only and be able to create
+projects, mount both and point `CU_PROJECTS_DIR` at the second:
+
+```yaml
+- /volume1/docker:/volume1/docker:ro
+- /volume1/docker/projects:/volume1/docker/projects
+```
+
+The `/proc` mount is the one that gives you the real NAS metrics. Without it the
+app still works, but shows approximate figures derived from Docker and says so in
+the interface.
 
 If your volume is not `volume1`, adjust the mount and `CU_COMPOSE_ROOTS`, which
 takes a comma-separated list.
@@ -227,8 +236,8 @@ The name you give it does two things: it names the Compose project and it names
 its folder. That is why it only accepts lowercase, digits, dash and underscore.
 
 ```
-/volume1/docker/projects/player/docker-compose.yml
-/volume1/docker/projects/player/.env
+/volume1/docker/player/docker-compose.yml
+/volume1/docker/player/.env
 ```
 
 Before anything is taken as good it is validated with Compose itself, with the

@@ -68,15 +68,15 @@ services:
       # dice que estan tus proyectos. Definirla desactiva esa deduccion.
       CU_COMPOSE_ROOTS: /volume1/docker
 
-      # Carpeta donde se crean los proyectos que hagas desde la aplicacion.
+      # Carpeta donde se crean los proyectos que hagas desde la web.
       #
-      # Va aparte de la anterior porque ESTA tiene que admitir escritura, y la
-      # de arriba se monta en solo lectura a proposito. Asi un fallo creando un
-      # proyecto no puede sobrescribir un stack que ya te funciona.
+      # NO HACE FALTA en el montaje de abajo: sin definirla se usa la primera
+      # carpeta de proyectos que admita escritura, con lo que los proyectos
+      # nuevos aparecen junto a los que ya tienes, que es lo normal.
       #
-      # Si la quitas, no se pueden crear proyectos desde la web y la aplicacion
-      # lo explica en Ajustes, Entorno. Todo lo demas sigue igual.
-      CU_PROJECTS_DIR: /volume1/docker/proyectos
+      # Solo tiene sentido definirla si quieres que los proyectos nuevos vayan a
+      # OTRO sitio distinto del de los existentes (ver la nota del montaje).
+      # CU_PROJECTS_DIR: /volume1/docker/proyectos
 
       # Opcional desde 0.6.0: sin definirlo se sondean los sockets habituales
       # de Docker y de Podman.
@@ -99,18 +99,22 @@ services:
       # Montarlo en otro sitio rompe la estrategia de compose y todo pasaria a
       # recrearse por API.
       #
-      # Va en solo lectura a proposito: Compose unicamente necesita LEER el
-      # YAML. Los volumenes que declaren los servicios los resuelve el daemon
-      # del NAS, no pasan por este montaje.
-      - /volume1/docker:/volume1/docker:ro
-
-      # Carpeta de los proyectos creados desde la aplicacion. CON ESCRITURA.
+      # SIN ":ro" para poder crear proyectos desde la web. Es la misma carpeta
+      # donde ya viven tus stacks: los nuevos se crean ahi al lado, cada uno en
+      # su subcarpeta. Que la aplicacion no pise uno existente no depende de
+      # este montaje sino del propio codigo, que se niega a crear sobre una
+      # carpeta que ya existe y solo deja editar lo que se creo desde la web.
       #
-      # Es el unico sitio del anfitrion donde la aplicacion escribe. Va despues
-      # del montaje de arriba y en una subcarpeta suya, de forma que la lectura
-      # sigue cubriendo todo /volume1/docker pero la escritura se limita a esta.
-      # Si la quitas se pierde solo la creacion de proyectos.
-      - /volume1/docker/proyectos:/volume1/docker/proyectos
+      # Si no vas a crear proyectos desde aqui, ponle ":ro". Compose solo
+      # necesita LEER el YAML, y los volumenes que declaren los servicios los
+      # resuelve el daemon del NAS sin pasar por este montaje.
+      #
+      # Si prefieres que la carpeta con tus stacks siga siendo de solo lectura
+      # Y ademas poder crear proyectos, monta las dos y apunta CU_PROJECTS_DIR
+      # a la segunda:
+      #   - /volume1/docker:/volume1/docker:ro
+      #   - /volume1/docker/proyectos:/volume1/docker/proyectos
+      - /volume1/docker:/volume1/docker
 
       # Metricas reales del NAS (CPU, memoria, carga, uptime). Sin este montaje
       # la aplicacion funciona, pero muestra metricas aproximadas y lo indica.
