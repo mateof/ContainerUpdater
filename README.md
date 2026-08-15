@@ -1,5 +1,14 @@
 # ContainerUpdater
 
+<p align="center">
+  <a href="https://github.com/mateof/ContainerUpdater/actions/workflows/release.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/mateof/ContainerUpdater/release.yml?branch=main&amp;label=CI&amp;logo=github"></a>
+  <a href="https://github.com/mateof/ContainerUpdater/releases/latest"><img alt="Version" src="https://img.shields.io/github/v/release/mateof/ContainerUpdater?label=version&amp;color=blue"></a>
+  <a href="https://github.com/mateof/ContainerUpdater/pkgs/container/container-updater"><img alt="GHCR image" src="https://img.shields.io/badge/ghcr.io-image-2496ED?logo=docker&amp;logoColor=white"></a>
+  <a href="https://nodejs.org/"><img alt="Node.js" src="https://img.shields.io/badge/Node.js-TypeScript-339933?logo=nodedotjs&amp;logoColor=white"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/mateof/ContainerUpdater"></a>
+  <a href="https://github.com/mateof/ContainerUpdater/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/mateof/ContainerUpdater"></a>
+</p>
+
 ***English** · [Español](README.es.md)*
 
 Self-hosted panel for watching and updating the Docker images on a **Synology NAS
