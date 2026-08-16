@@ -8,7 +8,14 @@ interface AuthState {
   user: CurrentUser | null;
   loading: boolean;
   needsSetup: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (
+    username: string,
+    password: string,
+  ) => Promise<{ needsTotp: true; ticket: string } | { needsTotp: false }>;
+  loginTotp: (
+    ticket: string,
+    code: string,
+  ) => Promise<{ usedRecovery: boolean; recoveryCodesLeft: number }>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   setUser: (user: CurrentUser) => void;
@@ -55,10 +62,28 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     };
   }, []);
 
+  /**
+   * Primer paso del login.
+   *
+   * Devuelve el ticket cuando falta el segundo factor, en vez de una sesion. La
+   * pantalla decide entonces si entra o pide el codigo; el hook no lo hace por
+   * su cuenta porque la sesion no existe todavia.
+   */
   const login = useCallback(async (username: string, password: string) => {
-    const { user: current } = await api.login(username, password);
-    setUser(current);
-    setLocale(current.locale);
+    const result = await api.login(username, password);
+    if ('needsTotp' in result) return { needsTotp: true as const, ticket: result.ticket };
+
+    setUser(result.user);
+    setLocale(result.user.locale);
+    return { needsTotp: false as const };
+  }, []);
+
+  /** Segundo paso: aqui si llega la sesion. */
+  const loginTotp = useCallback(async (ticket: string, code: string) => {
+    const result = await api.loginTotp(ticket, code);
+    setUser(result.user);
+    setLocale(result.user.locale);
+    return result;
   }, []);
 
   const logout = useCallback(async () => {
@@ -67,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
   }, []);
 
   const value = useMemo<AuthState>(
-    () => ({ user, loading, needsSetup, login, logout, refresh, setUser }),
+    () => ({ user, loading, needsSetup, login, loginTotp, logout, refresh, setUser }),
     [user, loading, needsSetup, login, logout, refresh],
   );
 

@@ -21,6 +21,7 @@ import { registerDockerRoutes } from './routes/docker.js';
 import { registerUpdateRoutes } from './routes/updates.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerPasskeyRoutes } from './routes/passkeys.js';
+import { registerTotpRoutes } from './routes/totp.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerEventRoutes } from './routes/events.js';
 
@@ -179,6 +180,7 @@ export async function buildServer(app: AppContext): Promise<FastifyInstance> {
   await registerUpdateRoutes(fastify, app);
   await registerProjectRoutes(fastify, app);
   await registerPasskeyRoutes(fastify, app);
+  await registerTotpRoutes(fastify, app);
   await registerSettingsRoutes(fastify, app);
   await registerEventRoutes(fastify, app);
 

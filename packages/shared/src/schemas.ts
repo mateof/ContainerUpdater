@@ -48,6 +48,32 @@ export const changePasswordSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Segundo factor (TOTP)
+// ---------------------------------------------------------------------------
+
+/** Seis digitos. Se admiten espacios porque algunas aplicaciones los muestran. */
+export const totpCodeSchema = z.object({
+  code: z.string().min(6).max(16),
+});
+
+/** Desactivarlo o regenerar codigos exige la contrasena, no solo la sesion. */
+export const totpDisableSchema = z.object({
+  password: z.string().min(1).max(256),
+});
+
+/**
+ * Segundo paso del login.
+ *
+ * El ticket demuestra que ya se paso el primero. El codigo puede ser el de la
+ * aplicacion o uno de recuperacion: se distinguen por la forma, para no obligar
+ * a elegir a quien probablemente ya esta agobiado por no poder entrar.
+ */
+export const totpLoginSchema = z.object({
+  ticket: z.string().min(1).max(128),
+  code: z.string().min(6).max(32),
+});
+
+// ---------------------------------------------------------------------------
 // Passkeys
 // ---------------------------------------------------------------------------
 

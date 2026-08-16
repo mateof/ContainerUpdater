@@ -8,6 +8,7 @@ import { createNotificationRepository, createTelegramRepository } from './notifi
 import { createSettingsRepository, createTagCacheRepository } from './settings.js';
 import { createManagedProjectRepository } from './projects.js';
 import { createPasskeyRepository } from './passkeys.js';
+import { createTotpRepository } from './totp.js';
 
 export function createRepositories(db: Db, keyring: Keyring) {
   return {
@@ -16,6 +17,9 @@ export function createRepositories(db: Db, keyring: Keyring) {
     inventory: createInventoryRepository(db),
     managedProjects: createManagedProjectRepository(db, keyring),
     passkeys: createPasskeyRepository(db),
+    totp: createTotpRepository(db, keyring),
+    /** El servicio de segundo factor lo consulta antes de emitir un secreto. */
+    keyringHealthy: () => keyring.healthy,
     history: createHistoryRepository(db),
     registries: createRegistryRepository(db, keyring),
     notifications: createNotificationRepository(db),
@@ -33,4 +37,5 @@ export type { ImageRow, ProjectRow } from './inventory.js';
 export type { ManagedProjectRow, ProjectFileKind, ProjectFileVersion } from './projects.js';
 export type { UserRow } from './users.js';
 export type { PasskeyRow } from './passkeys.js';
+export type { TotpRow } from './totp.js';
 export type { RegistryCredentials } from './registries.js';

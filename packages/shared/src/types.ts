@@ -287,6 +287,25 @@ export interface CheckRun {
 }
 
 // ---------------------------------------------------------------------------
+// Segundo factor
+// ---------------------------------------------------------------------------
+
+export interface TotpStatus {
+  enabled: boolean;
+  /** Cuantos codigos de recuperacion quedan sin usar. */
+  recoveryCodesLeft: number;
+}
+
+/** Lo que hace falta para dar de alta el segundo factor. */
+export interface TotpEnrollment {
+  /** Para teclearlo a mano cuando no se puede escanear. */
+  secret: string;
+  uri: string;
+  /** SVG ya renderizado en el servidor: el navegador no calcula nada. */
+  qr: string;
+}
+
+// ---------------------------------------------------------------------------
 // Passkeys
 // ---------------------------------------------------------------------------
 

@@ -338,6 +338,52 @@ const es: HelpSection[] = [
     ],
   },
   {
+    id: 'dosfactores',
+    title: 'Verificacion en dos pasos',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Un codigo de seis digitos que cambia cada 30 segundos, ademas de la contrasena. Se activa desde Ajustes y es opcional: sin activarlo no cambia nada.',
+      },
+      {
+        type: 'p',
+        text: 'Funciona con Google Authenticator, Microsoft Authenticator, Bitwarden, 1Password, Aegis y cualquier otra aplicacion que siga el estandar. No hace falta elegir cual: se emite lo que todas entienden igual.',
+      },
+      { type: 'h', text: 'Como se activa' },
+      {
+        type: 'ul',
+        items: [
+          'En Ajustes, Activar. Sale un codigo QR y una clave por si no puedes escanear.',
+          'Escanea con tu aplicacion y escribe el codigo que te muestre.',
+          'Hasta que no escribes un codigo valido NO se activa nada: asi nadie se queda fuera por no haber llegado a escanear.',
+          'Al terminar salen diez codigos de recuperacion. Es la unica vez que se ven.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Guarda los codigos de recuperacion FUERA del NAS',
+        text: 'Son la via de entrada si pierdes el movil. Guardarlos en el propio NAS no sirve de nada: si el NAS falla es justo cuando los necesitas. Cada uno vale una sola vez, y en Ajustes se ve cuantos quedan.',
+      },
+      { type: 'h', text: 'Detalles que evitan sorpresas' },
+      {
+        type: 'ul',
+        items: [
+          'Un codigo no vale dos veces, aunque en el movil siga en pantalla.',
+          'Se admite un margen de 30 segundos arriba y abajo, por si el reloj del movil va desfasado.',
+          'Desactivarlo o generar codigos nuevos pide la contrasena: no basta con tener la sesion abierta.',
+          'Entrar con passkey no pide ademas el codigo: un passkey ya combina el dispositivo y tu huella o PIN.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Si pierdes la clave de cifrado',
+        text: 'El secreto se guarda cifrado con CU_ENCRYPTION_KEY. Si esa clave se pierde, el segundo factor no se puede comprobar y se OMITE, entrando solo con la contrasena, en vez de dejarte fuera del panel para siempre. Queda registrado como error en el log y conviene desactivarlo y volver a activarlo.',
+      },
+    ],
+  },
+  {
     id: 'passkeys',
     title: 'Entrar con passkey',
     blocks: [
@@ -758,6 +804,52 @@ const en: HelpSection[] = [
         tone: 'warn',
         title: 'It cannot be encrypted on disk',
         text: 'Compose has to read the .env in the clear, and so does anything else if you ever bring that stack up over SSH. Encrypting it on disk would mean only this app could start the project, which is a worse cure than the disease.',
+      },
+    ],
+  },
+  {
+    id: 'dosfactores',
+    title: 'Two-step verification',
+    blocks: [
+      {
+        type: 'p',
+        text: 'A six-digit code that changes every 30 seconds, on top of the password. You turn it on under Settings and it is optional: leave it off and nothing changes.',
+      },
+      {
+        type: 'p',
+        text: 'It works with Google Authenticator, Microsoft Authenticator, Bitwarden, 1Password, Aegis and any other app that follows the standard. No need to pick one: what is issued is what they all read the same way.',
+      },
+      { type: 'h', text: 'Turning it on' },
+      {
+        type: 'ul',
+        items: [
+          'Under Settings, Turn on. A QR code appears, plus a key in case you cannot scan.',
+          'Scan it with your app and type the code it shows.',
+          'Nothing is turned on until you enter a valid code, so nobody gets locked out for not having scanned.',
+          'You then get ten recovery codes. That is the only time they are shown.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Keep the recovery codes OFF the NAS',
+        text: 'They are your way in if you lose your phone. Keeping them on the NAS itself is useless: if the NAS is down is exactly when you need them. Each works once, and Settings shows how many are left.',
+      },
+      { type: 'h', text: 'Details that avoid surprises' },
+      {
+        type: 'ul',
+        items: [
+          'A code cannot be used twice, even if your phone still shows it.',
+          'A 30-second margin either side is allowed, in case your phone clock drifts.',
+          'Turning it off or generating new codes asks for your password: having the session open is not enough.',
+          'Signing in with a passkey does not also ask for the code: a passkey already combines the device with your fingerprint or PIN.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'If you lose the encryption key',
+        text: 'The secret is stored encrypted with CU_ENCRYPTION_KEY. If that key is lost, the second factor cannot be checked and is SKIPPED, letting you in with the password alone, rather than locking you out of the panel forever. It is logged as an error and you should turn it off and on again.',
       },
     ],
   },

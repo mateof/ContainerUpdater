@@ -52,6 +52,14 @@ async function withVerifySlot<T>(fn: () => Promise<T>): Promise<T> {
 
 export type LoginResult =
   | { ok: true; user: UserRow; token: string; expiresAt: number }
+  /**
+   * Contrasena correcta pero falta el segundo factor.
+   *
+   * La sesion NO se crea aqui: si la contrasena sola diera sesion, el segundo
+   * factor no protegeria de nada. Quien llama devuelve el ticket y espera el
+   * codigo.
+   */
+  | { ok: false; reason: 'totp-required'; user: UserRow }
   | { ok: false; reason: 'invalid' | 'locked'; retryAfterMs?: number };
 
 export class AuthService {
@@ -156,6 +164,58 @@ export class AuthService {
     }
 
     this.repos.users.registerSuccessfulLogin(user.id);
+
+    /*
+     * Con segundo factor activo, la contrasena solo llega hasta aqui.
+     *
+     * Se registra el intento como correcto porque lo es: la contrasena era
+     * buena, y separarlo permite distinguir en la auditoria "contrasena mal" de
+     * "contrasena bien pero sin completar el segundo paso".
+     */
+    if (this.repos.totp.isEnabled(user.id)) {
+      /*
+       * Si el secreto no se puede descifrar, NO se exige el segundo factor.
+       *
+       * El secreto esta cifrado con el llavero. Si se pierde la clave maestra,
+       * exigirlo dejaria al usuario fuera del panel que arranca y para todos los
+       * contenedores del NAS, sin ninguna via de vuelta salvo borrar la base de
+       * datos. Los codigos de recuperacion sirven (van hasheados, no cifrados),
+       * pero solo si los conservo.
+       *
+       * Es la misma postura que ya tiene el resto de la aplicacion ante un
+       * llavero bloqueado: modo degradado, no borra nada y avisa. Y no debilita
+       * nada en la practica: quien puede cambiar la clave del entorno ya
+       * controla el anfitrion y tiene el socket de Docker, asi que no necesita
+       * saltarse ningun segundo factor.
+       *
+       * Se registra como error, no como aviso, y la interfaz ya muestra el
+       * estado del llavero: una proteccion que deja de aplicarse tiene que
+       * verse.
+       */
+      if (this.repos.totp.readSecret(user.id) === null) {
+        this.log.error(
+          `El segundo factor de "${user.username}" no se puede comprobar porque el llavero esta ` +
+            'bloqueado, asi que se ha omitido. Restaura CU_ENCRYPTION_KEY, o desactivalo y ' +
+            'vuelve a activarlo para dejar de entrar solo con la contrasena.',
+        );
+        this.repos.history.audit({
+          actorType: 'user',
+          actorId: String(user.id),
+          action: 'auth.login.totp-skipped',
+          detail: 'llavero bloqueado',
+          ip: context.ip ?? null,
+        });
+      } else {
+        this.repos.history.audit({
+          actorType: 'user',
+          actorId: String(user.id),
+          action: 'auth.login.totp-required',
+          ip: context.ip ?? null,
+        });
+        return { ok: false, reason: 'totp-required', user };
+      }
+    }
+
     const session = this.createSession(user.id, context);
     this.repos.history.audit({
       actorType: 'user',
@@ -206,6 +266,20 @@ export class AuthService {
   logout(token: string): void {
     const row = this.repos.sessions.findByTokenHash(hashToken(token));
     if (row) this.repos.sessions.revoke(row.id);
+  }
+
+  /**
+   * Comprueba la contrasena de un usuario ya autenticado.
+   *
+   * Lo usan las operaciones que no deberian poder hacerse solo por tener una
+   * sesion abierta, como desactivar el segundo factor: si bastara con la sesion,
+   * quien pillara un navegador desatendido podria quitarlo de un clic, que es
+   * exactamente de lo que el segundo factor deberia proteger.
+   */
+  async verifyPassword(userId: number, password: string): Promise<boolean> {
+    const user = this.repos.users.findById(userId);
+    if (!user) return false;
+    return withVerifySlot(() => argon2Verify(user.password_hash, password).catch(() => false));
   }
 
   async changePassword(

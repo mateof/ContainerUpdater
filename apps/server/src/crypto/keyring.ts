@@ -143,6 +143,17 @@ export class Keyring {
   static projectFileAad(projectId: number, kind: string, keyVersion = KEY_VERSION): string {
     return `project_files:${projectId}:${kind}:${keyVersion}`;
   }
+
+  /**
+   * AAD del secreto TOTP de un usuario.
+   *
+   * Lo ata a SU fila: sin esto, copiar el blob de un usuario a otro en la base
+   * de datos haria que los codigos del primero valieran para entrar como el
+   * segundo.
+   */
+  static totpAad(userId: number, keyVersion = KEY_VERSION): string {
+    return `totp:${userId}:${keyVersion}`;
+  }
 }
 
 export interface SerializedSealed {

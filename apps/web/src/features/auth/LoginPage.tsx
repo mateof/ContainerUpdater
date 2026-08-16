@@ -11,12 +11,89 @@ import { AuthShell } from './AuthShell';
 
 export function LoginPage(): ReactNode {
   const { t } = useTranslation();
-  const { login, setUser } = useAuth();
+  const { login, loginTotp, setUser } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
+
+  /** Con ticket, la pantalla pasa al segundo factor. */
+  const [ticket, setTicket] = useState<string | null>(null);
+  const [code, setCode] = useState('');
+  const [totpLoading, setTotpLoading] = useState(false);
+
+  async function onTotp(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!ticket) return;
+    setTotpLoading(true);
+    setError(null);
+    try {
+      // Al entrar, esta pantalla se desmonta, asi que aqui no hay donde avisar
+      // de que se ha gastado un codigo de recuperacion. El aviso de "te quedan
+      // pocos" vive en Ajustes, que es donde ademas se pueden regenerar.
+      await loginTotp(ticket, code);
+    } catch (caught) {
+      const apiError = caught instanceof ApiError ? caught : null;
+      if (apiError?.code === 'ticket-expired') {
+        // El ticket dura cinco minutos. Se vuelve al primer paso porque el
+        // codigo ya no sirve de nada sin el.
+        setTicket(null);
+        setCode('');
+        setError(t('totp.ticketExpired'));
+      } else if (apiError?.code === 'reused-code') {
+        setError(t('totp.reusedCode'));
+      } else {
+        setError(t('totp.invalidCode'));
+      }
+    } finally {
+      setTotpLoading(false);
+    }
+  }
+
+  if (ticket) {
+    return (
+      <AuthShell title={t('totp.stepTitle')} subtitle={t('totp.stepSubtitle')}>
+        <form onSubmit={onTotp} className="space-y-4">
+          <Field label={t('totp.code')} htmlFor="totp" error={error} hint={t('totp.codeHint')}>
+            <Input
+              id="totp"
+              value={code}
+              onChange={(event) => setCode(event.target.value)}
+              // `one-time-code` es lo que hace que iOS y Android ofrezcan pegar
+              // el codigo del teclado sin salir de la aplicacion.
+              autoComplete="one-time-code"
+              inputMode="text"
+              autoFocus
+              required
+            />
+          </Field>
+
+          <Button
+            type="submit"
+            variant="primary"
+            loading={totpLoading}
+            className="w-full justify-center"
+          >
+            {t('auth.submit')}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full justify-center"
+            onClick={() => {
+              setTicket(null);
+              setCode('');
+              setError(null);
+            }}
+          >
+            {t('common.back')}
+          </Button>
+        </form>
+      </AuthShell>
+    );
+  }
+
 
   /**
    * Si ofrecer el boton de passkey.
@@ -62,7 +139,10 @@ export function LoginPage(): ReactNode {
     setLoading(true);
     setError(null);
     try {
-      await login(username, password);
+      const result = await login(username, password);
+      // Con segundo factor no hay sesion todavia: la pantalla cambia al paso
+      // del codigo en vez de entrar.
+      if (result.needsTotp) setTicket(result.ticket);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 429) {
         const payload = caught.payload as { retryAfterMinutes?: number } | undefined;

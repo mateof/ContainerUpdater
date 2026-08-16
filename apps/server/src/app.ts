@@ -19,6 +19,7 @@ import { ProjectFilesService, resolveProjectsDir } from './services/project-file
 import { ContainerRecreator } from './docker/recreate.js';
 import { AuthService } from './services/auth.js';
 import { PasskeyService } from './services/passkeys.js';
+import { TotpService } from './services/totp.js';
 import { InventoryService } from './services/inventory.js';
 import { CheckerService } from './services/checker.js';
 import { UpdaterService } from './services/updater.js';
@@ -40,6 +41,7 @@ export interface AppContext {
   projectFiles: ProjectFilesService;
   auth: AuthService;
   passkeys: PasskeyService;
+  totp: TotpService;
   inventory: InventoryService;
   checker: CheckerService;
   updater: UpdaterService;
@@ -125,6 +127,7 @@ export async function createApp(config: Config): Promise<AppContext> {
   await auth.init();
 
   const passkeys = new PasskeyService(repos, log.child('passkeys'));
+  const totp = new TotpService(repos, log.child('totp'));
 
   const bootstrap = await auth.bootstrap({
     username: config.adminUser,
@@ -334,6 +337,7 @@ export async function createApp(config: Config): Promise<AppContext> {
     projectFiles,
     auth,
     passkeys,
+    totp,
     inventory,
     checker,
     updater,

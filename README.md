@@ -41,6 +41,9 @@ it gathers in one place the things that used to mean opening an SSH session.
   without repeating itself and takes commands.
 - **Creates projects** from the web: you paste or upload a `docker-compose.yml`
   and its `.env`, and the folder is created, validated and brought up.
+- **Optional two-step verification** with a time-based code (TOTP), compatible
+  with Google Authenticator, Microsoft Authenticator, Bitwarden and any other
+  standard app, with recovery codes.
 - **Passkey sign-in** (WebAuthn), compatible with Bitwarden and the system
   keychain. Requires HTTPS with a domain name: browsers do not allow them on
   the NAS IP, and the app explains that rather than failing.

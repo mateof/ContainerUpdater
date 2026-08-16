@@ -20,6 +20,8 @@ import type {
   RegistryConfig,
   ServiceAction,
   TelegramUser,
+  TotpEnrollment,
+  TotpStatus,
   TrackedImage,
   UpdateJob,
   UpdateStrategy,
@@ -176,8 +178,15 @@ export const api = {
   authStatus: () => get<{ needsSetup: boolean; defaultLocale: 'es' | 'en' }>('/auth/status'),
   setup: (input: { username: string; password: string; locale: string }) =>
     post<{ ok: true }>('/setup', input),
+  /**
+   * Primer paso. Con segundo factor activo NO devuelve usuario sino un ticket:
+   * la sesion se crea en `loginTotp`, no aqui.
+   */
   login: (username: string, password: string) =>
-    post<{ user: CurrentUser }>('/auth/login', { username, password }),
+    post<{ user: CurrentUser } | { needsTotp: true; ticket: string }>('/auth/login', {
+      username,
+      password,
+    }),
   logout: () => post<{ ok: true }>('/auth/logout'),
   me: () => get<{ user: CurrentUser }>('/auth/me'),
   changePassword: (currentPassword: string, newPassword: string) =>
@@ -191,6 +200,20 @@ export const api = {
    * error del navegador no explica que hace falta HTTPS con un nombre de
    * dominio, que es justo donde la gente se atasca.
    */
+  /** Segundo factor: estado, alta, confirmacion y baja. */
+  totpStatus: () => get<TotpStatus>('/auth/totp'),
+  totpStart: () => post<TotpEnrollment>('/auth/totp/start'),
+  totpConfirm: (code: string) => post<{ recoveryCodes: string[] }>('/auth/totp/confirm', { code }),
+  totpDisable: (password: string) => post<{ ok: true }>('/auth/totp/disable', { password }),
+  totpRegenerate: (password: string) =>
+    post<{ recoveryCodes: string[] }>('/auth/totp/recovery', { password }),
+  /** Segundo paso del login. Aqui es donde se crea la sesion. */
+  loginTotp: (ticket: string, code: string) =>
+    post<{ user: CurrentUser; usedRecovery: boolean; recoveryCodesLeft: number }>(
+      '/auth/login/totp',
+      { ticket, code },
+    ),
+
   passkeySupport: () => get<PasskeySupport>('/auth/passkey/support'),
   passkeyRegisterOptions: () => post<Record<string, unknown>>('/auth/passkey/register/options'),
   passkeyRegisterVerify: (name: string, response: unknown) =>

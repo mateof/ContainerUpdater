@@ -1,7 +1,14 @@
 import type { FastifyInstance } from 'fastify';
-import { changePasswordSchema, loginSchema, profileSchema, setupSchema } from '@cu/shared';
+import {
+  changePasswordSchema,
+  loginSchema,
+  profileSchema,
+  setupSchema,
+  totpLoginSchema,
+} from '@cu/shared';
 import type { AppContext } from '../../app.js';
 import { SESSION_COOKIE } from '../server.js';
+import { TotpError } from '../../services/totp.js';
 
 export async function registerAuthRoutes(fastify: FastifyInstance, app: AppContext): Promise<void> {
   /**
@@ -64,12 +71,80 @@ export async function registerAuthRoutes(fastify: FastifyInstance, app: AppConte
             retryAfterMinutes: Math.ceil((result.retryAfterMs ?? 60_000) / 60_000),
           });
         }
+        /*
+         * Contrasena correcta, falta el segundo factor.
+         *
+         * No es un 401: no se ha rechazado nada, se ha completado el primer
+         * paso. Va como 200 con un ticket para que la interfaz sepa que tiene
+         * que pedir el codigo en vez de decir "credenciales incorrectas".
+         */
+        if (result.reason === 'totp-required') {
+          return reply.send({
+            needsTotp: true,
+            ticket: app.totp.createTicket(result.user.id),
+          });
+        }
         return reply.code(401).send({ error: 'invalid-credentials' });
       }
 
       return reply
         .setCookie(SESSION_COOKIE, result.token, cookieOptions(request))
         .send({ user: app.repos.users.toCurrentUser(result.user) });
+    },
+  );
+
+  /**
+   * Segundo paso del login.
+   *
+   * Aqui es donde se crea la sesion: el paso de la contrasena no la crea, asi
+   * que quien tenga la contrasena pero no el codigo no entra.
+   *
+   * Mismo limite de intentos que el primer paso. Sin el, un ticket valido
+   * permitiria probar el millon de combinaciones de seis digitos.
+   */
+  fastify.post(
+    '/api/auth/login/totp',
+    { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } },
+    async (request, reply) => {
+      const input = totpLoginSchema.parse(request.body);
+
+      let userId: number;
+      let usedRecovery: boolean;
+      try {
+        ({ userId, usedRecovery } = app.totp.verifyTicket(input));
+      } catch (error) {
+        if (error instanceof TotpError) {
+          return reply
+            .code(error.code === 'ticket-expired' ? 440 : 401)
+            .send({ error: error.code, message: error.message });
+        }
+        throw error;
+      }
+
+      const user = app.repos.users.findById(userId);
+      if (!user) return reply.code(401).send({ error: 'invalid-credentials' });
+
+      const session = app.auth.createSession(user.id, {
+        ip: request.ip,
+        userAgent: String(request.headers['user-agent'] ?? ''),
+      });
+
+      app.repos.history.audit({
+        actorType: 'user',
+        actorId: String(user.id),
+        action: usedRecovery ? 'auth.login.recovery-code' : 'auth.login.totp',
+        ip: request.ip,
+      });
+
+      return reply
+        .setCookie(SESSION_COOKIE, session.token, cookieOptions(request))
+        .send({
+          user: app.repos.users.toCurrentUser(user),
+          // Se avisa de que ha gastado uno: quedarse sin darse cuenta es como
+          // quedarse sin llaves de repuesto sin saberlo.
+          usedRecovery,
+          recoveryCodesLeft: app.totp.status(user.id).recoveryCodesLeft,
+        });
     },
   );
 
