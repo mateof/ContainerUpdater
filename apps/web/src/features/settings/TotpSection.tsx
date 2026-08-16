@@ -176,6 +176,47 @@ export function TotpSection(): ReactNode {
             <Skeleton className="h-64 w-full" />
           ) : (
             <div className="space-y-4">
+              {/*
+                Tres formas de pasar el secreto a la aplicacion, y las tres hacen
+                falta porque ninguna sirve siempre:
+
+                - El enlace `otpauth://`, que es la unica que funciona cuando se
+                  esta mirando el panel DESDE el movil: ahi el QR es inservible,
+                  porque no se puede escanear la pantalla del propio telefono.
+                - El QR, para cuando el panel se ve en el ordenador.
+                - La clave a mano, para cuando el enlace no abre nada (un
+                  escritorio sin ninguna aplicacion OTP registrada) o se prefiere
+                  teclearla.
+
+                Va primero el enlace porque es el caso que antes no tenia salida.
+              */}
+              <div>
+                {/*
+                  Un ancla normal, no un boton: el sistema resuelve el esquema
+                  `otpauth://` y ofrece las aplicaciones instaladas que lo
+                  declaran. Android muestra la lista para elegir; iOS abre la que
+                  tenga registrada.
+
+                  La URI lleva el secreto, igual que el QR y que la clave de
+                  abajo. No anade exposicion: es el mismo dato, en la misma
+                  pantalla y bajo la misma sesion.
+                */}
+                <a href={enrollment.data.uri} className="block">
+                  <Button variant="primary" className="w-full justify-center">
+                    {t('totp.openInApp')}
+                  </Button>
+                </a>
+                <p className="mt-1 text-center text-[0.75rem] text-[var(--text-muted)]">
+                  {t('totp.openInAppHelp')}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 text-[0.75rem] text-[var(--text-faint)]">
+                <span className="h-px flex-1 bg-[var(--border)]" />
+                {t('totp.orScan')}
+                <span className="h-px flex-1 bg-[var(--border)]" />
+              </div>
+
               {/* El QR llega ya renderizado como SVG desde el servidor: asi no
                   entra un generador de codigos QR en el bundle por una pantalla
                   que se usa una vez. */}

@@ -83,6 +83,10 @@ export const es = {
     inactive: 'No esta activada. Se entra solo con la contrasena.',
     confirm: 'Confirmar',
     scanHelp: 'Escanea el codigo con tu aplicacion y despues escribe el codigo que te muestre. Hasta ese momento no se activa nada.',
+    openInApp: 'Abrir en mi aplicacion',
+    openInAppHelp:
+      'Elige tu aplicacion de la lista y se configura sola. Es lo que necesitas si estas viendo esto desde el movil, porque ahi no puedes escanear tu propia pantalla.',
+    orScan: 'o escanea el codigo',
     manualEntry: 'Si no puedes escanear, introduce esta clave a mano:',
     codePlaceholder: '123456',
     code: 'Codigo',

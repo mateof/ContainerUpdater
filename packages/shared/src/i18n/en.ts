@@ -82,6 +82,10 @@ export const en: Translated<Catalog> = {
     inactive: 'Not turned on. Signing in only needs the password.',
     confirm: 'Confirm',
     scanHelp: 'Scan the code with your app and then type the code it shows. Nothing is turned on until you do.',
+    openInApp: 'Open in my app',
+    openInAppHelp:
+      'Pick your app from the list and it sets itself up. This is what you want if you are reading this on your phone, since you cannot scan your own screen.',
+    orScan: 'or scan the code',
     manualEntry: 'If you cannot scan, enter this key by hand:',
     codePlaceholder: '123456',
     code: 'Code',

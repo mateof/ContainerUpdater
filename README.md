@@ -43,7 +43,8 @@ it gathers in one place the things that used to mean opening an SSH session.
   and its `.env`, and the folder is created, validated and brought up.
 - **Optional two-step verification** with a time-based code (TOTP), compatible
   with Google Authenticator, Microsoft Authenticator, Bitwarden and any other
-  standard app, with recovery codes.
+  standard app, with recovery codes. From a phone you enrol through a link that
+  opens your OTP app directly, with nothing to scan.
 - **Passkey sign-in** (WebAuthn), compatible with Bitwarden and the system
   keychain. Requires HTTPS with a domain name: browsers do not allow them on
   the NAS IP, and the app explains that rather than failing.

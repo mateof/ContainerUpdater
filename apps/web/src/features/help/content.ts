@@ -353,8 +353,11 @@ const es: HelpSection[] = [
       {
         type: 'ul',
         items: [
-          'En Ajustes, Activar. Sale un codigo QR y una clave por si no puedes escanear.',
-          'Escanea con tu aplicacion y escribe el codigo que te muestre.',
+          'En Ajustes, Activar. Salen tres formas de pasarlo a tu aplicacion.',
+          'Desde el movil: pulsa "Abrir en mi aplicacion". El sistema te ofrece las aplicaciones OTP que tengas instaladas y la que elijas se configura sola. Es la unica via que sirve si estas viendo el panel EN el movil, porque ahi no puedes escanear tu propia pantalla.',
+          'Desde el ordenador: escanea el codigo QR con el movil.',
+          'Si nada de lo anterior funciona, teclea la clave a mano.',
+          'Despues escribe el codigo que te muestre la aplicacion.',
           'Hasta que no escribes un codigo valido NO se activa nada: asi nadie se queda fuera por no haber llegado a escanear.',
           'Al terminar salen diez codigos de recuperacion. Es la unica vez que se ven.',
         ],
@@ -823,8 +826,11 @@ const en: HelpSection[] = [
       {
         type: 'ul',
         items: [
-          'Under Settings, Turn on. A QR code appears, plus a key in case you cannot scan.',
-          'Scan it with your app and type the code it shows.',
+          'Under Settings, Turn on. Three ways to get it into your app appear.',
+          'From a phone: tap "Open in my app". The system offers whichever OTP apps you have installed and the one you pick sets itself up. This is the only route that works when you are viewing the panel ON the phone, since you cannot scan your own screen.',
+          'From a computer: scan the QR code with your phone.',
+          'If neither works, type the key by hand.',
+          'Then enter the code your app shows.',
           'Nothing is turned on until you enter a valid code, so nobody gets locked out for not having scanned.',
           'You then get ten recovery codes. That is the only time they are shown.',
         ],
