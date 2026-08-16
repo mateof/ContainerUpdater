@@ -12,6 +12,8 @@ import type {
   CurrentUser,
   ImagePolicy,
   MetricsSnapshot,
+  PasskeySummary,
+  PasskeySupport,
   ProjectAction,
   ProjectFiles,
   ProjectsDirInfo,
@@ -181,6 +183,24 @@ export const api = {
   changePassword: (currentPassword: string, newPassword: string) =>
     post<{ ok: true }>('/auth/password', { currentPassword, newPassword }),
   updateProfile: (locale: string) => put<{ user: CurrentUser }>('/auth/profile', { locale }),
+
+  /**
+   * Si este origen admite passkeys, y si no, por que.
+   *
+   * La interfaz lo pregunta ANTES de ofrecer nada: un boton que revienta con un
+   * error del navegador no explica que hace falta HTTPS con un nombre de
+   * dominio, que es justo donde la gente se atasca.
+   */
+  passkeySupport: () => get<PasskeySupport>('/auth/passkey/support'),
+  passkeyRegisterOptions: () => post<Record<string, unknown>>('/auth/passkey/register/options'),
+  passkeyRegisterVerify: (name: string, response: unknown) =>
+    post<{ ok: true }>('/auth/passkey/register/verify', { name, response }),
+  passkeyLoginOptions: () => post<Record<string, unknown>>('/auth/passkey/login/options'),
+  passkeyLoginVerify: (response: unknown) =>
+    post<{ user: CurrentUser }>('/auth/passkey/login/verify', { response }),
+  passkeys: () => get<{ passkeys: PasskeySummary[] }>('/auth/passkeys'),
+  deletePasskey: (id: number) => del<{ ok: true }>(`/auth/passkeys/${id}`),
+  renamePasskey: (id: number, name: string) => put<{ ok: true }>(`/auth/passkeys/${id}`, { name }),
 
   status: () => get<SystemStatusResponse>('/status'),
   runtime: () => get<RuntimeInfo>('/runtime'),

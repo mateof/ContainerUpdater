@@ -253,3 +253,10 @@ export const IconFile = (p: IconProps) => (
     <path d="M14 3v5h5" />
   </Icon>
 );
+
+export const IconKey = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="8" cy="15" r="4" />
+    <path d="M10.8 12.2 20 3l1.5 1.5-1.5 1.5 1.5 1.5-2 2-1.5-1.5-2.2 2.2" />
+  </Icon>
+);

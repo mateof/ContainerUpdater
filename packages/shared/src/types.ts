@@ -287,6 +287,35 @@ export interface CheckRun {
 }
 
 // ---------------------------------------------------------------------------
+// Passkeys
+// ---------------------------------------------------------------------------
+
+export interface PasskeySummary {
+  id: number;
+  name: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+}
+
+/**
+ * Por que este origen no admite passkeys, cuando no los admite.
+ *
+ * Las dos razones las impone el navegador: WebAuthn exige contexto seguro y un
+ * identificador de sitio que sea un dominio. Se distinguen porque la solucion
+ * es distinta: una pide HTTPS, la otra pide un nombre.
+ */
+export type PasskeyUnavailableReason = 'insecure-origin' | 'ip-address';
+
+export interface PasskeySupport {
+  available: boolean;
+  reason: PasskeyUnavailableReason | null;
+  rpId: string;
+  origin: string;
+  /** Si hay alguna registrada. Sin ninguna, no se ofrece entrar con passkey. */
+  anyRegistered: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Registries
 // ---------------------------------------------------------------------------
 

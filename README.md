@@ -41,6 +41,9 @@ it gathers in one place the things that used to mean opening an SSH session.
   without repeating itself and takes commands.
 - **Creates projects** from the web: you paste or upload a `docker-compose.yml`
   and its `.env`, and the folder is created, validated and brought up.
+- **Passkey sign-in** (WebAuthn), compatible with Bitwarden and the system
+  keychain. Requires HTTPS with a domain name: browsers do not allow them on
+  the NAS IP, and the app explains that rather than failing.
 - **Interface in Spanish and English**, with light and dark themes.
 
 ## Installing on the NAS

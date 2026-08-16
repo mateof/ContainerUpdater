@@ -18,6 +18,7 @@ import { ComposeRunner } from './docker/compose.js';
 import { ProjectFilesService, resolveProjectsDir } from './services/project-files.js';
 import { ContainerRecreator } from './docker/recreate.js';
 import { AuthService } from './services/auth.js';
+import { PasskeyService } from './services/passkeys.js';
 import { InventoryService } from './services/inventory.js';
 import { CheckerService } from './services/checker.js';
 import { UpdaterService } from './services/updater.js';
@@ -38,6 +39,7 @@ export interface AppContext {
   compose: ComposeRunner;
   projectFiles: ProjectFilesService;
   auth: AuthService;
+  passkeys: PasskeyService;
   inventory: InventoryService;
   checker: CheckerService;
   updater: UpdaterService;
@@ -121,6 +123,8 @@ export async function createApp(config: Config): Promise<AppContext> {
 
   const auth = new AuthService(repos, log.child('auth'), config.sessionDays);
   await auth.init();
+
+  const passkeys = new PasskeyService(repos, log.child('passkeys'));
 
   const bootstrap = await auth.bootstrap({
     username: config.adminUser,
@@ -329,6 +333,7 @@ export async function createApp(config: Config): Promise<AppContext> {
     compose,
     projectFiles,
     auth,
+    passkeys,
     inventory,
     checker,
     updater,

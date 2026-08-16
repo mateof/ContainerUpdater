@@ -338,6 +338,43 @@ const es: HelpSection[] = [
     ],
   },
   {
+    id: 'passkeys',
+    title: 'Entrar con passkey',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Un passkey deja entrar con la huella, la cara, el PIN del equipo o un gestor como Bitwarden, sin escribir la contrasena. Se anaden desde Ajustes.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'No funcionan entrando por la IP del NAS',
+        text: 'No es una limitacion de esta aplicacion sino del navegador, y son dos condiciones a la vez: hace falta HTTPS (o localhost), y ademas el sitio tiene que identificarse con un NOMBRE DE DOMINIO. Una IP no vale ni siquiera con HTTPS. Por eso, entrando por http://192.168.x.x el boton no aparece.',
+      },
+      { type: 'h', text: 'Que hace falta' },
+      {
+        type: 'p',
+        text: 'Llegar por un nombre de dominio servido con HTTPS. En un Synology, eso es el proxy inverso de DSM con un certificado. Si tu proxy no reenvia las cabeceras X-Forwarded, define ademas estas dos variables:',
+      },
+      { type: 'code', text: 'CU_RP_ID: nas.ejemplo.com\nCU_RP_ORIGIN: https://nas.ejemplo.com' },
+      { type: 'h', text: 'Con Bitwarden' },
+      {
+        type: 'p',
+        text: 'Funciona sin nada especial: no se pide attestation, se aceptan ES256 y RS256, y no se restringe el tipo de autenticador. Tampoco se exige PIN ni credencial descubrible obligatoria, que es lo que suele dejar fuera a los gestores.',
+      },
+      {
+        type: 'p',
+        text: 'Bitwarden devuelve siempre el contador de firmas a cero. Eso normalmente delataria una llave clonada, asi que solo se rechaza cuando el contador venia siendo mayor que cero y deja de avanzar.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'La contrasena no se quita nunca',
+        text: 'Los passkeys se anaden, no sustituyen. Si pierdes el autenticador, o entras por la IP del NAS donde no estan disponibles, la contrasena es la via que siempre esta. Quedarse fuera del panel que gestiona todos tus contenedores seria bastante peor que teclearla.',
+      },
+    ],
+  },
+  {
     id: 'entorno',
     title: 'Donde puede funcionar',
     blocks: [
@@ -721,6 +758,43 @@ const en: HelpSection[] = [
         tone: 'warn',
         title: 'It cannot be encrypted on disk',
         text: 'Compose has to read the .env in the clear, and so does anything else if you ever bring that stack up over SSH. Encrypting it on disk would mean only this app could start the project, which is a worse cure than the disease.',
+      },
+    ],
+  },
+  {
+    id: 'passkeys',
+    title: 'Signing in with a passkey',
+    blocks: [
+      {
+        type: 'p',
+        text: 'A passkey lets you sign in with your fingerprint, face, device PIN or a manager such as Bitwarden, without typing the password. You add them under Settings.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'They do not work when you come in through the NAS IP',
+        text: 'This is not a limitation of the app but of the browser, and it is two conditions at once: HTTPS is required (or localhost), and the site must identify itself with a DOMAIN NAME. An IP does not qualify even over HTTPS. That is why the button does not appear on http://192.168.x.x.',
+      },
+      { type: 'h', text: 'What you need' },
+      {
+        type: 'p',
+        text: 'To arrive through a domain name served over HTTPS. On a Synology that means the DSM reverse proxy with a certificate. If your proxy does not forward the X-Forwarded headers, also set these two variables:',
+      },
+      { type: 'code', text: 'CU_RP_ID: nas.example.com\nCU_RP_ORIGIN: https://nas.example.com' },
+      { type: 'h', text: 'With Bitwarden' },
+      {
+        type: 'p',
+        text: 'It works with nothing special: no attestation is requested, ES256 and RS256 are both accepted, and the authenticator type is not restricted. Neither a PIN nor a mandatory discoverable credential is required, which is what usually shuts managers out.',
+      },
+      {
+        type: 'p',
+        text: 'Bitwarden always reports a signature counter of zero. That would normally suggest a cloned key, so a key is only rejected when its counter had been above zero and stops advancing.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'The password is never removed',
+        text: 'Passkeys are added, not a replacement. If you lose the authenticator, or come in through the NAS IP where they are unavailable, the password is the way that is always there. Being locked out of the panel that manages all your containers would be considerably worse than typing it.',
       },
     ],
   },

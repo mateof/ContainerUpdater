@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { CrossLink } from '@/components/Filters';
 import type { ReactNode } from 'react';
 import type { SemverChannel, TrackMode, TrackedImage } from '@cu/shared';
 import { api } from '@/api/client';
@@ -82,7 +83,24 @@ export function ImageDetailDialog({
           <Detail label={t('images.created')}>{formatDateTime(image.imageCreatedAt)}</Detail>
           <Detail label={t('images.lastChecked')}>{formatRelative(image.lastCheckedAt)}</Detail>
           <Detail label={t('images.usedBy')}>
-            {image.inUseBy.length > 0 ? image.inUseBy.join(', ') : t('common.none')}
+            {image.inUseBy.length > 0 ? (
+              // Cada nombre lleva a SU contenedor, no a la lista filtrada: al
+              // mirar quien usa una imagen, lo siguiente es abrir uno concreto.
+              <span className="flex flex-wrap justify-end gap-x-2 gap-y-0.5">
+                {image.inUseBy.map((name) => (
+                  <CrossLink
+                    key={name}
+                    to={`/containers?container=${encodeURIComponent(name)}`}
+                    title={t('images.goToContainer', { name })}
+                    onNavigate={onClose}
+                  >
+                    {name}
+                  </CrossLink>
+                ))}
+              </span>
+            ) : (
+              t('common.none')
+            )}
           </Detail>
         </div>
 

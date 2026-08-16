@@ -77,6 +77,17 @@ const schema = z.object({
 
   CU_TELEGRAM_BOT_TOKEN: z.string().optional(),
 
+  /**
+   * Identificador de sitio y origen para los passkeys.
+   *
+   * Sin definir se deducen de la peticion, que es lo correcto cuando se llega
+   * por varias direcciones. Definirlos hace falta cuando el proxy no reenvia
+   * las cabeceras `X-Forwarded-*` y el servidor no puede saber con que nombre
+   * te esta viendo el navegador.
+   */
+  CU_RP_ID: z.string().optional(),
+  CU_RP_ORIGIN: z.string().optional(),
+
   CU_CHECK_CRON: z.string().default('0 */6 * * *'),
   CU_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
@@ -112,6 +123,9 @@ export interface Config {
   hostProc: string | null;
   diskPaths: string[];
   telegramToken: string | undefined;
+  /** Sin valor, se deducen del origen de cada peticion. */
+  rpId: string | undefined;
+  rpOrigin: string | undefined;
   checkCron: string;
   logLevel: RawConfig['CU_LOG_LEVEL'];
   version: string;
@@ -156,6 +170,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     hostProc: raw.CU_HOST_PROC || null,
     diskPaths: raw.CU_DISK_PATHS ? splitList(raw.CU_DISK_PATHS) : [],
     telegramToken: raw.CU_TELEGRAM_BOT_TOKEN,
+    rpId: raw.CU_RP_ID,
+    rpOrigin: raw.CU_RP_ORIGIN,
     checkCron: raw.CU_CHECK_CRON,
     logLevel: raw.CU_LOG_LEVEL,
     version: process.env.CU_VERSION ?? '0.1.0',

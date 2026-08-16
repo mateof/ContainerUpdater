@@ -138,16 +138,21 @@ export function CrossLink({
   title,
   children,
   mono,
+  onNavigate,
 }: {
   to: string;
   title: string;
   children: ReactNode;
   mono?: boolean;
+  /** Para cerrar el modal desde el que se navega: dejarlo abierto sobre otra
+      pantalla desorienta. */
+  onNavigate?: () => void;
 }): ReactNode {
   return (
     <Link
       to={to}
       title={title}
+      onClick={onNavigate}
       className={cx(
         'max-w-full truncate rounded-[var(--radius-sm)] px-1 -mx-1',
         'text-[var(--text-muted)] underline decoration-dotted underline-offset-2',

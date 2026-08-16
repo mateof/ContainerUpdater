@@ -23,6 +23,7 @@ import { IconGithub, IconStar } from '@/components/icons';
 import { MadeBy, REPO_URL } from '@/components/MadeBy';
 import { RegistriesSection } from './RegistriesSection';
 import { RuntimeSection } from './RuntimeSection';
+import { PasskeysSection } from './PasskeysSection';
 import { TelegramSection } from './TelegramSection';
 
 export function SettingsPage(): ReactNode {
@@ -198,6 +199,8 @@ export function SettingsPage(): ReactNode {
           {t('common.save')}
         </Button>
       </div>
+
+      <PasskeysSection />
 
       <RuntimeSection />
       <RegistriesSection />

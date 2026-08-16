@@ -48,6 +48,28 @@ export const changePasswordSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Passkeys
+// ---------------------------------------------------------------------------
+
+/**
+ * La respuesta del autenticador se valida en el servidor con la libreria de
+ * WebAuthn, que es quien sabe su forma exacta. Aqui solo se comprueba que sea
+ * un objeto y se acota el nombre, que es lo unico que escribe el usuario.
+ */
+export const passkeyNameSchema = z.object({
+  name: z.string().min(1).max(64),
+});
+
+export const passkeyRegisterSchema = z.object({
+  name: z.string().min(1).max(64),
+  response: z.record(z.string(), z.unknown()),
+});
+
+export const passkeyLoginSchema = z.object({
+  response: z.record(z.string(), z.unknown()),
+});
+
+// ---------------------------------------------------------------------------
 // Politicas de imagen
 // ---------------------------------------------------------------------------
 

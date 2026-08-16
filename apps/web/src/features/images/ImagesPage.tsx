@@ -407,14 +407,23 @@ function ImageRow({
             Fuera del boton de detalle porque un enlace no puede ir dentro. */}
         {image.inUseBy.length > 0 ? (
           <div className="hidden max-w-[26%] shrink-0 text-right text-[0.6875rem] md:block">
-            <CrossLink
-              to={`/containers?image=${encodeURIComponent(image.ref)}`}
-              title={t('images.goToContainers')}
-            >
-              {image.inUseBy.length === 1
-                ? image.inUseBy[0]
-                : t('images.usedByCount', { count: image.inUseBy.length })}
-            </CrossLink>
+            {/* Con uno solo se va directo a ese contenedor; con varios, a la
+                lista filtrada, que es donde se elige. */}
+            {image.inUseBy.length === 1 ? (
+              <CrossLink
+                to={`/containers?container=${encodeURIComponent(image.inUseBy[0]!)}`}
+                title={t('images.goToContainer', { name: image.inUseBy[0] })}
+              >
+                {image.inUseBy[0]}
+              </CrossLink>
+            ) : (
+              <CrossLink
+                to={`/containers?image=${encodeURIComponent(image.ref)}`}
+                title={t('images.goToContainers')}
+              >
+                {t('images.usedByCount', { count: image.inUseBy.length })}
+              </CrossLink>
+            )}
           </div>
         ) : null}
 

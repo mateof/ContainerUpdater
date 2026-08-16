@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -55,6 +55,8 @@ export function ContainersPage(): ReactNode {
   const [params, setParams] = useSearchParams();
   const focusImage = params.get('image');
   const focusProject = params.get('project');
+  /** Un contenedor concreto, por nombre: se llega desde "usada por" de su imagen. */
+  const focusContainer = params.get('container');
   const clearFocus = (): void => setParams({}, { replace: true });
   const [logsFor, setLogsFor] = useState<ContainerSummary | null>(null);
   const [detailFor, setDetailFor] = useState<ContainerSummary | null>(null);
@@ -179,6 +181,13 @@ export function ContainersPage(): ReactNode {
         <FocusBanner
           label={t('containers.focusProject')}
           value={focused[0]?.projectName ?? focusProject}
+          onClear={clearFocus}
+        />
+      ) : null}
+      {focusContainer ? (
+        <FocusBanner
+          label={t('containers.focusContainer')}
+          value={focusContainer}
           onClear={clearFocus}
         />
       ) : null}
