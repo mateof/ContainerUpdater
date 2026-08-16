@@ -1,6 +1,6 @@
 {
   "name": "container-updater",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "private": true,
   "description": "Panel autoalojado para vigilar y actualizar las imagenes Docker de un NAS Synology",
   "license": "MIT",
@@ -17,7 +17,7 @@
     "dev": "npm run dev -w @cu/server & npm run dev -w @cu/web",
     "dev:server": "npm run dev -w @cu/server",
     "dev:web": "npm run dev -w @cu/web",
-    "test": "npm run test -w @cu/server",
+    "test": "npm run test --workspaces --if-present",
     "test:watch": "npm run test:watch -w @cu/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run typecheck",

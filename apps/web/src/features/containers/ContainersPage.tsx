@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
+import { applyContainerFocus } from '@cu/shared';
 import type { ContainerSummary } from '@cu/shared';
 import { api } from '@/api/client';
 import { useLive } from '@/hooks/LiveContext';
@@ -102,14 +103,37 @@ export function ContainersPage(): ReactNode {
     return new Map((latest?.containers ?? []).map((metric) => [metric.id, metric]));
   }, [live.metrics]);
 
-  /** Lo que llega de otra pantalla se aplica antes que nada. */
-  const focused = useMemo(() => {
-    // Por la referencia normalizada y no por `image`: son cadenas distintas y
-    // comparar la cruda dejaba la lista vacia en casi todos los casos.
-    if (focusImage) return containers.filter((container) => container.imageRef === focusImage);
-    if (focusProject) return containers.filter((container) => container.projectKey === focusProject);
-    return containers;
-  }, [containers, focusImage, focusProject]);
+  /**
+   * Lo que llega de otra pantalla se aplica antes que nada.
+   *
+   * La logica vive en `@cu/shared` y tiene tests: aqui se perdio una vez sin que
+   * el typecheck ni el build lo notaran, porque la pantalla seguia compilando
+   * perfectamente sin filtrar nada.
+   */
+  const focused = useMemo(
+    () =>
+      applyContainerFocus(containers, {
+        container: focusContainer,
+        image: focusImage,
+        project: focusProject,
+      }),
+    [containers, focusImage, focusProject, focusContainer],
+  );
+
+  /**
+   * Al venir a por UN contenedor, se le abre el detalle directamente.
+   *
+   * "Llevame a el" no es dejarlo solo en una lista de uno: es ensenarlo. Se
+   * hace una sola vez, para que cerrar el modal no lo vuelva a abrir.
+   */
+  const [openedFocus, setOpenedFocus] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusContainer || openedFocus === focusContainer) return;
+    const target = containers.find((container) => container.name === focusContainer);
+    if (!target) return;
+    setOpenedFocus(focusContainer);
+    setDetailFor(target);
+  }, [focusContainer, containers, openedFocus]);
 
   const matches = (container: ContainerSummary, which: Filter): boolean => {
     switch (which) {

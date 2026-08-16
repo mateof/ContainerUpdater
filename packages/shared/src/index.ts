@@ -1,5 +1,6 @@
 export * from './types.js';
 export * from './schemas.js';
+export * from './focus.js';
 export {
   catalogs,
   locales,
