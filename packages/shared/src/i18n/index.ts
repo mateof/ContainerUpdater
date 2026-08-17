@@ -1,19 +1,32 @@
 import { es, type Catalog } from './es.js';
 import { en } from './en.js';
+import { gl } from './gl.js';
 import type { Translated } from './catalog.js';
 
-export type Locale = 'es' | 'en';
+export type Locale = 'es' | 'en' | 'gl';
 
-export const catalogs: Record<Locale, Translated<Catalog>> = { es, en };
-export const locales: Locale[] = ['es', 'en'];
+export const catalogs: Record<Locale, Translated<Catalog>> = { es, en, gl };
+export const locales: Locale[] = ['es', 'en', 'gl'];
 export const defaultLocale: Locale = 'es';
 
-export { es, en };
+export { es, en, gl };
 export type { Catalog, Translated };
 
 export function isLocale(value: unknown): value is Locale {
-  return value === 'es' || value === 'en';
+  return value === 'es' || value === 'en' || value === 'gl';
 }
+
+/**
+ * Nombre de cada idioma EN SU PROPIO idioma.
+ *
+ * Nunca traducido: quien busca su lengua en un selector la reconoce escrita como
+ * ella la escribe, no como la llama el idioma en el que esta la interfaz.
+ */
+export const localeNames: Record<Locale, string> = {
+  es: 'Espanol',
+  en: 'English',
+  gl: 'Galego',
+};
 
 /**
  * Traductor minimo para servidor y bot. La web usa i18next, que aporta plurales

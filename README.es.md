@@ -38,7 +38,8 @@ reúne en un sitio lo que hasta ahora obligaba a entrar por SSH.
 - **Entrada con passkey** (WebAuthn), compatible con Bitwarden y con el
   llavero del sistema. Requiere HTTPS con nombre de dominio: por la IP del NAS
   el navegador no las permite, y la aplicación lo explica en vez de fallar.
-- **Interfaz en español e inglés**, con tema claro y oscuro.
+- **Interfaz en español, inglés y galego**, con selector con banderas y tema
+  claro y oscuro.
 
 ## Instalación en el NAS
 

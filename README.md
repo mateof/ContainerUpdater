@@ -48,7 +48,8 @@ it gathers in one place the things that used to mean opening an SSH session.
 - **Passkey sign-in** (WebAuthn), compatible with Bitwarden and the system
   keychain. Requires HTTPS with a domain name: browsers do not allow them on
   the NAS IP, and the app explains that rather than failing.
-- **Interface in Spanish and English**, with light and dark themes.
+- **Interface in Spanish, English and Galician**, with a flagged selector and
+  light and dark themes.
 
 ## Installing on the NAS
 

@@ -5,7 +5,7 @@
  */
 import { z } from 'zod';
 
-export const localeSchema = z.enum(['es', 'en']);
+export const localeSchema = z.enum(['es', 'en', 'gl']);
 
 export const trackModeSchema = z.enum(['digest', 'semver', 'both']);
 export const semverChannelSchema = z.enum(['patch', 'minor', 'major']);

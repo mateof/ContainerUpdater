@@ -6,7 +6,7 @@
  * solo ve `docker logs`, asi que el error tiene que explicarse solo.
  */
 import { z } from 'zod';
-import { isLocale } from '@cu/shared';
+import { isLocale, type Locale } from '@cu/shared';
 
 const booleanish = z
   .string()
@@ -102,7 +102,7 @@ export interface Config {
   dataDir: string;
   publicDir: string;
   databaseFile: string;
-  defaultLocale: 'es' | 'en';
+  defaultLocale: Locale;
   timezone: string;
   encryptionKey: string | undefined;
   masterPassphrase: string | undefined;

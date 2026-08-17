@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './schemas.js';
 export * from './focus.js';
 export {
+  localeNames,
   catalogs,
   locales,
   defaultLocale,

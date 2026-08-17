@@ -3,7 +3,9 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
+import { locales, localeNames } from '@cu/shared';
 import { api } from '@/api/client';
+import { LocaleFlag } from '@/components/flags';
 import { useAuth } from '@/hooks/useAuth';
 import { useEvents } from '@/hooks/useEvents';
 import { LiveContext } from '@/hooks/LiveContext';
@@ -165,34 +167,27 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
                 </Button>
               </Tooltip>
 
+              {/* Se recorre `locales` en vez de enumerarlos: anadir un idioma es
+                  anadirlo al catalogo, sin tocar esta pantalla. Antes estaban a
+                  mano y el tercero habria pasado desapercibido aqui. */}
               <Menu
                 trigger={
                   <Button size="icon" variant="ghost" aria-label={t('nav.language')}>
-                    <span className="text-[0.6875rem] font-bold tracking-wide">
-                      {currentLocale().toUpperCase()}
-                    </span>
+                    <LocaleFlag locale={currentLocale()} />
                   </Button>
                 }
-                items={[
-                  {
-                    key: 'es',
-                    label: 'Espanol',
-                    onSelect: () => {
-                      setLocale('es');
-                      void api.updateProfile('es');
-                      forceRender((n) => n + 1);
-                    },
+                items={locales.map((locale) => ({
+                  key: locale,
+                  // El nombre va en su propio idioma: quien busca el suyo lo
+                  // reconoce como el lo escribe.
+                  label: localeNames[locale],
+                  icon: <LocaleFlag locale={locale} />,
+                  onSelect: () => {
+                    setLocale(locale);
+                    void api.updateProfile(locale);
+                    forceRender((n) => n + 1);
                   },
-                  {
-                    key: 'en',
-                    label: 'English',
-                    onSelect: () => {
-                      setLocale('en');
-                      void api.updateProfile('en');
-                      forceRender((n) => n + 1);
-                    },
-                  },
-                ]}
+                }))}
               />
 
               <Menu

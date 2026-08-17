@@ -336,15 +336,25 @@ socket at all.
 With Docker Desktop it is the opposite: `/var/run/docker.sock` on the Mac works,
 because Desktop proxies that specific path into the VM.
 
-### Metrics: say they are missing rather than lie
+### Metrics: the VM's, and that is the useful scope
 
 ```yaml
-CU_HOST_PROC: ""
+CU_HOST_PROC: /host/proc
+# and the mount
+- /proc:/host/proc:ro
 ```
 
-Containers run inside a Linux VM, so a `/proc` mount would be the VM's and not
-the Mac's. Setting the variable empty makes the app report metrics as
-unavailable instead of passing VM figures off as the machine's.
+Mounting `/proc` works and gives real figures, they are just **the VM's and not
+the Mac's**. Measured on one machine: the VM reported 6 CPUs and 10.8 GB against
+the Mac's 12 and 24 GB.
+
+That is the scope worth watching, because a container can never exceed what the
+VM was given. Leaving the mount out only buys you a panel saying metrics are
+unavailable.
+
+What you should not do is read those numbers as the Mac's. They are the ceiling
+your containers actually run under, which is a more useful number and a different
+one.
 
 ### The whole thing
 

@@ -1,3 +1,5 @@
+import type { Locale } from './i18n/index.js';
+
 /**
  * Tipos de dominio compartidos entre servidor, web y bot.
  *
@@ -433,7 +435,16 @@ export interface TelegramStatus {
 // Ajustes y sesion
 // ---------------------------------------------------------------------------
 
-export type Locale = 'es' | 'en';
+/**
+ * Reexportado desde el modulo de i18n, que es donde se define.
+ *
+ * Antes habia aqui una copia con la misma union escrita a mano. Coincidian por
+ * casualidad, asi que TypeScript las trataba como equivalentes y nadie lo noto
+ * hasta que se anadio un tercer idioma y las dos dejaron de cuadrar. El conjunto
+ * de idiomas es exactamente el conjunto de catalogos, asi que se define alli y
+ * no puede discrepar.
+ */
+export type { Locale };
 
 export interface AppSettings {
   checkCron: string;

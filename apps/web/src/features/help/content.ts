@@ -978,6 +978,482 @@ const en: HelpSection[] = [
   },
 ];
 
+const gl: HelpSection[] = [
+  {
+    id: 'intro',
+    title: 'Que fai esta aplicacion',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Vixia as imaxes de Docker que tes despregadas e avisa cando sae unha version nova. Desde aqui podes actualizalas, recrear servizos, ver o rendemento do NAS e manexalo todo desde Telegram.',
+      },
+      { type: 'p', text: 'A idea e non ter que entrar por SSH para as tarefas do dia a dia.' },
+      { type: 'h', text: 'As catro pantallas' },
+      {
+        type: 'ul',
+        items: [
+          'Panel: rendemento do sistema e resumo do que hai.',
+          'Contedores: estado, metricas en vivo, rexistros e detalle de cada un.',
+          'Imaxes: que version tes, se hai unha nova e como queres vixiala.',
+          'Proxectos: os teus stacks de Compose, con accions por servizo.',
+        ],
+      },
+    ],
+  },
+  {
+    id: 'deteccion',
+    title: 'Como detecta as actualizacions',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Compara o identificador (digest) da imaxe que tes co que publica o registry. Se non coinciden, hai version nova. E exacto: non se fia de datas nin de numeros de version.',
+      },
+      { type: 'h', text: 'Duas formas de vixiar' },
+      {
+        type: 'ul',
+        items: [
+          'Por digest: detecta que unha etiqueta movil como latest apunta agora a outra imaxe. E o adecuado para latest, stable ou alpine.',
+          'Por version: busca etiquetas cun numero mais alto. E o adecuado se fixaches algo como 1.4.2.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'As etiquetas parciais como 8.2 vixianse das duas formas, porque son a un tempo fixas (dentro de 8.2) e movibles (pode sair 8.3), e son cousas distintas.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Ao comparar versions non se mesturan sabores',
+        text: 'Unha etiqueta 20-alpine so se compara con outras NN-alpine, nunca con 20-bookworm nin con 20 a secas: son imaxes distintas ainda que o numero se pareza.',
+      },
+      { type: 'h', text: 'Imaxes que se poden borrar' },
+      {
+        type: 'p',
+        text: 'Cada imaxe di a sua relacion cos contedores, e so se etiqueta cando NON esta en uso, que e o que interesa mirar para limpar:',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Sen usar: non a usa ningun contedor. So ocupa disco e pode borrarse sen romper nada.',
+          'So parados: hai contedores que a usan pero ningun en marcha. Borrala deixaos sen poder arrincar, asi que se nomean antes de confirmar.',
+          'En uso: hai algo en marcha. Non se ofrece borrala, porque Docker negariase igualmente.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'Os filtros Sen usar e So con parados deixan a vista xustamente o que se pode limpar. A opcion de borrar esta no menu dos tres puntos de cada imaxe.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'As imaxes sen usar non se comproban',
+        text: 'Listanse para poder borralas, pero non se pregunta ao registry se tenen version nova: gastaria peticions (e cota de Docker Hub) por algo que non executa ninguen.',
+      },
+      { type: 'h', text: 'Imaxes que non se poden comprobar' },
+      {
+        type: 'p',
+        text: 'Se construiches unha imaxe no propio NAS, non existe en ningun registry co que comparala. A aplicacion detectao soa e deixa de consultala, en vez de dar un erro cada vez.',
+      },
+    ],
+  },
+  {
+    id: 'actualizar',
+    title: 'Actualizar unha imaxe',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Preme Actualizar na imaxe. O traballo corre en segundo plano: podes pechar o dialogo e seguir ao teu. En Actualizacions ves o progreso e a saida do terminal en directo.',
+      },
+      { type: 'h', text: 'Actualizar fronte a forzar' },
+      {
+        type: 'ul',
+        items: [
+          'Actualizar: so actua se hai unha version nova.',
+          'Forzar: volve descargar e recrea ainda que non haxa novidade. Util cando algo quedou en mal estado.',
+        ],
+      },
+      { type: 'h', text: 'Alcance' },
+      {
+        type: 'p',
+        text: 'Por defecto so se recrea o servizo desa imaxe. Case nunca queres tumbar a base de datos do stack para actualizar o frontal, asi que recrear o proxecto enteiro e unha opcion aparte que hai que escoller a man.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Se algo sae mal desfaise so',
+        text: 'Cando a aplicacion recrea un contedor pola sua conta, se a version nova non arrinca restaura a anterior automaticamente. Con Docker Compose non pode: Compose borra o contedor anterior e non hai a onde volver.',
+      },
+    ],
+  },
+  {
+    id: 'auto',
+    title: 'Actualizacion automatica',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Cada imaxe decide se quere actualizarse soa, desde o seu menu ou desde a sua ficha. Hai ademais un interruptor xeral en Axustes que as desactiva todas de golpe.',
+      },
+      {
+        type: 'p',
+        text: 'Nas que vixias por version podes limitar ata onde salta soa: so parches, ata version menor, ou sen limite.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Con criterio',
+        text: 'Actualizar soa unha base de datos pode requirir migrar os datos. Para eses servizos convén deixar so o aviso e aplicalo ti cando poidas miralo.',
+      },
+    ],
+  },
+  {
+    id: 'servicios',
+    title: 'Accions sobre un servizo',
+    blocks: [
+      {
+        type: 'p',
+        text: 'En Proxectos, cada servizo ten un menu coas operacions que normalmente farias por SSH. So aparece se o ficheiro do proxecto e accesible.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Recrear: elimina o contedor e creao de novo coa mesma configuracion.',
+          'Reiniciar: para e arrinca, sen recrear nada.',
+          'Parar e arrincar: o que esperas.',
+          'Descargar imaxe: baixaa sen tocar o contedor.',
+        ],
+      },
+      { type: 'h', text: 'Recrear equivale a isto' },
+      { type: 'p', text: 'Se un servizo queda en mal estado e o arranxabas asi por consola:' },
+      {
+        type: 'code',
+        text: 'cd /volume1/docker/medios\ndocker compose rm -f -s reprodutor\ndocker compose up -d reprodutor',
+      },
+      { type: 'p', text: 'Iso e exactamente o que fai Recrear, cos mesmos dous pasos.' },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'As dependencias non se tocan',
+        text: 'Usase esa secuencia e non "up --force-recreate" precisamente por isto: --force-recreate tamen recrearia as dependencias. Se o teu servizo vai detras dunha VPN ou depende dunha base de datos, esas seguen intactas e so se arrincan se estaban paradas.',
+      },
+    ],
+  },
+  {
+    id: 'proyectos',
+    title: 'Proxectos e como se actualizan',
+    blocks: [
+      { type: 'p', text: 'Cada proxecto amosa o metodo que usara para actualizarse, e son dous:' },
+      {
+        type: 'ul',
+        items: [
+          'Docker Compose: o ficheiro do proxecto e accesible. Actualizase igual que o farias ti, e Container Manager segue vendoo ben.',
+          'Recreacion directa: o ficheiro non e accesible. Recrease o contedor copiando a sua configuracion actual.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Se todo sae como Recreacion directa',
+        text: 'Enton o montaxe do cartafol non esta ben. Ten que ir coa mesma ruta a ambos lados, por exemplo /volume1/docker:/volume1/docker, porque as etiquetas dos contedores gardan rutas do sistema anfitrion.',
+      },
+    ],
+  },
+  {
+    id: 'registries',
+    title: 'Imaxes privadas',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Para as imaxes que precisan autenticacion, engade as credenciais en Axustes, apartado Registries.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'GHCR (ghcr.io): un token persoal de GitHub con permiso read:packages.',
+          'Docker Hub: o teu usuario e un token de acceso, non o contrasinal da conta.',
+          'Un registry propio: usuario e contrasinal normais.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'As credenciais gardanse cifradas e nunca se amosan de volta. Podes probar a conexion antes de gardar.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'A clave de cifrado',
+        text: 'Gardanse cifradas con CU_ENCRYPTION_KEY. Se perdes esa clave, non se poden recuperar: a aplicacion segue funcionando e avisa, pero hai que volver introducilas. Garda unha copia fora do NAS.',
+      },
+    ],
+  },
+  {
+    id: 'telegram',
+    title: 'Bot de Telegram',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Avisa cando sae unha version nova e permite actualizar desde o movil. So poden usalo as contas que autorices desde Axustes.',
+      },
+      {
+        type: 'p',
+        text: 'Para vincular unha conta, xerase un codigo dun so uso que caduca en 10 minutos.',
+      },
+      { type: 'h', text: 'Comandos' },
+      {
+        type: 'code',
+        text: '/imagenes        lista as tuas imaxes\n/estado          rendemento e resumo\n/comprobar       busca actualizacions agora\n/actualizar X    actualiza esa imaxe\n/forzar X        volvea descargar e recrea\n/auto X on|off   actualizacion automatica\n/proyectos       proxectos e o seu estado\n/logs X [n]      ultimas linas do rexistro',
+      },
+      {
+        type: 'p',
+        text: 'Os avisos non se repiten: mentres unha etiqueta apunte a mesma imaxe non se volve notificar, pero en canto apunte a outra o aviso sae so.',
+      },
+    ],
+  },
+  {
+    id: 'crear',
+    title: 'Crear un proxecto',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Desde Proxectos, o boton Novo proxecto abre un editor con duas lapelas: o docker-compose.yml e o .env. Nas duas podes escribir directamente, pegar, subir un ficheiro ou arrastralo enriba.',
+      },
+      {
+        type: 'p',
+        text: 'O nome que lle deas fai duas cousas: da nome ao proxecto de Compose e da nome ao seu cartafol. Por iso so admite minusculas, dixitos, guion e guion baixo.',
+      },
+      { type: 'code', text: '/volume1/docker/reprodutor/docker-compose.yml\n/volume1/docker/reprodutor/.env' },
+      {
+        type: 'p',
+        text: 'Ao crealo validase co propio Compose antes de dar nada por bo. Se o ficheiro ten un erro, dicheseche cal (Compose adoita senalar a lina) e non queda ningun cartafol a medias. Se marcas levantalo, arrinca en segundo plano e o progreso vese en Actualizacions, igual que unha actualizacion.',
+      },
+      {
+        type: 'p',
+        text: 'E o MESMO cartafol onde xa viven os teus stacks. Os proxectos novos crease ali ao lado, cada un no seu subcartafol, que e onde esperarias encontralos.',
+      },
+      { type: 'h', text: 'O cartafol ten que admitir escritura' },
+      {
+        type: 'p',
+        text: 'E o unico que hai que cambiar: quitarlle o :ro ao montaxe do cartafol de proxectos. Non fai falta CU_PROJECTS_DIR, que so serve se queres que os proxectos novos vaian a outro sitio distinto.',
+      },
+      { type: 'code', text: 'volumes:\n  - /volume1/docker:/volume1/docker' },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Un stack teu non se pode pisar',
+        text: 'Non depende do montaxe senon do codigo: crear un proxecto sobre un cartafol que xa existe rexeitase, e so se poden editar os proxectos creados desde aqui. O :ro e unha capa mais, non a proteccion principal. Sen ningun cartafol escribible todo o demais funciona igual e o boton de crear sae desactivado explicando por que.',
+      },
+      { type: 'h', text: 'Editar os que xa tes' },
+      {
+        type: 'p',
+        text: 'No menu dos tres puntos de cada proxecto tes Editar ficheiros, da igual quen o creara. Os que fixeches en Container Manager ou por SSH editanse igual que os creados aqui. Ao gardar podes volver aplicar o proxecto para que os cambios xurdan efecto, ou deixalo para logo.',
+      },
+      { type: 'p', text: 'O que decide se se pode editar non e quen o creou, senon tres cousas:' },
+      {
+        type: 'ul',
+        items: [
+          'Que o seu ficheiro sexa accesible desde o contedor.',
+          'Que sexa un so. Con varios non esta claro cal habria que editar, e escollelo por ti seria adivinar sobre a tua configuracion.',
+          'Que o seu cartafol admita escritura, ou sexa que non estea montado con :ro.',
+        ],
+      },
+      {
+        type: 'p',
+        text: 'Cando non se pode, a ficha do proxecto di cal das tres falla. Respectase ademais o nome real do ficheiro: se o teu proxecto usa compose.yaml, editase ese.',
+      },
+      { type: 'h', text: 'Que pasa co .env' },
+      {
+        type: 'ul',
+        items: [
+          'Gardase con permisos 0600, ou sexa lexible so polo seu propietario.',
+          'Na ficha do proxecto, os valores cuxa clave parece un segredo saen tapados, cun boton para amosalos dun en un.',
+          'Cada vez que se garda, a version anterior queda cifrada na base de datos por se hai que volver atras.',
+          'Ler o ficheiro para editalo e amosar un valor concreto quedan os dous rexistrados na auditoria.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'En disco non pode ir cifrado',
+        text: 'Compose ten que ler o .env en claro, e tamen o precisa se algun dia levantas ese stack por SSH. Cifralo en disco significaria que so esta aplicacion poderia arrincar o proxecto, que e peor remedio que enfermidade.',
+      },
+    ],
+  },
+  {
+    id: 'dosfactores',
+    title: 'Verificacion en dous pasos',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Un codigo de seis dixitos que cambia cada 30 segundos, ademais do contrasinal. Activase desde Axustes e e opcional: sen activalo non cambia nada.',
+      },
+      {
+        type: 'p',
+        text: 'Funciona con Google Authenticator, Microsoft Authenticator, Bitwarden, 1Password, Aegis e calquera outra aplicacion que siga o estandar. Non fai falta escoller cal: emitese o que todas entenden igual.',
+      },
+      { type: 'h', text: 'Como se activa' },
+      {
+        type: 'ul',
+        items: [
+          'En Axustes, Activar. Saen tres formas de pasalo a tua aplicacion.',
+          'Desde o movil: preme "Abrir na mina aplicacion". O sistema ofrececheche as aplicacions OTP que tenas instaladas e a que escollas configurase soa. E a unica via que serve se estas vendo o panel NO movil, porque ali non podes escanear a tua propia pantalla.',
+          'Desde o ordenador: escanea o codigo QR co movil.',
+          'Se nada do anterior funciona, teclea a clave a man.',
+          'Despois escribe o codigo que che amose a aplicacion.',
+          'Ata que non escribes un codigo valido NON se activa nada: asi ninguen queda fora por non ter chegado a escanear.',
+          'Ao rematar saen dez codigos de recuperacion. E a unica vez que se ven.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Garda os codigos de recuperacion FORA do NAS',
+        text: 'Son a via de entrada se perdes o movil. Gardalos no propio NAS non serve de nada: se o NAS falla e xustamente cando os precisas. Cada un vale unha soa vez, e en Axustes vese cantos quedan.',
+      },
+      { type: 'h', text: 'Detalles que evitan sorpresas' },
+      {
+        type: 'ul',
+        items: [
+          'Un codigo non vale dúas veces, ainda que no movil siga en pantalla.',
+          'Admitese unha marxe de 30 segundos arriba e abaixo, por se o reloxo do movil vai desfasado.',
+          'Desactivalo ou xerar codigos novos pide o contrasinal: non abonda con ter a sesion aberta.',
+          'Entrar con passkey non pide ademais o codigo: unha passkey xa combina o dispositivo e a tua pegada ou PIN.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'Se perdes a clave de cifrado',
+        text: 'O segredo gardase cifrado con CU_ENCRYPTION_KEY. Se esa clave se perde, o segundo factor non se pode comprobar e OMITESE, entrando so co contrasinal, en vez de deixarte fora do panel para sempre. Queda rexistrado como erro no log e convén desactivalo e volver activalo.',
+      },
+    ],
+  },
+  {
+    id: 'passkeys',
+    title: 'Entrar con passkey',
+    blocks: [
+      {
+        type: 'p',
+        text: 'Unha passkey deixa entrar coa pegada, a cara, o PIN do equipo ou un xestor como Bitwarden, sen escribir o contrasinal. Engadense desde Axustes.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Non funcionan entrando pola IP do NAS',
+        text: 'Non e unha limitacion desta aplicacion senon do navegador, e son duas condicions a un tempo: fai falta HTTPS (ou localhost), e ademais o sitio ten que identificarse cun NOME DE DOMINIO. Unha IP non vale nin sequera con HTTPS. Por iso, entrando por http://192.168.x.x o boton non aparece.',
+      },
+      { type: 'h', text: 'Que fai falta' },
+      {
+        type: 'p',
+        text: 'Chegar por un nome de dominio servido con HTTPS. Nun Synology, iso e o proxy inverso de DSM cun certificado. Se o teu proxy non reenvia as cabeceiras X-Forwarded, define ademais estas duas variables:',
+      },
+      { type: 'code', text: 'CU_RP_ID: nas.exemplo.com\nCU_RP_ORIGIN: https://nas.exemplo.com' },
+      { type: 'h', text: 'Con Bitwarden' },
+      {
+        type: 'p',
+        text: 'Funciona sen nada especial: non se pide attestation, aceptanse ES256 e RS256, e non se restrinxe o tipo de autenticador. Tampouco se esixe PIN nin credencial descubrible obrigatoria, que e o que adoita deixar fora aos xestores.',
+      },
+      {
+        type: 'p',
+        text: 'Bitwarden devolve sempre o contador de sinaturas a cero. Iso normalmente delataria unha chave clonada, asi que so se rexeita cando o contador vina sendo maior que cero e deixa de avanzar.',
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'O contrasinal non se quita nunca',
+        text: 'As passkeys engadense, non substituen. Se perdes o autenticador, ou entras pola IP do NAS onde non estan dispoñibles, o contrasinal e a via que sempre esta. Quedar fora do panel que xestiona todos os teus contedores seria bastante peor que teclealo.',
+      },
+    ],
+  },
+  {
+    id: 'entorno',
+    title: 'Onde pode funcionar',
+    blocks: [
+      {
+        type: 'p',
+        text: 'A aplicacion non fala co teu NAS, fala con Docker. Por iso funciona igual nun Synology, nun servidor Linux, con Podman ou no teu portatil: o unico que cambia dun sitio a outro e onde esta o socket e onde viven os proxectos.',
+      },
+      {
+        type: 'p',
+        text: 'As duas cousas detectanse soas ao arrincar. O socket buscase nos sitios habituais de Docker e de Podman, e os cartafoles de proxectos deducense do que declaran os propios contedores. Non fai falta configurar nada agas que o teu montaxe sexa peculiar.',
+      },
+      { type: 'h', text: 'Axustes, Contorno' },
+      {
+        type: 'p',
+        text: 'E a primeira pantalla que mirar cando algo non aparece. Di que socket esta usando, que cartafoles acepta e cantos proxectos pode manexar fronte a cantos ve. Esa diferenza e exactamente o que che falta por montar.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Comprobado de verdade: Synology DSM 7, Docker en Linux, Podman (tamen en macOS).',
+          'Deberia funcionar, sen probar: TrueNAS SCALE 24.10 ou superior, Unraid, OpenMediaVault.',
+          'Imposible: TrueNAS CORE, FreeNAS e pfSense. Son FreeBSD, e ali Docker non existe.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'info',
+        title: 'A marca de "sen comprobar" e informacion, non un aviso',
+        text: 'Significa que o soporte esta deducido da documentacion desa plataforma e ninguen o probou ali. Deberia funcionar. Se non o fai, e xustamente o fallo que interesa conecer.',
+      },
+      { type: 'h', text: 'As duas formas de actualizar' },
+      {
+        type: 'p',
+        text: 'Se o ficheiro YAML do proxecto e accesible, usase Compose, que respecta exactamente o que hai escrito. Se non o e, copiase a configuracion do contedor que esta correndo sobre a imaxe nova, con volta atras automatica se non arrinca.',
+      },
+      {
+        type: 'p',
+        text: 'A segunda funciona ben, pero reproduce o que esta en marcha e non o que pon o ficheiro. Se alguen o editou e non volveu levantar o stack, ese cambio non se aplica.',
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'A ruta ten que coincidir aos dous lados',
+        text: 'Montar o cartafol de proxectos noutro sitio dentro do contedor fai que se perda a estratexia boa. As rutas que gardan os contedores son as do sistema anfitrion, e so resolven aqui se o punto de montaxe e identico. E dicir, /srv/stacks:/srv/stacks e non /srv/stacks:/proxectos.',
+      },
+    ],
+  },
+  {
+    id: 'problemas',
+    title: 'Cando algo vai mal',
+    blocks: [
+      { type: 'h', text: 'Non aparece ningun contedor' },
+      {
+        type: 'p',
+        text: 'Mira Axustes, Contorno. Se o socket sae como non utilizable, esta montado pero faltan permisos: e un problema de como o montaches, non da ruta. Se non sae ningun, non se montou.',
+      },
+      { type: 'h', text: 'Unha actualizacion queda atascada' },
+      {
+        type: 'p',
+        text: 'En Actualizacions, mira a saida en vivo. Se leva un tempo sen escribir nada, preme Deter e reintentao. Pode ser simplemente unha imaxe grande cunha conexion lenta.',
+      },
+      { type: 'h', text: 'Non hai rangos de IP dispoñibles' },
+      {
+        type: 'p',
+        text: 'Cada proxecto crea a sua propia rede e Docker repartelas dun conxunto limitado. Ademais, ao baixar un proxecto a sua rede queda ali. Limpase asi:',
+      },
+      { type: 'code', text: 'docker network prune -f' },
+      { type: 'h', text: 'O registry pide autenticacion' },
+      {
+        type: 'p',
+        text: 'Ou a imaxe e privada e faltan credenciais, ou o repositorio non existe. Se a construiches no NAS, a aplicacion detectarao soa e deixara de consultala.',
+      },
+      { type: 'h', text: 'As metricas do sistema son aproximadas' },
+      {
+        type: 'p',
+        text: 'Falta o montaxe de so lectura de /proc. Sen el amosanse datos derivados de Docker, e a propia interface indicao.',
+      },
+    ],
+  },
+];
+
+const BY_LOCALE: Record<Locale, HelpSection[]> = { es, en, gl };
+
+/**
+ * La ayuda del idioma pedido.
+ *
+ * Con un mapa y no con condicionales anidados: al anadir el tercer idioma, un
+ * `locale === 'en' ? en : es` habria devuelto castellano para galego sin que
+ * nada fallara, y la ayuda se habria quedado en otro idioma en silencio.
+ */
 export function helpSections(locale: Locale): HelpSection[] {
-  return locale === 'en' ? en : es;
+  return BY_LOCALE[locale] ?? es;
 }

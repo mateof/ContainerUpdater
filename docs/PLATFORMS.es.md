@@ -314,16 +314,24 @@ no encuentra ningún socket.
 Con Docker Desktop es al revés: el `/var/run/docker.sock` del Mac sí vale, porque
 Desktop hace de intermediario para esa ruta concreta.
 
-### Métricas: mejor decir que faltan que mentir
+### Métricas: las de la VM, y ese es el alcance útil
 
 ```yaml
-CU_HOST_PROC: ""
+CU_HOST_PROC: /host/proc
+# y el montaje
+- /proc:/host/proc:ro
 ```
 
-Los contenedores corren dentro de una VM Linux, así que un montaje de `/proc`
-sería el de la VM y no el del Mac. Dejando la variable vacía, la aplicación
-informa de que las métricas no están disponibles en vez de hacer pasar las de la
-VM por las del equipo.
+Montar `/proc` funciona y da números reales, solo que son **los de la VM y no los
+del Mac**. Medido en un equipo: la VM daba 6 CPUs y 10,8 GB frente a los 12 y 24
+GB del Mac.
+
+Ese es el alcance que interesa vigilar, porque un contenedor nunca puede pasar de
+lo que la VM tiene asignado. Dejar el montaje fuera solo consigue un panel
+diciendo que las métricas no están disponibles.
+
+Lo que no hay que hacer es leer esos números como los del Mac. Son el techo bajo
+el que corren tus contenedores de verdad, que es un número más útil y distinto.
 
 ### Todo junto
 
