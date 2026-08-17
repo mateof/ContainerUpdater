@@ -12,8 +12,12 @@ export const defaultLocale: Locale = 'es';
 export { es, en, gl };
 export type { Catalog, Translated };
 
+/**
+ * Derivado de `locales` y no repitiendo la union a mano: era el cuarto sitio
+ * donde estaban escritos los idiomas, y cada copia es una que se puede olvidar.
+ */
 export function isLocale(value: unknown): value is Locale {
-  return value === 'es' || value === 'en' || value === 'gl';
+  return typeof value === 'string' && (locales as string[]).includes(value);
 }
 
 /**
@@ -27,6 +31,23 @@ export const localeNames: Record<Locale, string> = {
   en: 'English',
   gl: 'Galego',
 };
+
+/**
+ * Recursos con la forma que espera i18next, uno por catalogo.
+ *
+ * Vive aqui y no en la web por un motivo concreto: la web tenia esa lista
+ * escrita a mano y al anadir el galego se olvido. El idioma salia en el
+ * selector, se podia elegir, y todos los textos seguian en castellano porque
+ * i18next no lo conocia y caia al idioma por defecto. No fallaba nada, ni
+ * siquiera de forma visible.
+ *
+ * Aqui, ademas de no haber lista que olvidar, hay tests que lo comprueban.
+ */
+export function i18nResources(): Record<string, { translation: Translated<Catalog> }> {
+  return Object.fromEntries(
+    locales.map((locale) => [locale, { translation: catalogs[locale] }]),
+  );
+}
 
 /**
  * Traductor minimo para servidor y bot. La web usa i18next, que aporta plurales

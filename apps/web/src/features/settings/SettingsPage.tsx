@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
-import type { AppSettings } from '@cu/shared';
+import { locales, localeNames } from '@cu/shared';
+import type { AppSettings, Locale } from '@cu/shared';
 import { api } from '@/api/client';
 import {
   Badge,
@@ -180,11 +181,15 @@ export function SettingsPage(): ReactNode {
             <Select
               id="locale"
               value={draft.defaultLocale}
-              onChange={(event) => patch({ defaultLocale: event.target.value as 'es' | 'en' })}
+              onChange={(event) => patch({ defaultLocale: event.target.value as Locale })}
               className="w-44"
             >
-              <option value="es">Espanol</option>
-              <option value="en">English</option>
+              {/* Recorriendo `locales`: un idioma nuevo aparece aqui solo. */}
+              {locales.map((locale) => (
+                <option key={locale} value={locale}>
+                  {localeNames[locale]}
+                </option>
+              ))}
             </Select>
           </Field>
         </div>

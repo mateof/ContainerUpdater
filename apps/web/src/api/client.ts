@@ -11,6 +11,7 @@ import type {
   ContainerSummary,
   CurrentUser,
   ImagePolicy,
+  Locale,
   MetricsSnapshot,
   PasskeySummary,
   PasskeySupport,
@@ -175,7 +176,7 @@ export interface UpdatePlan {
 }
 
 export const api = {
-  authStatus: () => get<{ needsSetup: boolean; defaultLocale: 'es' | 'en' }>('/auth/status'),
+  authStatus: () => get<{ needsSetup: boolean; defaultLocale: Locale }>('/auth/status'),
   setup: (input: { username: string; password: string; locale: string }) =>
     post<{ ok: true }>('/setup', input),
   /**

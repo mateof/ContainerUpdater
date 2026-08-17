@@ -3,6 +3,7 @@ export * from './schemas.js';
 export * from './focus.js';
 export {
   localeNames,
+  i18nResources,
   catalogs,
   locales,
   defaultLocale,

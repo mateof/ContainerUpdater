@@ -7,7 +7,7 @@
  */
 import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import { catalogs, defaultLocale, isLocale, type Locale } from '@cu/shared';
+import { defaultLocale, i18nResources, isLocale, type Locale } from '@cu/shared';
 
 export const LOCALE_STORAGE_KEY = 'cu-locale';
 
@@ -28,10 +28,9 @@ function detectLocale(): Locale {
 }
 
 void i18next.use(initReactI18next).init({
-  resources: {
-    es: { translation: catalogs.es },
-    en: { translation: catalogs.en },
-  },
+  // Desde `@cu/shared`, que los deriva de los catalogos y los tiene probados.
+  // Estaban escritos a mano aqui y el galego se quedo fuera sin que nada fallara.
+  resources: i18nResources(),
   lng: detectLocale(),
   fallbackLng: defaultLocale,
   interpolation: {
