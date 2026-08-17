@@ -333,7 +333,7 @@ function StatTile({
         <span className={cx(tone === 'accent' && 'text-[var(--accent)]', tone === 'ok' && 'text-[var(--ok)]')}>
           {icon}
         </span>
-        <span className="text-[0.75rem] font-medium truncate">{label}</span>
+        <span className="min-w-0 truncate text-[0.75rem] font-medium">{label}</span>
       </div>
       <p className="text-2xl font-semibold tabular-nums tracking-tight">{value}</p>
       {detail ? <p className="text-[0.75rem] text-[var(--text-muted)] mt-0.5">{detail}</p> : null}

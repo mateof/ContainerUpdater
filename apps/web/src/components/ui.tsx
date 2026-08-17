@@ -17,9 +17,17 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
+import type {
+  ButtonHTMLAttributes,
+  InputHTMLAttributes,
+  MouseEvent,
+  ReactNode,
+  SelectHTMLAttributes,
+  TouchEvent,
+} from 'react';
 
 export function cx(...values: Array<string | false | null | undefined>): string {
   return values.filter(Boolean).join(' ');
@@ -120,6 +128,22 @@ export function Card({
       className={cx(
         'rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)]',
         'shadow-[var(--shadow-sm)]',
+        /*
+         * `min-w-0` es lo que impide que la tarjeta se salga de la pantalla.
+         *
+         * Un elemento de grid o de flex tiene `min-width: auto`, que significa
+         * "no encojas por debajo de tu contenido". Basta con que dentro haya
+         * algo que no parta (una ruta larga con `truncate`, que implica
+         * `white-space: nowrap`) para que la tarjeta crezca hasta el ancho de
+         * ese texto. Medido a 375px: las tarjetas de Proyectos llegaban a 659px.
+         *
+         * El `truncate` del texto no bastaba, porque el que se negaba a encoger
+         * era el contenedor, no el texto.
+         *
+         * Fuera de un grid o un flex esta regla no hace nada, asi que ponerla en
+         * la base de Card es seguro y arregla el problema alli donde aparezca.
+         */
+        'min-w-0',
         glow && 'cu-update-glow',
         className,
       )}
@@ -548,15 +572,84 @@ export function TooltipProvider({ children }: { children: ReactNode }): ReactNod
   );
 }
 
+/**
+ * Etiqueta al pasar el raton y al MANTENER PULSADO en tactil.
+ *
+ * Radix abre el tooltip con el raton y con el foco de teclado, pero en una
+ * pantalla tactil no hay ninguno de los dos: quien usa el movil ve iconos sin
+ * ninguna forma de averiguar que hacen. Eso pesa mas de lo normal aqui, donde
+ * varias acciones se distinguen solo por el dibujo.
+ *
+ * Se replica lo que hace una aplicacion nativa: mantener pulsado medio segundo
+ * ensena la etiqueta. Detalles que hacen que no estorbe:
+ *
+ * - Si el dedo se mueve mas de 10 pixeles, se cancela: estaba desplazando la
+ *   lista, no consultando el boton.
+ * - Al soltar se cierra, y ademas se cancela el clic de esa pulsacion. Si no,
+ *   consultar que hace un boton lo ejecutaria, que es lo contrario de lo que
+ *   busca quien lo mantiene pulsado.
+ */
 export function Tooltip({ content, children }: { content: ReactNode; children: ReactNode }): ReactNode {
+  const [open, setOpen] = useState<boolean | undefined>(undefined);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const longPressed = useRef(false);
+
+  const clear = (): void => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+    start.current = null;
+  };
+
+  const touchHandlers = {
+    onTouchStart: (event: TouchEvent<HTMLElement>) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      longPressed.current = false;
+      start.current = { x: touch.clientX, y: touch.clientY };
+      timer.current = setTimeout(() => {
+        longPressed.current = true;
+        setOpen(true);
+      }, 500);
+    },
+    onTouchMove: (event: TouchEvent<HTMLElement>) => {
+      const touch = event.touches[0];
+      if (!touch || !start.current) return;
+      const moved =
+        Math.abs(touch.clientX - start.current.x) + Math.abs(touch.clientY - start.current.y);
+      // Se esta desplazando la pantalla, no consultando el boton.
+      if (moved > 10) clear();
+    },
+    onTouchEnd: () => {
+      clear();
+      if (longPressed.current) setOpen(false);
+    },
+    onTouchCancel: () => {
+      clear();
+      setOpen(false);
+    },
+    onClickCapture: (event: MouseEvent<HTMLElement>) => {
+      // Consultar la etiqueta no puede disparar la accion.
+      if (!longPressed.current) return;
+      longPressed.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+  };
+
   if (!content) return <>{children}</>;
   return (
-    <TooltipPrimitive.Root>
-      <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
+    <TooltipPrimitive.Root open={open} onOpenChange={setOpen}>
+      <TooltipPrimitive.Trigger asChild {...touchHandlers}>
+        {children}
+      </TooltipPrimitive.Trigger>
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Content
           sideOffset={6}
           collisionPadding={8}
+          // Sin esto, al mantener pulsado el navegador movil roba el evento para
+          // su propio menu de seleccion y la etiqueta parpadea.
+          onPointerDownOutside={(event) => event.preventDefault()}
           className={cx(
             'z-50 max-w-xs rounded-[var(--radius-sm)] px-2.5 py-1.5 cu-scale-in',
             'bg-[var(--bg-elevated)] border border-[var(--border)] shadow-[var(--shadow)]',

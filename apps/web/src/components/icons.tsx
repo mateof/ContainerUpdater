@@ -99,6 +99,22 @@ export const IconStop = (p: IconProps) => (
   </Icon>
 );
 
+/**
+ * Aplicar el proyecto (levantar con Compose).
+ *
+ * Existe porque antes se usaba `IconRefresh` y quedaba al lado de
+ * `IconRestart`: dos flechas circulares, una en cada sentido, imposibles de
+ * distinguir a 16 pixeles. Aqui la metafora es otra, desplegar algo sobre una
+ * base, asi que la silueta ya no se parece.
+ */
+export const IconDeploy = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3v10" />
+    <path d="m8 9 4 4 4-4" />
+    <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+  </Icon>
+);
+
 export const IconRestart = (p: IconProps) => (
   <Icon {...p}>
     <path d="M3 12a9 9 0 1 0 3-6.7" />

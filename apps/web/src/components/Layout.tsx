@@ -219,6 +219,80 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
+          {/*
+            Cabecera solo en movil.
+            
+            Todo lo que no es navegar (idioma, tema, ayuda, cerrar sesion) vivia
+            unicamente en la barra lateral, que es `hidden md:flex`. En un movil
+            no habia forma de llegar a ello: el idioma se podia cambiar desde el
+            escritorio y desde el telefono no se veia por ningun sitio.
+          */}
+          <header className="md:hidden sticky top-0 z-30 flex items-center gap-2 border-b border-[var(--border)] px-4 py-2 cu-glass">
+            <Logo />
+            <span className="flex-1 truncate text-[0.875rem] font-semibold">
+              {t('common.appName')}
+            </span>
+
+            <Tooltip content={t('help.open')}>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label={t('help.open')}
+                onClick={() => setHelpOpen(true)}
+              >
+                <IconHelp size={17} />
+              </Button>
+            </Tooltip>
+
+            <Menu
+              trigger={
+                <Button size="icon" variant="ghost" aria-label={t('nav.language')}>
+                  <LocaleFlag locale={currentLocale()} />
+                </Button>
+              }
+              items={locales.map((locale) => ({
+                key: locale,
+                label: localeNames[locale],
+                icon: <LocaleFlag locale={locale} />,
+                onSelect: () => {
+                  setLocale(locale);
+                  void api.updateProfile(locale);
+                  forceRender((n) => n + 1);
+                },
+              }))}
+            />
+
+            <Menu
+              trigger={
+                <Button size="icon" variant="ghost" aria-label={t('common.showMore')}>
+                  <IconMore size={17} />
+                </Button>
+              }
+              items={[
+                {
+                  key: 'theme',
+                  label: theme === 'dark' ? t('nav.themeLight') : t('nav.themeDark'),
+                  icon: theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />,
+                  onSelect: () => setTheme(theme === 'dark' ? 'light' : 'dark'),
+                },
+                {
+                  key: 'github',
+                  label: 'GitHub',
+                  icon: <IconGithub size={15} />,
+                  onSelect: () => window.open(REPO_URL, '_blank', 'noreferrer,noopener'),
+                },
+                { type: 'separator', key: 'sep' },
+                {
+                  key: 'logout',
+                  label: t('nav.logout'),
+                  icon: <IconLogout size={15} />,
+                  danger: true,
+                  onSelect: () => void logout(),
+                },
+              ]}
+            />
+          </header>
+
           <main
             key={location.pathname}
             className="flex-1 overflow-y-auto px-4 py-5 md:px-7 md:py-6 cu-animate-in pb-20 md:pb-6"

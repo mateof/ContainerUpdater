@@ -18,7 +18,14 @@ import {
   Tooltip,
   useToast,
 } from '@/components/ui';
-import { IconDownload, IconMore, IconPlus, IconProject, IconRefresh, IconRestart } from '@/components/icons';
+import {
+  IconDeploy,
+  IconDownload,
+  IconMore,
+  IconPlus,
+  IconProject,
+  IconRestart,
+} from '@/components/icons';
 import { ProjectEditor } from './ProjectEditor';
 import { CrossLink, FilterPills, FocusBanner, SearchBox } from '@/components/Filters';
 import { displayImage } from '@/lib/format';
@@ -311,7 +318,7 @@ export function ProjectsPage(): ReactNode {
                       disabled={!project.yamlAccessible}
                       onClick={() => setConfirm({ project, action: 'up' })}
                     >
-                      <IconRefresh size={16} />
+                      <IconDeploy size={16} />
                     </Button>
                   </Tooltip>
                   <Menu
