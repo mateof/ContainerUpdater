@@ -50,7 +50,8 @@ algo falla.
 | Entorno | Estado | Estrategia de actualización |
 |---|---|---|
 | Synology DSM 7.x (Container Manager) | Comprobado | Compose |
-| Docker en Linux o macOS | Comprobado | Compose |
+| Docker en Linux | Comprobado | Compose |
+| macOS con Podman (Apple Silicon) | Comprobado, ver su seccion | Compose |
 | Podman 4.x y 5.x | Comprobado | Compose o recreate |
 | TrueNAS SCALE 24.10 o superior | Declarado, sin probar | Compose |
 | Unraid 6.12+ | Declarado, sin probar | Recreate (ver más abajo) |
@@ -258,29 +259,107 @@ compose de Linux montando esa ruta.
 
 ---
 
-## macOS y Windows con Docker Desktop
+## macOS con Podman o Docker Desktop
 
-Funciona para desarrollo y para gestionar contenedores locales, con una limitación que no tiene
-arreglo: **las métricas del sistema no serán las de tu máquina**. Docker Desktop corre los
-contenedores dentro de una VM Linux, así que `/proc` es el de esa VM. La aplicación lo detecta y lo
-indica en la interfaz en vez de mostrar números inventados.
+Funciona para desarrollo y para gestionar contenedores locales, y es donde esta
+seccion se ha comprobado de verdad: Podman 5.4.0 en un Mac con Apple Silicon, 24
+contenedores, 32 imagenes y 11 proyectos.
+
+Aqui hay **tres ajustes que no son opcionales**. Sin ellos el contenedor arranca
+y no puede hacer nada, y cada uno da un sintoma que no apunta a su causa.
+
+### `platform: linux/arm64` en Apple Silicon
+
+Sin esto, Podman se baja la variante amd64 y la emula. **Los binarios en Go se
+caen bajo esa emulacion**:
+
+```
+runtime: taggedPointerPack invalid packing
+fatal error: taggedPointerPack
+```
+
+El CLI de Docker que lleva la imagen, que es el que ejecuta Compose, es uno de
+ellos. Así que el panel arranca y parece correcto, pero no se puede actualizar
+ningún proyecto. Forzando arm64 se arregla, comprobado: funcionan Docker 28.5.2 y
+Compose v2.32.4.
+
+En realidad no es cosa de macOS sino de arquitectura: pasaría en cualquier sitio
+donde se descargue la variante equivocada. Merece la pena mirar
+`docker image inspect <imagen> --format '{{.Architecture}}'` si algún binario en
+Go empieza a comportarse de forma rara.
+
+### `security_opt: label=disable` con Podman
+
+La máquina virtual de Podman es Fedora con SELinux activo, y bloquea el acceso al
+socket **incluso siendo root dentro del contenedor**. El síntoma engaña:
+
+```
+Error: connect EACCES /var/run/docker.sock
+```
+
+El fichero parece bien montado y los permisos parecen correctos. Es la etiqueta,
+no el modo.
+
+### La ruta del socket es la de la VM, no la del Mac
+
+```yaml
+- /run/podman/podman.sock:/var/run/docker.sock
+```
+
+El contenedor corre dentro de la VM y Podman resuelve esa ruta allí. Poniendo el
+socket del lado de macOS (el `/var/run/docker.sock` del Mac, o el de
+`/var/folders/...`) se monta un directorio vacío y la aplicación informa de que
+no encuentra ningún socket.
+
+Con Docker Desktop es al revés: el `/var/run/docker.sock` del Mac sí vale, porque
+Desktop hace de intermediario para esa ruta concreta.
+
+### Métricas: mejor decir que faltan que mentir
+
+```yaml
+CU_HOST_PROC: ""
+```
+
+Los contenedores corren dentro de una VM Linux, así que un montaje de `/proc`
+sería el de la VM y no el del Mac. Dejando la variable vacía, la aplicación
+informa de que las métricas no están disponibles en vez de hacer pasar las de la
+VM por las del equipo.
+
+### Todo junto
 
 ```yaml
 services:
   container-updater:
     image: ghcr.io/mateof/container-updater:latest
+    platform: linux/arm64          # Apple Silicon: ver arriba
+    user: "0:0"
+    security_opt:
+      - label=disable              # Podman: ver arriba
     ports:
       - "8099:8080"
     environment:
       CU_ENCRYPTION_KEY: ${CU_ENCRYPTION_KEY}
+      CU_HOST_PROC: ""
+      CU_PROJECTS_DIR: /Users/ana/docker/compose
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./data:/data
-      - /Users/ana/proyectos:/Users/ana/proyectos:ro
+      - /run/podman/podman.sock:/var/run/docker.sock
+      - /Users/ana/docker/data/container-updater:/data
+      # Con la misma ruta a ambos lados, igual que en todas partes.
+      - /Users/ana/proyectos:/Users/ana/proyectos
+      - /Users/ana/docker/compose:/Users/ana/docker/compose
 ```
 
-En Windows con WSL2, monta el socket como `//var/run/docker.sock:/var/run/docker.sock` y usa rutas
-de WSL, no rutas `C:\`.
+Monta todas las carpetas donde vivan tus proyectos: una que falte es un proyecto
+que se ve pero no se puede manejar con Compose. En **Ajustes → Entorno** sale el
+recuento de manejables frente a detectados, que es la forma más rápida de
+descubrir cuál falta.
+
+### Windows con WSL2
+
+Sin probar. Los dos problemas de arriba no deberían aplicar (es x64, así que no
+hay emulación, y no hay SELinux), quedando el socket como
+`//var/run/docker.sock:/var/run/docker.sock` y rutas de WSL en vez de `C:\`. Si
+lo pruebas, el panel de Entorno te dirá qué ha encontrado.
 
 ---
 
@@ -291,7 +370,7 @@ de WSL, no rutas `C:\`.
 | Lo que ves | Lo que significa |
 |---|---|
 | Socket con etiqueta "automático" | Se encontró sondeando. Si no es el que quieres, define `DOCKER_HOST`. |
-| "El socket existe pero no se puede usar" | Está montado pero faltan permisos. Es un problema del montaje, no de la ruta. |
+| "El socket existe pero no se puede usar" | Está montado pero faltan permisos. Es un problema del montaje, no de la ruta. Con Podman suele ser SELinux: añade `security_opt: label=disable`. |
 | Proyectos manejables menor que los detectados | Esos proyectos se ven pero su carpeta no está montada aquí, o no con la misma ruta. Se actualizarán por recreate. |
 | Carpetas de proyectos vacío | No hay contenedores con labels de Compose, o ninguna de sus carpetas es accesible. |
 | Plataforma "Sin comprobar" | El soporte está deducido de la documentación de esa plataforma, no probado en ella. Debería funcionar; si no lo hace, es un fallo que interesa conocer. |

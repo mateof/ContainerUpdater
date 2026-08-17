@@ -61,7 +61,8 @@ it has not been tried misleads exactly when things go wrong.
 | Environment | Status | Update strategy |
 |---|---|---|
 | Synology DSM 7.x (Container Manager) | Verified | Compose |
-| Docker on Linux or macOS | Verified | Compose |
+| Docker on Linux | Verified | Compose |
+| macOS with Podman (Apple Silicon) | Verified, see its section | Compose |
 | Podman 4.x and 5.x | Verified | Compose or recreate |
 | TrueNAS SCALE 24.10 or newer | Declared, untested | Compose |
 | Unraid 6.12+ | Declared, untested | Recreate (see below) |
@@ -283,27 +284,102 @@ Debian with Docker, so the Linux compose applies with that path mounted.
 
 ## macOS and Windows with Docker Desktop
 
-Works for development and for managing local containers, with one limitation
-there is no way around: **the system metrics will not be your machine's**. Docker
-Desktop runs containers inside a Linux VM, so `/proc` is that VM's. The app
-detects this and says so in the interface rather than showing invented figures.
+Works for development and for managing local containers, and it is where this
+section was actually tested: Podman 5.4.0 on an Apple Silicon Mac, 24 containers,
+32 images, 11 projects.
+
+Three settings are not optional here. Without them the container starts and can
+do nothing, each with a symptom that does not point at its cause.
+
+### `platform: linux/arm64` on Apple Silicon
+
+Without it, Podman pulls the amd64 variant and emulates it. **Go binaries crash
+under that emulation**:
+
+```
+runtime: taggedPointerPack invalid packing
+fatal error: taggedPointerPack
+```
+
+The Docker CLI shipped in the image, which is what runs Compose, is a Go binary.
+So the panel comes up and looks fine, but no project can be updated. Forcing
+arm64 fixes it, verified: Docker 28.5.2 and Compose v2.32.4 both run.
+
+This is not really a macOS matter but an architecture one: it would happen
+anywhere the wrong variant gets pulled. Worth checking with
+`docker image inspect <image> --format '{{.Architecture}}'` if Go binaries start
+misbehaving.
+
+### `security_opt: label=disable` with Podman
+
+The Podman machine is Fedora with SELinux on, and it blocks access to the socket
+**even as root inside the container**. The symptom is misleading:
+
+```
+Error: connect EACCES /var/run/docker.sock
+```
+
+The file looks correctly mounted and the permissions look right. It is the
+label, not the mode.
+
+### The socket path is the VM's, not the Mac's
+
+```yaml
+- /run/podman/podman.sock:/var/run/docker.sock
+```
+
+The container runs inside the VM, and Podman resolves that path there. Using the
+macOS-side socket (`/var/run/docker.sock` on the Mac, or the one under
+`/var/folders/...`) mounts an empty directory and the app reports finding no
+socket at all.
+
+With Docker Desktop it is the opposite: `/var/run/docker.sock` on the Mac works,
+because Desktop proxies that specific path into the VM.
+
+### Metrics: say they are missing rather than lie
+
+```yaml
+CU_HOST_PROC: ""
+```
+
+Containers run inside a Linux VM, so a `/proc` mount would be the VM's and not
+the Mac's. Setting the variable empty makes the app report metrics as
+unavailable instead of passing VM figures off as the machine's.
+
+### The whole thing
 
 ```yaml
 services:
   container-updater:
     image: ghcr.io/mateof/container-updater:latest
+    platform: linux/arm64          # Apple Silicon: see above
+    user: "0:0"
+    security_opt:
+      - label=disable              # Podman: see above
     ports:
       - "8099:8080"
     environment:
       CU_ENCRYPTION_KEY: ${CU_ENCRYPTION_KEY}
+      CU_HOST_PROC: ""
+      CU_PROJECTS_DIR: /Users/ana/docker/compose
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./data:/data
+      - /run/podman/podman.sock:/var/run/docker.sock
+      - /Users/ana/docker/data/container-updater:/data
+      # Same path on both sides, as everywhere else.
       - /Users/ana/projects:/Users/ana/projects
+      - /Users/ana/docker/compose:/Users/ana/docker/compose
 ```
 
-On Windows with WSL2, mount the socket as
-`//var/run/docker.sock:/var/run/docker.sock` and use WSL paths, not `C:\` ones.
+Mount every folder your projects live in: one left out is one project that shows
+up but cannot be handled with Compose. **Settings → Environment** gives the count
+of manageable versus detected, which is the quickest way to spot a missing one.
+
+### Windows with WSL2
+
+Not tested. The two problems above should not apply (x64, so no emulation, and
+no SELinux), leaving the socket as `//var/run/docker.sock:/var/run/docker.sock`
+and WSL paths rather than `C:\` ones. If you try it, the Environment panel will
+say what it found.
 
 ---
 
@@ -315,7 +391,7 @@ up:
 | What you see | What it means |
 |---|---|
 | Socket labelled "auto" | It was found by probing. If it is not the one you want, set `DOCKER_HOST`. |
-| "The socket exists but cannot be used" | It is mounted but permissions are missing. That is a mount problem, not a path problem. |
+| "The socket exists but cannot be used" | It is mounted but permissions are missing. That is a mount problem, not a path problem. On Podman it is usually SELinux: add `security_opt: label=disable`. |
 | Manageable projects fewer than detected | Those projects are visible but their folder is not mounted here, or not at the same path. They will be updated by recreate. |
 | Project folders empty | There are no containers with Compose labels, or none of their folders is reachable. |
 | Platform "Unverified" | Support is inferred from that platform's documentation, not tested on it. It should work; if it does not, that is a bug worth hearing about. |
