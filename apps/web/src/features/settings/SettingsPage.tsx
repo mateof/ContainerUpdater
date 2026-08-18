@@ -27,6 +27,11 @@ import { RuntimeSection } from './RuntimeSection';
 import { PasskeysSection } from './PasskeysSection';
 import { TotpSection } from './TotpSection';
 import { TelegramSection } from './TelegramSection';
+import { StorageSection } from './StorageSection';
+import { BackupSection } from './BackupSection';
+
+/** Horas del dia para los selectores de la ventana de mantenimiento. */
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 
 export function SettingsPage(): ReactNode {
   const { t } = useTranslation();
@@ -102,6 +107,76 @@ export function SettingsPage(): ReactNode {
             hint={t('settings.autoUpdateEnabledHelp')}
           />
 
+          {/*
+            Cuarentena y ventana solo se muestran con el auto-update encendido:
+            con el apagado no retienen nada y serian dos ajustes que prometen
+            algo que no hacen.
+          */}
+          {draft.autoUpdateEnabled ? (
+            <>
+              <Field
+                label={t('settings.defaultMinAge')}
+                hint={t('settings.defaultMinAgeHelp')}
+                htmlFor="min-age"
+              >
+                <Select
+                  id="min-age"
+                  value={String(draft.defaultMinAgeHours)}
+                  onChange={(event) => patch({ defaultMinAgeHours: Number(event.target.value) })}
+                  className="w-56"
+                >
+                  <option value="0">{t('images.minAgeNone')}</option>
+                  <option value="24">{t('images.minAgeHours', { count: 24 })}</option>
+                  <option value="72">{t('images.minAgeHours', { count: 72 })}</option>
+                  <option value="168">{t('images.minAgeDays', { count: 7 })}</option>
+                  <option value="336">{t('images.minAgeDays', { count: 14 })}</option>
+                </Select>
+              </Field>
+
+              <Switch
+                checked={draft.maintenanceWindowEnabled}
+                onCheckedChange={(value) => patch({ maintenanceWindowEnabled: value })}
+                label={t('settings.maintenanceWindow')}
+                hint={t('settings.maintenanceWindowHelp')}
+              />
+
+              {draft.maintenanceWindowEnabled ? (
+                <div className="flex flex-wrap items-end gap-3">
+                  <Field label={t('settings.maintenanceStart')} htmlFor="win-start">
+                    <Select
+                      id="win-start"
+                      value={String(draft.maintenanceStartHour)}
+                      onChange={(event) =>
+                        patch({ maintenanceStartHour: Number(event.target.value) })
+                      }
+                      className="w-24"
+                    >
+                      {HOURS.map((hour) => (
+                        <option key={hour} value={hour}>
+                          {String(hour).padStart(2, '0')}:00
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label={t('settings.maintenanceEnd')} htmlFor="win-end">
+                    <Select
+                      id="win-end"
+                      value={String(draft.maintenanceEndHour)}
+                      onChange={(event) => patch({ maintenanceEndHour: Number(event.target.value) })}
+                      className="w-24"
+                    >
+                      {HOURS.map((hour) => (
+                        <option key={hour} value={hour}>
+                          {String(hour).padStart(2, '0')}:00
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
           <Field
             label={t('settings.registryConcurrency')}
             hint={t('settings.registryConcurrencyHelp')}
@@ -133,6 +208,17 @@ export function SettingsPage(): ReactNode {
             checked={draft.notifyOnUpdateApplied}
             onCheckedChange={(value) => patch({ notifyOnUpdateApplied: value })}
             label={t('settings.notifyOnUpdateApplied')}
+          />
+          <Switch
+            checked={draft.notifyOnContainerDown}
+            onCheckedChange={(value) => patch({ notifyOnContainerDown: value })}
+            label={t('settings.notifyOnContainerDown')}
+            hint={t('settings.notifyOnContainerDownHelp')}
+          />
+          <Switch
+            checked={draft.notifyOnContainerRecovered}
+            onCheckedChange={(value) => patch({ notifyOnContainerRecovered: value })}
+            label={t('settings.notifyOnContainerRecovered')}
           />
           <Switch
             checked={draft.notifyOnFailure}
@@ -213,6 +299,8 @@ export function SettingsPage(): ReactNode {
       <RuntimeSection />
       <RegistriesSection />
       <TelegramSection />
+      <StorageSection />
+      <BackupSection />
 
       {/* Sistema */}
       <Card className="p-5">

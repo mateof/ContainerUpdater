@@ -7,10 +7,11 @@
  * cambia y no se reenvia; en cuanto apunta a otra, la clave es distinta y el
  * aviso sale solo.
  */
-import { translate, type Locale } from '@cu/shared';
+import { buildReleaseInfo, translate, type Locale } from '@cu/shared';
 import { dedupeKey } from '../db/repositories/index.js';
 import type { Repositories } from '../db/repositories/index.js';
 import type { CheckOutcome } from './checker.js';
+import type { ContainerAlert } from './watchdog.js';
 import type { Logger } from '../logger.js';
 
 export interface OutboundMessage {
@@ -140,6 +141,60 @@ export class NotifierService {
     }
   }
 
+  /**
+   * Avisa de un contenedor caido, en bucle o recuperado.
+   *
+   * Sin deduplicacion por clave, a diferencia de los avisos de actualizacion:
+   * aqui la deduplicacion ya la hace el vigilante, que solo emite en las
+   * TRANSICIONES. Anadir otra capa aqui solo podria hacer que se perdiera un
+   * aviso legitimo, por ejemplo el de que algo se cayo dos veces en un dia.
+   */
+  async notifyContainerAlert(alert: ContainerAlert): Promise<void> {
+    const settings = this.repos.settings.getAll();
+    if (!this.ready) return;
+    if (alert.kind === 'recovered') {
+      if (!settings.notifyOnContainerRecovered) return;
+    } else if (!settings.notifyOnContainerDown) {
+      return;
+    }
+
+    for (const recipient of this.repos.telegram.listNotifiable()) {
+      const locale = recipient.locale ?? settings.defaultLocale;
+      const name = escapeHtml(alert.name);
+
+      let text: string;
+      switch (alert.kind) {
+        case 'down':
+          text = translate(locale, 'telegram.containerDown', {
+            name,
+            code: String(alert.exitCode ?? '?'),
+          });
+          break;
+        case 'restart-loop':
+          text = translate(locale, 'telegram.containerRestartLoop', {
+            name,
+            count: String(alert.restartCount),
+          });
+          break;
+        case 'unhealthy':
+          text = translate(locale, 'telegram.containerUnhealthy', { name });
+          break;
+        case 'recovered':
+          text = translate(locale, 'telegram.containerRecovered', { name });
+          break;
+      }
+
+      await this.#send({
+        chatId: recipient.chatId,
+        text,
+        buttons:
+          alert.kind === 'recovered'
+            ? undefined
+            : [[{ text: translate(locale, 'telegram.btnLogs'), data: `logs:${alert.name}` }]],
+      });
+    }
+  }
+
   #buildUpdateMessage(outcome: CheckOutcome, locale: Locale): string {
     const ref = escapeHtml(outcome.ref);
     const header = translate(locale, 'telegram.updateAvailable', { ref });
@@ -153,7 +208,25 @@ export class NotifierService {
           tag: escapeHtml(ref.split(':').at(-1) ?? ''),
         });
 
-    return `${header}\n${detail}`;
+    // Enlace a que cambia. Es la diferencia entre decidir a ciegas y decidir:
+    // el aviso llega al movil y desde ahi se ve el diff sin abrir el panel.
+    const row = this.repos.inventory.findImage(outcome.ref);
+    const release = row
+      ? buildReleaseInfo({
+          sourceUrl: row.remote_source_url ?? row.local_source_url,
+          localRevision: row.local_revision,
+          remoteRevision: row.remote_revision,
+          remoteVersion: row.remote_version,
+          publishedAt: row.remote_created_at,
+        })
+      : null;
+
+    const link = release?.compareUrl ?? release?.releasesUrl ?? null;
+    const changes = link
+      ? `\n<a href="${escapeHtml(link)}">${translate(locale, 'telegram.whatChanged')}</a>`
+      : '';
+
+    return `${header}\n${detail}${changes}`;
   }
 
   /**

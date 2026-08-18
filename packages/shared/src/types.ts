@@ -55,6 +55,37 @@ export interface ImagePolicy {
   pausedUntil: number | null;
   /** Digest concreto que el usuario decidio ignorar. */
   ignoredDigest: string | null;
+  /**
+   * Horas que una version debe llevar publicada antes de que el auto-update la
+   * aplique.
+   *
+   * Es lo que hace que dejar el auto-update encendido no de miedo: la mayoria
+   * de releases rotas se corrigen en dos o tres dias, y con 72 aqui te las
+   * saltas sin enterarte. Solo afecta al auto-update; actualizar a mano nunca
+   * se bloquea.
+   *
+   * `null` hereda el valor global de ajustes, que es distinto de `0`: cero
+   * significa "esta imagen entra en cuanto sale, diga lo que diga el global".
+   */
+  minAgeHours: number | null;
+}
+
+/**
+ * Por que una imagen con novedad no se ha actualizado sola.
+ *
+ * Se guarda y se muestra porque el silencio es peor que la espera: sin esto,
+ * una imagen marcada como automatica que no se mueve parece una averia.
+ */
+export type HoldReason =
+  /** Todavia no ha cumplido la cuarentena de su politica. */
+  | 'quarantine'
+  /** Hay ventana de mantenimiento y ahora mismo estamos fuera. */
+  | 'maintenance-window';
+
+export interface UpdateHold {
+  reason: HoldReason;
+  /** Cuando dejara de estar retenida, si se puede saber. */
+  until: number | null;
 }
 
 /**
@@ -93,6 +124,54 @@ export interface TrackedImage {
   inUseByRunning: string[];
   usage: ImageUsage;
   policy: ImagePolicy;
+  /** Que trae la version publicada. null si no se ha podido averiguar. */
+  release: ReleaseInfo | null;
+  /** Por que no se ha aplicado sola, cuando hay novedad y es automatica. */
+  hold: UpdateHold | null;
+  /** Si hay una version anterior a la que se puede volver. */
+  canRollback: boolean;
+}
+
+/**
+ * De donde viene una imagen y que cambia respecto a la que tienes.
+ *
+ * Sale de las etiquetas OCI del blob de configuracion, que ya se descarga al
+ * detectar una novedad. Antes esa informacion pasaba por delante y se tiraba.
+ */
+export interface ReleaseInfo {
+  /** `org.opencontainers.image.source`, normalmente el repositorio de codigo. */
+  sourceUrl: string | null;
+  /** Commit de la version que tienes instalada. */
+  localRevision: string | null;
+  /** Commit de la version publicada. */
+  remoteRevision: string | null;
+  /** `org.opencontainers.image.version` de la publicada. */
+  remoteVersion: string | null;
+  /** Cuando se publico la version remota, si se ha podido averiguar. */
+  publishedAt: number | null;
+  /** Comparacion entre ambos commits, solo cuando el origen la admite. */
+  compareUrl: string | null;
+  /** Listado de releases del proyecto, como recurso de segunda opcion. */
+  releasesUrl: string | null;
+}
+
+/** Punto al que se puede volver tras una actualizacion ya aplicada. */
+export interface RollbackPoint {
+  /** Trabajo que dejo este punto. */
+  jobId: number;
+  imageRef: string;
+  /**
+   * Digests de la version anterior, en orden de preferencia.
+   *
+   * Es una lista porque `RepoDigests` puede traer el del indice y el del
+   * manifest de la arquitectura, y no todos los registries sirven ambos.
+   */
+  digests: string[];
+  tag: string | null;
+  /** Cuando se aplico la actualizacion que se puede deshacer. */
+  appliedAt: number;
+  /** Digest actual, el que se marcara como ignorado al volver atras. */
+  currentDigest: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +212,14 @@ export interface ContainerSummary {
   createdAt: number;
   startedAt: number | null;
   restartCount: number;
+  /**
+   * Codigo con el que salio, cuando ya no corre.
+   *
+   * Es lo que separa "lo pare yo" de "se ha caido": salir con 0 es una parada
+   * limpia y no merece aviso, salir con otra cosa si. Solo se consulta para los
+   * contenedores que no estan en marcha, que son pocos.
+   */
+  exitCode: number | null;
   ports: Array<{ ip?: string; privatePort: number; publicPort?: number; type: string }>;
   /** Clave compuesta del proyecto compose, null si el contenedor va suelto. */
   projectKey: string | null;
@@ -232,6 +319,8 @@ export type UpdateMode =
   | 'start'
   /** Descarga la imagen sin tocar el contenedor. */
   | 'pull'
+  /** Vuelve a la version anterior a la ultima actualizacion. */
+  | 'revert'
   /** Sobre el proyecto entero, no sobre un servicio. */
   | 'up'
   | 'down';
@@ -241,7 +330,7 @@ export const SERVICE_ACTIONS = ['recreate', 'restart', 'stop', 'start', 'pull'] 
 export type ServiceAction = (typeof SERVICE_ACTIONS)[number];
 
 /** Operaciones sobre el proyecto entero. */
-export const PROJECT_ACTIONS = ['up', 'restart', 'down'] as const;
+export const PROJECT_ACTIONS = ['update', 'up', 'restart', 'down'] as const;
 export type ProjectAction = (typeof PROJECT_ACTIONS)[number];
 
 export type JobTrigger = 'manual' | 'auto' | 'telegram';
@@ -452,6 +541,28 @@ export interface AppSettings {
   notifyOnUpdateAvailable: boolean;
   notifyOnUpdateApplied: boolean;
   notifyOnFailure: boolean;
+  /** Un contenedor que se cae o entra en bucle de reinicios. */
+  notifyOnContainerDown: boolean;
+  /** Y cuando vuelve solo, para poder dejar de preocuparse. */
+  notifyOnContainerRecovered: boolean;
+  /**
+   * Reinicios seguidos que hacen falta para considerarlo un bucle.
+   *
+   * Un contenedor que reinicia una vez puede ser un pico de memoria puntual.
+   * Tres seguidos en la misma ventana ya no lo es.
+   */
+  restartLoopThreshold: number;
+  /**
+   * Cuarentena por defecto, en horas, para las imagenes sin politica propia.
+   *
+   * 0 la desactiva. Se aplica solo al auto-update.
+   */
+  defaultMinAgeHours: number;
+  /** Limitar el auto-update a una franja horaria. */
+  maintenanceWindowEnabled: boolean;
+  /** Hora local de inicio y fin, 0-23. Si fin < inicio, la franja cruza medianoche. */
+  maintenanceStartHour: number;
+  maintenanceEndHour: number;
   metricsIntervalSeconds: number;
   metricsHistoryEnabled: boolean;
   historyRetentionDays: number;
@@ -485,6 +596,71 @@ export interface SystemStatus {
 }
 
 // ---------------------------------------------------------------------------
+// Almacenamiento
+// ---------------------------------------------------------------------------
+
+/**
+ * Un volumen que no usa ningun contenedor.
+ *
+ * Ojo con la lectura facil: "no lo usa nadie" no quiere decir "sobra". Puede
+ * ser justamente los datos de algo que paraste en marzo y quieres recuperar en
+ * octubre. Por eso aqui no hay limpieza masiva, solo borrado de uno en uno.
+ */
+export interface UnusedVolume {
+  name: string;
+  driver: string;
+  mountpoint: string;
+  createdAt: number | null;
+  /** Tamano en disco. null cuando el daemon no lo calcula. */
+  sizeBytes: number | null;
+  /** Nombre del proyecto compose que lo creo, si lo dicen sus etiquetas. */
+  projectName: string | null;
+}
+
+export interface StorageUsage {
+  images: { total: number; reclaimable: number; count: number };
+  containers: { total: number; count: number };
+  volumes: { total: number; reclaimable: number; count: number };
+  buildCache: { total: number; reclaimable: number; count: number };
+  /** Volumenes concretos que no usa nadie, para poder decidir uno a uno. */
+  unusedVolumes: UnusedVolume[];
+  /** El daemon no siempre publica todo. Lo que falte va a null y se dice. */
+  partial: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Copia de seguridad
+// ---------------------------------------------------------------------------
+
+/**
+ * Contenido exportable.
+ *
+ * Deliberadamente NO lleva secretos: ni contrasenas de registry, ni el secreto
+ * del segundo factor, ni passkeys. Un fichero de copia que se pueda descargar y
+ * dejar en cualquier carpeta no es sitio para eso, y todo lo omitido se vuelve a
+ * dar de alta en minutos. Lo que de verdad cuesta rehacer son las politicas.
+ */
+export interface BackupFile {
+  version: 1;
+  createdAt: number;
+  appVersion: string;
+  settings: AppSettings;
+  policies: ImagePolicy[];
+  /** Sin el secreto: solo host, tipo y usuario, para saber que volver a poner. */
+  registries: Array<Omit<RegistryConfig, 'id' | 'status' | 'lastVerifiedAt' | 'rateLimitRemaining' | 'rateLimitTotal'>>;
+  telegramUsers: Array<Pick<TelegramUser, 'chatId' | 'username' | 'role' | 'locale'>>;
+}
+
+export interface RestoreReport {
+  settings: boolean;
+  policies: number;
+  registries: number;
+  telegramUsers: number;
+  /** Lo que se ha omitido y por que, para que no parezca que se aplico todo. */
+  skipped: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Eventos SSE
 // ---------------------------------------------------------------------------
 
@@ -495,4 +671,8 @@ export type ServerEvent =
   | { type: 'check-progress'; payload: { run: CheckRun; currentImage: string | null } }
   | { type: 'check-done'; payload: { run: CheckRun } }
   | { type: 'inventory-changed'; payload: Record<string, never> }
-  | { type: 'notice'; payload: { level: 'info' | 'warn' | 'error'; messageKey: string } };
+  | { type: 'notice'; payload: { level: 'info' | 'warn' | 'error'; messageKey: string } }
+  | {
+      type: 'container-alert';
+      payload: { name: string; kind: 'down' | 'restart-loop' | 'unhealthy' | 'recovered' };
+    };

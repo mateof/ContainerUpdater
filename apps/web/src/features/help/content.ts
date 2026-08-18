@@ -146,6 +146,30 @@ const es: HelpSection[] = [
         text: 'En las que vigilas por version puedes limitar hasta donde salta sola: solo parches, hasta version menor, o sin limite.',
       },
       {
+        type: 'p',
+        text: 'Antes de que una version entre sola tiene que llevar publicada un tiempo, 24 horas por defecto. Es lo que evita entrar en una version recien salida: la mayoria de las que salen rotas se corrigen en dos o tres dias, y asi te las saltas sin enterarte. Cada imagen puede tener su propia espera, y actualizar a mano no espera nunca.',
+      },
+      {
+        type: 'p',
+        text: 'Si una version no trae fecha de publicacion legible, la espera no se le aplica y la ficha de la imagen lo dice. Retenerla para siempre por no saber fecharla seria peor.',
+      },
+      {
+        type: 'p',
+        text: 'Si aun asi una actualizacion sale mal, desde el menu de la imagen o desde el historial puedes volver a la version anterior. La version de la que sales queda marcada para que el automatico no la vuelva a aplicar; la siguiente que se publique si entrara.',
+      },
+      {
+        type: 'p',
+        text: 'Antes de que unha version entre soa ten que levar publicada un tempo, 24 horas por defecto. E o que evita entrar nunha version recen saida: a maioria das que saen rotas corrixense en dous ou tres dias, e asi saltalas sen enterarte. Cada imaxe pode ter a sua propia agarda, e actualizar a man non agarda nunca.',
+      },
+      {
+        type: 'p',
+        text: 'Se unha version non trae data de publicacion lexible, a agarda non se lle aplica e a ficha da imaxe dio. Retela para sempre por non saber datala seria peor.',
+      },
+      {
+        type: 'p',
+        text: 'Se aun asi unha actualizacion sae mal, desde o menu da imaxe ou desde o historial podes volver a version anterior. A version da que saes queda marcada para que o automatico non a volva aplicar; a seguinte que se publique si entrara.',
+      },
+      {
         type: 'note',
         tone: 'warn',
         title: 'Con criterio',
@@ -623,6 +647,18 @@ const en: HelpSection[] = [
       {
         type: 'p',
         text: 'For images watched by version you can cap how far it jumps on its own: patches only, up to minor, or no limit.',
+      },
+      {
+        type: 'p',
+        text: 'Before a version is applied on its own it must have been published for a while, 24 hours by default. That is what stops you landing on a brand new release: most broken ones are fixed within two or three days, so you skip them without noticing. Each image can have its own waiting period, and manual updates never wait.',
+      },
+      {
+        type: 'p',
+        text: 'If a version carries no readable publication date, the wait does not apply to it and the image page says so. Holding it back forever just because we cannot date it would be worse.',
+      },
+      {
+        type: 'p',
+        text: 'If an update still goes wrong, you can roll back to the previous version from the image menu or from the history. The version you leave is marked so automatic updates do not reapply it; the next one published still will be.',
       },
       {
         type: 'note',

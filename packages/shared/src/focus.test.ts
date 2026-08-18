@@ -10,6 +10,7 @@ function container(input: Partial<ContainerSummary> & { name: string }): Contain
     imageId: 'sha256:x',
     state: 'running',
     status: 'Up',
+    exitCode: null,
     health: 'none',
     createdAt: 0,
     startedAt: null,

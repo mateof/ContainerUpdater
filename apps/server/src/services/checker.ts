@@ -212,6 +212,16 @@ export class CheckerService {
         hasUpdate = false;
       }
 
+      // La informacion de la version se pide SOLO cuando hay novedad: cuesta
+      // hasta tres peticiones y no aporta nada mientras estas al dia. Cuando no
+      // la hay se limpia, para no dejar en pantalla la comparacion de commits
+      // de una actualizacion que ya se aplico.
+      if (hasUpdate) {
+        await this.#recordRelease(row.normalized_ref, ref, credentials);
+      } else {
+        this.repos.inventory.clearRelease(row.normalized_ref);
+      }
+
       return {
         ...base,
         status: hasUpdate ? 'update-available' : 'up-to-date',
@@ -269,6 +279,33 @@ export class CheckerService {
       this.#breaker.recordFailure(ref.host);
       this.log.warn(`Fallo comprobando ${row.normalized_ref}`, error);
       return { ...base, status: 'error', error: (error as Error).message };
+    }
+  }
+
+  /**
+   * Averigua y guarda de donde viene la version publicada.
+   *
+   * No propaga errores: la comprobacion en si ya ha terminado bien y esto es
+   * informacion adicional. Un registry que no publique etiquetas OCI no puede
+   * convertir un "hay actualizacion" correcto en un error.
+   */
+  async #recordRelease(
+    normalizedRef: string,
+    ref: ReturnType<typeof parseImageReference>,
+    credentials: ReturnType<Repositories['registries']['getCredentials']>,
+  ): Promise<void> {
+    try {
+      const platform = await this.#localPlatform(ref);
+      const release = await this.#registry.fetchRelease(ref, credentials, platform);
+      this.repos.inventory.recordRelease({
+        ref: normalizedRef,
+        createdAt: release.createdAt,
+        sourceUrl: release.sourceUrl,
+        revision: release.revision,
+        version: release.version,
+      });
+    } catch (error) {
+      this.log.warn(`No se ha podido leer la informacion de version de ${normalizedRef}`, error);
     }
   }
 

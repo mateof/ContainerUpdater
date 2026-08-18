@@ -11,6 +11,8 @@ import type {
   ImageInspect,
   ImageListItem,
   NetworkAttachment,
+  SystemDf,
+  VolumeListItem,
 } from './types.js';
 import type { RegistryCredentials } from '../db/repositories/index.js';
 import { localRepositoryName, type ImageReference } from '../registry/reference.js';
@@ -193,6 +195,66 @@ export class DockerApi {
       method: 'DELETE',
       path: `/images/${encodeURIComponent(ref)}?force=${force ? 1 : 0}&noprune=0`,
     });
+  }
+
+  /**
+   * Pone una etiqueta a una imagen que ya esta en disco.
+   *
+   * Lo usa la vuelta atras, y es el paso que la hace funcionar con Compose: el
+   * fichero del proyecto nombra la etiqueta (`algo:latest`), no el digest, asi
+   * que hasta que la etiqueta no apunte a la version vieja, levantar el
+   * proyecto seguiria trayendo la nueva.
+   */
+  async tagImage(source: string, repo: string, tag: string): Promise<void> {
+    await this.client.request({
+      method: 'POST',
+      path: `/images/${encodeURIComponent(source)}/tag?repo=${encodeURIComponent(repo)}&tag=${encodeURIComponent(tag)}`,
+    });
+  }
+
+  // -- Almacenamiento -------------------------------------------------------
+
+  /**
+   * Uso de disco por tipo de objeto.
+   *
+   * Puede tardar segundos: el daemon recorre el disco para calcularlo. No se
+   * llama desde ningun bucle, solo cuando el usuario abre la pantalla.
+   */
+  systemDf(): Promise<SystemDf> {
+    return this.client.request<SystemDf>({ path: '/system/df', timeoutMs: 60_000 });
+  }
+
+  listVolumes(): Promise<{ Volumes?: VolumeListItem[] | null }> {
+    return this.client.request<{ Volumes?: VolumeListItem[] | null }>({ path: '/volumes' });
+  }
+
+  async removeVolume(name: string, force = false): Promise<void> {
+    await this.client.request({
+      method: 'DELETE',
+      path: `/volumes/${encodeURIComponent(name)}?force=${force ? 1 : 0}`,
+    });
+  }
+
+  /**
+   * Limpia la cache de construccion.
+   *
+   * Devuelve cuanto se ha liberado. Puede no existir: Podman no siempre expone
+   * este endpoint en su API compatible, y ahi devuelve 404. Se traduce a cero
+   * liberado en vez de a un error, porque no tener cache que limpiar no es un
+   * fallo.
+   */
+  async pruneBuildCache(): Promise<number> {
+    try {
+      const result = await this.client.request<{ SpaceReclaimed?: number }>({
+        method: 'POST',
+        path: '/build/prune',
+        timeoutMs: 120_000,
+      });
+      return result.SpaceReclaimed ?? 0;
+    } catch (error) {
+      if (error instanceof DockerError && error.status === 404) return 0;
+      throw error;
+    }
   }
 
   // -- Redes ----------------------------------------------------------------

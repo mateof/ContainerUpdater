@@ -677,6 +677,16 @@ export function Menu({
         icon?: ReactNode;
         danger?: boolean;
         disabled?: boolean;
+        /**
+         * Quita la entrada del menu en vez de apagarla.
+         *
+         * `disabled` y `hidden` responden a preguntas distintas: apagada dice
+         * "esto existe pero ahora no se puede", oculta dice "esto no aplica
+         * aqui". Volver a una version anterior cuando nunca ha habido una
+         * actualizacion es el segundo caso, y un boton apagado eterno solo
+         * genera la duda de que hay que hacer para encenderlo.
+         */
+        hidden?: boolean;
         onSelect: () => void;
       }
   >;
@@ -693,7 +703,9 @@ export function Menu({
             'bg-[var(--bg-elevated)] border border-[var(--border)] shadow-[var(--shadow-lg)]',
           )}
         >
-          {items.map((item) =>
+          {items
+            .filter((item) => item.type === 'separator' || !item.hidden)
+            .map((item) =>
             item.type === 'separator' ? (
               <DropdownMenu.Separator key={item.key} className="my-1 h-px bg-[var(--border)]" />
             ) : (

@@ -2,9 +2,24 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwind from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+
+/**
+ * Version de la raiz, que es la fuente de verdad del proyecto.
+ *
+ * Se inyecta para que la URL de registro del service worker cambie en cada
+ * despliegue: el navegador compara el script byte a byte y, con la URL fija y
+ * el contenido identico, no llegaria a actualizarlo nunca.
+ */
+const appVersion = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../../package.json', import.meta.url)), 'utf8'),
+).version as string;
 
 export default defineConfig({
   plugins: [react(), tailwind()],
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   resolve: {
     alias: {
       '@cu/shared': fileURLToPath(new URL('../../packages/shared/src/index.ts', import.meta.url)),

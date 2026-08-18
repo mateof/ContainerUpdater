@@ -7,7 +7,8 @@ import type { UpdateJob } from '@cu/shared';
 import { api, ApiError } from '@/api/client';
 import { useLive } from '@/hooks/LiveContext';
 import { Badge, Card, EmptyState, Modal, Skeleton, Button, useToast } from '@/components/ui';
-import { IconRefresh, IconUpdates } from '@/components/icons';
+import { IconRefresh, IconRevert, IconUpdates } from '@/components/icons';
+import { RevertDialog } from '@/features/images/RevertDialog';
 import { displayImage, formatDateTime, formatDuration, formatRelative } from '@/lib/format';
 import { JOB_STATUS_LABEL, JOB_STATUS_TONE } from '@/lib/labels';
 import { ActiveJobCard } from './ActiveJobCard';
@@ -16,6 +17,7 @@ export function UpdatesPage(): ReactNode {
   const { t } = useTranslation();
   const live = useLive();
   const [detail, setDetail] = useState<UpdateJob | null>(null);
+  const [revert, setRevert] = useState<string | null>(null);
 
   // Se llega aqui desde el indicador de una fila concreta, asi que hay que
   // llevar al usuario a ESE trabajo y no dejarlo buscandolo en la lista.
@@ -191,6 +193,23 @@ export function UpdatesPage(): ReactNode {
                       </Button>
                     </div>
                   ) : null}
+
+                  {/* Volver atras se ofrece aqui ademas de en Imagenes porque
+                      este es el sitio al que se viene cuando algo dejo de
+                      funcionar y hay que averiguar que se actualizo ayer. */}
+                  {job.status === 'success' &&
+                  (job.mode === 'update' || job.mode === 'force') ? (
+                    <div className="mt-2 flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        icon={<IconRevert size={14} />}
+                        onClick={() => setRevert(job.imageRef)}
+                      >
+                        {t('images.revert')}
+                      </Button>
+                    </div>
+                  ) : null}
                 </Card>
               </li>
             ))}
@@ -228,6 +247,14 @@ export function UpdatesPage(): ReactNode {
           </Card>
         )}
       </section>
+
+      {revert ? (
+        <RevertDialog
+          imageRef={revert}
+          onClose={() => setRevert(null)}
+          onDone={() => void queryClient.invalidateQueries({ queryKey: ['jobs'] })}
+        />
+      ) : null}
 
       {detail ? (
         <Modal

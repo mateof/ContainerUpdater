@@ -12,6 +12,7 @@ import type { InventoryService } from '../services/inventory.js';
 import type { NotifierService } from '../services/notifier.js';
 import type { UpdaterService } from '../services/updater.js';
 import type { MetricsService } from '../services/metrics.js';
+import type { WatchdogService } from '../services/watchdog.js';
 import type { Logger } from '../logger.js';
 
 export interface SchedulerDeps {
@@ -21,6 +22,7 @@ export interface SchedulerDeps {
   updater: UpdaterService;
   notifier: NotifierService;
   metrics: MetricsService;
+  watchdog: WatchdogService;
   timezone: string;
   log: Logger;
 }
@@ -30,6 +32,28 @@ export class Scheduler {
   #checkJob: Cron | null = null;
 
   constructor(private readonly deps: SchedulerDeps) {}
+
+  /**
+   * Evalua el estado de los contenedores y avisa de los cambios.
+   *
+   * Los fallos se tragan a proposito: que no se pueda mandar un aviso no puede
+   * tumbar el refresco del inventario, que es lo que mantiene el panel al dia.
+   */
+  async #runWatchdog(containers: Parameters<WatchdogService['evaluate']>[0]): Promise<void> {
+    const { repos, watchdog, notifier, metrics, log } = this.deps;
+    try {
+      const alerts = watchdog.evaluate(containers, repos.settings.getAll());
+      for (const alert of alerts) {
+        metrics.broadcast({
+          type: 'container-alert',
+          payload: { name: alert.name, kind: alert.kind },
+        });
+        await notifier.notifyContainerAlert(alert);
+      }
+    } catch (error) {
+      log.warn('Fallo la vigilancia de contenedores', error);
+    }
+  }
 
   start(): void {
     const { repos, log, timezone } = this.deps;
@@ -48,7 +72,11 @@ export class Scheduler {
     this.#jobs.push(
       new Cron('*/5 * * * *', { timezone, protect: true, name: 'refresh-inventory' }, async () => {
         try {
-          await this.deps.inventory.refresh();
+          const snapshot = await this.deps.inventory.refresh();
+          // La vigilancia se engancha aqui y no en su propio cron a proposito:
+          // los datos que necesita son justo los que el refresco acaba de traer,
+          // y un cron aparte los volveria a pedir o miraria una foto vieja.
+          await this.#runWatchdog(snapshot.containers);
         } catch (error) {
           log.debug('Fallo refrescando el inventario', error);
         }

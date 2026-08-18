@@ -30,6 +30,12 @@ export interface ImageRow {
   first_seen_at: number;
   last_seen_at: number;
   in_use: number;
+  remote_created_at: number | null;
+  remote_source_url: string | null;
+  remote_revision: string | null;
+  remote_version: string | null;
+  local_source_url: string | null;
+  local_revision: string | null;
 }
 
 export interface ProjectRow {
@@ -53,6 +59,7 @@ export interface PolicyRow {
   cleanup_old_image: number;
   paused_until: number | null;
   ignored_digest: string | null;
+  min_age_hours: number | null;
 }
 
 export const DEFAULT_POLICY: Omit<ImagePolicy, 'imageRef'> = {
@@ -65,15 +72,18 @@ export const DEFAULT_POLICY: Omit<ImagePolicy, 'imageRef'> = {
   cleanupOldImage: true,
   pausedUntil: null,
   ignoredDigest: null,
+  minAgeHours: null,
 };
 
 export function createInventoryRepository(db: Db) {
   const upsertImage = db.prepare(
     `INSERT INTO tracked_images
        (normalized_ref, host, repository, tag, image_id, architecture, os, variant,
-        local_digests, source, size_bytes, image_created_at, in_use, first_seen_at, last_seen_at)
+        local_digests, source, size_bytes, image_created_at, local_source_url,
+        local_revision, in_use, first_seen_at, last_seen_at)
      VALUES (@ref, @host, @repository, @tag, @imageId, @architecture, @os, @variant,
-             @localDigests, @source, @sizeBytes, @imageCreatedAt, @inUse, @now, @now)
+             @localDigests, @source, @sizeBytes, @imageCreatedAt, @localSourceUrl,
+             @localRevision, @inUse, @now, @now)
      ON CONFLICT(normalized_ref) DO UPDATE SET
        image_id = excluded.image_id,
        architecture = excluded.architecture,
@@ -89,6 +99,8 @@ export function createInventoryRepository(db: Db) {
                 END,
        size_bytes = excluded.size_bytes,
        image_created_at = excluded.image_created_at,
+       local_source_url = excluded.local_source_url,
+       local_revision = excluded.local_revision,
        in_use = excluded.in_use,
        last_seen_at = excluded.last_seen_at`,
   );
@@ -107,6 +119,10 @@ export function createInventoryRepository(db: Db) {
       source: ImageSource;
       sizeBytes: number | null;
       imageCreatedAt: number | null;
+      /** `org.opencontainers.image.source` de la imagen instalada. */
+      localSourceUrl: string | null;
+      /** `org.opencontainers.image.revision` de la instalada: el commit. */
+      localRevision: string | null;
       /** Si algun contenedor la usa. Las que no, no se comprueban. */
       inUse: boolean;
     }): void {
@@ -183,6 +199,50 @@ export function createInventoryRepository(db: Db) {
     },
 
     /**
+     * Guarda lo que se sabe de la version publicada.
+     *
+     * Se escribe aparte de `recordCheck` porque se averigua en otro momento: el
+     * camino caliente de la comprobacion es un HEAD, y esto exige bajar el blob
+     * de configuracion. Solo se hace cuando hay novedad, que es lo raro.
+     */
+    recordRelease(input: {
+      ref: string;
+      createdAt: number | null;
+      sourceUrl: string | null;
+      revision: string | null;
+      version: string | null;
+    }): void {
+      db.prepare(
+        `UPDATE tracked_images
+            SET remote_created_at = ?, remote_source_url = ?, remote_revision = ?,
+                remote_version = ?
+          WHERE normalized_ref = ?`,
+      ).run(
+        input.createdAt,
+        input.sourceUrl,
+        input.revision,
+        input.version,
+        input.ref,
+      );
+    },
+
+    /**
+     * Olvida lo que se sabia de la version publicada.
+     *
+     * Hace falta al quedarse al dia: si no, una imagen ya actualizada seguiria
+     * enseñando la comparacion de commits de la actualizacion anterior, que ya
+     * no compara nada.
+     */
+    clearRelease(ref: string): void {
+      db.prepare(
+        `UPDATE tracked_images
+            SET remote_created_at = NULL, remote_source_url = NULL,
+                remote_revision = NULL, remote_version = NULL
+          WHERE normalized_ref = ?`,
+      ).run(ref);
+    },
+
+    /**
      * Marca una imagen como construida en local.
      *
      * Se invoca cuando el registry confirma que el repositorio no existe. A
@@ -216,47 +276,23 @@ export function createInventoryRepository(db: Db) {
         | PolicyRow
         | undefined;
       if (!row) return { imageRef: ref, ...DEFAULT_POLICY };
-      return {
-        imageRef: row.image_ref,
-        autoUpdate: row.auto_update === 1,
-        trackMode: row.track_mode,
-        semverChannel: row.semver_channel,
-        notify: row.notify === 1,
-        recreateScope: row.recreate_scope,
-        removeImageOnForce: row.remove_image_on_force === 1,
-        cleanupOldImage: row.cleanup_old_image === 1,
-        pausedUntil: row.paused_until,
-        ignoredDigest: row.ignored_digest,
-      };
+      return policyFromRow(row);
     },
 
     getAllPolicies(): Map<string, ImagePolicy> {
       const rows = db.prepare('SELECT * FROM image_policies').all() as PolicyRow[];
-      const map = new Map<string, ImagePolicy>();
-      for (const row of rows) {
-        map.set(row.image_ref, {
-          imageRef: row.image_ref,
-          autoUpdate: row.auto_update === 1,
-          trackMode: row.track_mode,
-          semverChannel: row.semver_channel,
-          notify: row.notify === 1,
-          recreateScope: row.recreate_scope,
-          removeImageOnForce: row.remove_image_on_force === 1,
-          cleanupOldImage: row.cleanup_old_image === 1,
-          pausedUntil: row.paused_until,
-          ignoredDigest: row.ignored_digest,
-        });
-      }
-      return map;
+      return new Map(rows.map((row) => [row.image_ref, policyFromRow(row)]));
     },
 
     savePolicy(policy: ImagePolicy): void {
       db.prepare(
         `INSERT INTO image_policies
            (image_ref, auto_update, track_mode, semver_channel, notify, recreate_scope,
-            remove_image_on_force, cleanup_old_image, paused_until, ignored_digest, updated_at)
+            remove_image_on_force, cleanup_old_image, paused_until, ignored_digest,
+            min_age_hours, updated_at)
          VALUES (@imageRef, @autoUpdate, @trackMode, @semverChannel, @notify, @recreateScope,
-                 @removeImageOnForce, @cleanupOldImage, @pausedUntil, @ignoredDigest, @updatedAt)
+                 @removeImageOnForce, @cleanupOldImage, @pausedUntil, @ignoredDigest,
+                 @minAgeHours, @updatedAt)
          ON CONFLICT(image_ref) DO UPDATE SET
            auto_update = excluded.auto_update,
            track_mode = excluded.track_mode,
@@ -267,6 +303,7 @@ export function createInventoryRepository(db: Db) {
            cleanup_old_image = excluded.cleanup_old_image,
            paused_until = excluded.paused_until,
            ignored_digest = excluded.ignored_digest,
+           min_age_hours = excluded.min_age_hours,
            updated_at = excluded.updated_at`,
       ).run({
         imageRef: policy.imageRef,
@@ -279,6 +316,7 @@ export function createInventoryRepository(db: Db) {
         cleanupOldImage: policy.cleanupOldImage ? 1 : 0,
         pausedUntil: policy.pausedUntil,
         ignoredDigest: policy.ignoredDigest,
+        minAgeHours: policy.minAgeHours,
         updatedAt: Date.now(),
       });
     },
@@ -329,6 +367,29 @@ export function createInventoryRepository(db: Db) {
         .prepare('DELETE FROM compose_projects WHERE last_verified_at < ?')
         .run(ts).changes;
     },
+  };
+}
+
+/**
+ * Fila de politica a objeto de dominio.
+ *
+ * Existe como funcion suelta porque antes este mapeo estaba escrito dos veces,
+ * en `getPolicy` y en `getAllPolicies`. Dos copias del mismo mapeo es como se
+ * anade un campo y una de las dos pantallas se queda sin el sin que nada falle.
+ */
+function policyFromRow(row: PolicyRow): ImagePolicy {
+  return {
+    imageRef: row.image_ref,
+    autoUpdate: row.auto_update === 1,
+    trackMode: row.track_mode,
+    semverChannel: row.semver_channel,
+    notify: row.notify === 1,
+    recreateScope: row.recreate_scope,
+    removeImageOnForce: row.remove_image_on_force === 1,
+    cleanupOldImage: row.cleanup_old_image === 1,
+    pausedUntil: row.paused_until,
+    ignoredDigest: row.ignored_digest,
+    minAgeHours: row.min_age_hours,
   };
 }
 

@@ -195,3 +195,28 @@ export interface CreateContainerBody extends ContainerConfig {
   HostConfig?: HostConfig;
   NetworkingConfig?: { EndpointsConfig?: Record<string, NetworkAttachment> };
 }
+
+/**
+ * Respuesta de `/system/df`.
+ *
+ * Los campos son opcionales a proposito: Docker y Podman no publican
+ * exactamente lo mismo, y Podman deja fuera la cache de construccion en algunas
+ * versiones. Ausente y cero son cosas distintas, y la interfaz lo dice.
+ */
+export interface SystemDf {
+  LayersSize?: number;
+  Images?: Array<{ Size?: number; Containers?: number }> | null;
+  Containers?: Array<{ SizeRw?: number }> | null;
+  Volumes?: VolumeListItem[] | null;
+  BuildCache?: Array<{ Size?: number; InUse?: boolean; Shared?: boolean }> | null;
+}
+
+export interface VolumeListItem {
+  Name: string;
+  Driver?: string;
+  Mountpoint?: string;
+  CreatedAt?: string;
+  Labels?: Record<string, string> | null;
+  Scope?: string;
+  UsageData?: { Size?: number; RefCount?: number } | null;
+}

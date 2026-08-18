@@ -18,6 +18,7 @@ import type {
   TrackedImage,
   UpdateStrategy,
 } from '@cu/shared';
+import { buildReleaseInfo, updateHold } from '@cu/shared';
 import type { DockerApi } from '../docker/api.js';
 import type { ContainerListItem, ImageListItem } from '../docker/types.js';
 import {
@@ -27,8 +28,9 @@ import {
 } from '../docker/projects.js';
 import { COMPOSE_FILENAME, editability } from './project-files.js';
 import { digestsForRepository, parseImageReference } from '../registry/reference.js';
+import { OCI_REVISION, OCI_SOURCE } from '../registry/manifest.js';
 import { defaultTrackMode } from '../registry/semver.js';
-import type { Repositories } from '../db/repositories/index.js';
+import { DEFAULT_POLICY, type Repositories } from '../db/repositories/index.js';
 import type { Logger } from '../logger.js';
 
 export interface InventorySnapshot {
@@ -85,7 +87,28 @@ export class InventoryService {
       }
     }
 
-    return this.repos.inventory.listImages().map((row) => ({
+    const settings = this.repos.settings.getAll();
+    const policies = this.repos.inventory.getAllPolicies();
+
+    return this.repos.inventory.listImages().map((row) => {
+      const policy = policies.get(row.normalized_ref) ?? {
+        imageRef: row.normalized_ref,
+        ...DEFAULT_POLICY,
+      };
+      const status =
+        row.source === 'pinned' ? 'pinned' : row.source === 'local-build' ? 'unknown' : row.status;
+
+      const release = buildReleaseInfo({
+        // El origen de la version instalada vale como respaldo: muchas imagenes
+        // lo llevan igual en las dos, y sin el no habria enlace ninguno.
+        sourceUrl: row.remote_source_url ?? row.local_source_url,
+        localRevision: row.local_revision,
+        remoteRevision: row.remote_revision,
+        remoteVersion: row.remote_version,
+        publishedAt: row.remote_created_at,
+      });
+
+      return {
       ref: row.normalized_ref,
       host: row.host,
       repository: row.repository,
@@ -98,8 +121,7 @@ export class InventoryService {
       source: row.source,
       sizeBytes: row.size_bytes,
       imageCreatedAt: row.image_created_at,
-      status:
-        row.source === 'pinned' ? 'pinned' : row.source === 'local-build' ? 'unknown' : row.status,
+      status,
       remoteDigest: row.remote_digest,
       candidateTag: row.candidate_tag,
       lastCheckedAt: row.last_checked_at,
@@ -110,8 +132,23 @@ export class InventoryService {
         usage.get(row.normalized_ref) ?? [],
         runningUsage.get(row.normalized_ref) ?? [],
       ),
-      policy: this.repos.inventory.getPolicy(row.normalized_ref),
-    }));
+      policy,
+      release,
+      // Solo tiene sentido explicar la retencion de lo que de verdad iba a
+      // actualizarse solo: en el resto seria una advertencia sobre algo que no
+      // iba a pasar de todas formas.
+      hold:
+        status === 'update-available' && policy.autoUpdate && settings.autoUpdateEnabled
+          ? updateHold({
+              policy,
+              settings,
+              publishedAt: row.remote_created_at,
+              now: Date.now(),
+            })
+          : null,
+      canRollback: this.repos.history.findRollbackPoint(row.normalized_ref) !== null,
+      };
+    });
   }
 
   get selfContainerId(): string | null {
@@ -129,6 +166,7 @@ export class InventoryService {
     await this.#resolveSelf(containers);
 
     const summaries = containers.map((container) => this.#toSummary(container));
+    await this.#enrichStopped(summaries);
     const projects = await this.#buildProjects(containers, summaries);
     const trackedImages = this.#syncImages(images, containers);
 
@@ -190,6 +228,39 @@ export class InventoryService {
     this.log.debug('No se ha podido identificar el contenedor propio (probablemente fuera de Docker)');
   }
 
+  /**
+   * Completa los datos que el listado no trae, solo donde hacen falta.
+   *
+   * `/containers/json` no devuelve ni el codigo de salida ni el contador de
+   * reinicios: hay que inspeccionar. Se inspecciona SOLO lo que no esta
+   * corriendo o esta reiniciando, que en un NAS normal son dos o tres
+   * contenedores, en vez de los veinticuatro. Es lo que separa "lo pare yo"
+   * (codigo 0) de "se ha caido", y sin ese dato la vigilancia avisaria cada vez
+   * que alguien para algo a proposito.
+   */
+  async #enrichStopped(summaries: ContainerSummary[]): Promise<void> {
+    const suspicious = summaries.filter(
+      (container) => container.state !== 'running' || container.health === 'unhealthy',
+    );
+    // Tope por si algun dia hay un monton de contenedores muertos: mejor
+    // quedarse corto que convertir el refresco en cien peticiones.
+    for (const container of suspicious.slice(0, 50)) {
+      try {
+        const inspect = await this.docker.inspectContainer(container.id);
+        container.exitCode = inspect.State?.ExitCode ?? null;
+        container.restartCount = inspect.RestartCount ?? 0;
+        const startedAt = inspect.State?.StartedAt;
+        if (startedAt) {
+          const ms = Date.parse(startedAt);
+          if (Number.isFinite(ms) && ms > 0) container.startedAt = ms;
+        }
+      } catch {
+        // Un contenedor puede desaparecer entre el listado y el inspect. No es
+        // un error: simplemente no habra dato.
+      }
+    }
+  }
+
   #toSummary(container: ContainerListItem): ContainerSummary {
     const membership = readComposeMembership(container);
     const name = (container.Names[0] ?? '').replace(/^\//, '');
@@ -206,6 +277,7 @@ export class InventoryService {
       createdAt: container.Created * 1000,
       startedAt: null,
       restartCount: 0,
+      exitCode: null,
       ports: (container.Ports ?? []).map((port) => ({
         ip: port.IP,
         privatePort: port.PrivatePort,
@@ -437,6 +509,11 @@ export class InventoryService {
         source,
         sizeBytes: image?.Size ?? null,
         imageCreatedAt: image ? image.Created * 1000 : null,
+        // Las etiquetas OCI de la imagen instalada vienen ya en el listado, sin
+        // un inspect por imagen. Son la mitad local de la comparacion de
+        // commits que se le ofrece al usuario cuando hay version nueva.
+        localSourceUrl: image?.Labels?.[OCI_SOURCE] ?? null,
+        localRevision: image?.Labels?.[OCI_REVISION] ?? null,
         inUse: usedBy.length > 0,
       });
 
@@ -492,6 +569,15 @@ export class InventoryService {
         source: row.source,
         sizeBytes: row.size_bytes,
         imageCreatedAt: row.image_created_at,
+        release: buildReleaseInfo({
+          sourceUrl: row.remote_source_url ?? row.local_source_url,
+          localRevision: row.local_revision,
+          remoteRevision: row.remote_revision,
+          remoteVersion: row.remote_version,
+          publishedAt: row.remote_created_at,
+        }),
+        hold: null,
+        canRollback: this.repos.history.findRollbackPoint(normalizedRef) !== null,
         // Se lee de la fila, no de la heuristica local: la fila puede llevar
         // un `local-build` confirmado por el registry que no se debe perder.
         status:

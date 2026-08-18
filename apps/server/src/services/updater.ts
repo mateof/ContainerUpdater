@@ -20,8 +20,11 @@ import type {
 import { ComposeRunner, ComposeError, UnsafePathError } from '../docker/compose.js';
 import { ContainerRecreator, RecreateUnsupportedError } from '../docker/recreate.js';
 import { parseImageReference } from '../registry/reference.js';
+import { parseDigests } from './checker.js';
+import { MUTE_MS } from './watchdog.js';
 import { readComposeMembership } from '../docker/projects.js';
 import type { DockerApi } from '../docker/api.js';
+import { updateHold } from '@cu/shared';
 import type { Repositories } from '../db/repositories/index.js';
 import type { InventoryService } from './inventory.js';
 import type { Logger } from '../logger.js';
@@ -33,6 +36,14 @@ export class SelfUpdateRejectedError extends Error {
         'Hazlo desde Container Manager.',
     );
     this.name = 'SelfUpdateRejectedError';
+  }
+}
+
+/** No hay ninguna actualizacion previa correcta a la que volver. */
+export class NoRollbackPointError extends Error {
+  constructor(readonly imageRef: string) {
+    super(`No hay ninguna version anterior guardada para ${imageRef}`);
+    this.name = 'NoRollbackPointError';
   }
 }
 
@@ -258,6 +269,12 @@ export class UpdaterService {
       actorChatId: request.actorChatId ?? null,
       fromDigest: imageRow?.remote_digest ?? null,
       fromTag: imageRow?.tag ?? null,
+      // El punto de vuelta atras se apunta AHORA porque es el unico momento en
+      // que la version anterior sigue existiendo: cuando el trabajo termina, la
+      // imagen local ya es la nueva y la vieja puede haberse limpiado.
+      rollbackDigests:
+        request.mode === 'revert' ? null : parseDigests(imageRow?.local_digests ?? '[]'),
+      rollbackTag: imageRow?.tag ?? null,
     });
 
     let resolveDone!: (job: UpdateJob) => void;
@@ -328,6 +345,40 @@ export class UpdaterService {
     }
   }
 
+  /**
+   * Vuelve a la version anterior a la ultima actualizacion.
+   *
+   * Tres cosas que no son obvias y que hacen que esto funcione de verdad:
+   *
+   * 1. Se descarga la version vieja por digest y se le vuelve a poner la
+   *    etiqueta original. Sin ese `tag`, Compose seguiria levantando la nueva,
+   *    porque el fichero del proyecto nombra la etiqueta y no el digest.
+   * 2. Se marca el digest actual como ignorado. Sin esto, la siguiente
+   *    comprobacion volveria a ver "actualizacion disponible" y el auto-update
+   *    desharia la vuelta atras en cuestion de horas, que es exactamente el
+   *    fallo que convertiria esta funcion en una trampa.
+   * 3. Se prueban todos los digests guardados en orden, porque `RepoDigests`
+   *    puede traer el del indice y el del manifest de la arquitectura, y no
+   *    todos los registries sirven ambos.
+   */
+  async enqueueRevert(input: {
+    imageRef: string;
+    trigger: 'manual' | 'telegram';
+    actorUserId?: number | null;
+    actorChatId?: number | null;
+  }): Promise<{ job: UpdateJob; done: Promise<UpdateJob> }> {
+    const point = this.repos.history.findRollbackPoint(input.imageRef);
+    if (!point) throw new NoRollbackPointError(input.imageRef);
+
+    return this.enqueue({
+      imageRef: input.imageRef,
+      mode: 'revert',
+      trigger: input.trigger,
+      actorUserId: input.actorUserId,
+      actorChatId: input.actorChatId,
+    });
+  }
+
   /** Compatibilidad: encola y espera. Lo usan el auto-update y el bot. */
   async update(request: UpdateRequest): Promise<UpdateJob> {
     const { done } = await this.enqueue(request);
@@ -390,6 +441,11 @@ export class UpdaterService {
     this.repos.history.markJobRunning(jobId);
     this.#emit(jobId);
 
+    // Se silencia la vigilancia de lo que vamos a tocar. Una actualizacion para
+    // el contenedor, lo borra y lo crea de nuevo: sin esto, cada actualizacion
+    // correcta acabaria mandando una alarma de "se ha caido".
+    this.#muteTargets(request, plan);
+
     const progress = (line: string) => {
       this.repos.history.appendJobLog(jobId, line);
       this.#emit(jobId);
@@ -398,7 +454,9 @@ export class UpdaterService {
     try {
       const targetTag = request.targetTag ?? imageRow?.candidate_tag ?? null;
 
-      if (request.projectAction) {
+      if (request.mode === 'revert') {
+        await this.#runRevert(request, plan, progress);
+      } else if (request.projectAction) {
         await this.#runProjectAction(request, progress, jobId);
       } else if (request.serviceAction) {
         await this.#runServiceAction(request, progress, jobId);
@@ -453,6 +511,121 @@ export class UpdaterService {
     const job = this.repos.history.getJob(jobId);
     if (!job) throw new Error('No se ha podido leer el trabajo recien terminado');
     return job;
+  }
+
+  /**
+   * Deshace la ultima actualizacion.
+   *
+   * El orden es el mismo que en cualquier operacion segura de este proyecto:
+   * primero se descarga lo que hace falta, y solo cuando ya esta en disco se
+   * toca el contenedor. Si la descarga falla, no se ha roto nada.
+   */
+  /** Silencia la vigilancia de los contenedores que va a tocar este trabajo. */
+  #muteTargets(
+    request: UpdateRequest,
+    plan: Awaited<ReturnType<UpdaterService['planFor']>>,
+  ): void {
+    const projectKey = request.projectAction?.projectKey ?? request.serviceAction?.projectKey;
+    if (projectKey) {
+      const project = this.inventory.snapshot.projects.find((p) => p.key === projectKey);
+      for (const container of project?.containers ?? []) {
+        this.repos.watch.mute(container.name, MUTE_MS);
+      }
+      return;
+    }
+    if (plan.containerName) this.repos.watch.mute(plan.containerName, MUTE_MS);
+  }
+
+  async #runRevert(
+    request: UpdateRequest,
+    plan: Awaited<ReturnType<UpdaterService['planFor']>>,
+    progress: (line: string) => void,
+  ): Promise<void> {
+    const point = this.repos.history.findRollbackPoint(request.imageRef);
+    if (!point) throw new NoRollbackPointError(request.imageRef);
+
+    const ref = parseImageReference(request.imageRef);
+    const credentials = this.repos.registries.getCredentials(ref.host);
+    const repo = `${ref.host === 'registry-1.docker.io' ? '' : `${ref.host}/`}${ref.repository}`;
+
+    // Se prueban en orden porque `RepoDigests` puede traer el del indice y el
+    // del manifest de la arquitectura, y no todos los registries sirven ambos.
+    let restored: string | null = null;
+    let lastError: Error | null = null;
+    for (const digest of point.digests) {
+      const pinned = parseImageReference(`${repo}@${digest}`);
+      try {
+        progress(`Descargando la version anterior (${digest.slice(0, 19)}...)`);
+        await this.docker.pullImage(pinned, credentials, progress);
+        restored = digest;
+        break;
+      } catch (error) {
+        lastError = error as Error;
+        progress(`Ese digest no esta disponible, se prueba el siguiente`);
+      }
+    }
+
+    if (!restored) {
+      throw new Error(
+        'La version anterior ya no esta en el registry. ' +
+          (lastError ? `Ultimo error: ${lastError.message}` : ''),
+      );
+    }
+
+    // Devolverle la etiqueta original a la imagen vieja.
+    //
+    // Este es el paso que hace que funcione con Compose: el fichero del
+    // proyecto dice `image: algo:latest`, asi que mientras `latest` apunte a la
+    // version nueva, levantar el proyecto volveria a traerla. No basta con
+    // recrear.
+    progress(`Devolviendo la etiqueta ${ref.tag} a la version anterior`);
+    await this.docker.tagImage(`${repo}@${restored}`, repo, ref.tag);
+
+    if (plan.strategy === 'compose' && plan.projectKey) {
+      const project = this.inventory.snapshot.projects.find((p) => p.key === plan.projectKey);
+      if (!project) throw new Error('No se encuentra el proyecto del contenedor');
+      const target = {
+        projectName: project.name,
+        workingDir: project.workingDir,
+        configFiles: project.configFiles,
+      };
+      progress('Validando el fichero del proyecto');
+      await this.compose.validate(target);
+      progress('Recreando el servicio con la version anterior');
+      await this.compose.up(target, {
+        scope: 'service',
+        serviceName: plan.serviceName ?? undefined,
+        forceRecreate: true,
+        onOutput: progress,
+      });
+    } else {
+      if (!plan.containerId) throw new Error('No hay contenedor que recrear');
+      progress('Recreando el contenedor con la version anterior');
+      await this.recreator.recreate({
+        containerId: plan.containerId,
+        ref,
+        credentials,
+        removeImageFirst: false,
+        // Imprescindible: la etiqueta ya apunta a la version vieja porque
+        // acabamos de reetiquetarla. Un pull aqui se traeria otra vez la nueva
+        // del registry y desharia la vuelta atras sin dar ningun error.
+        skipPull: true,
+        // La imagen nueva NO se limpia: es justo a la que habria que poder
+        // volver si resulta que el problema no era ella.
+        cleanupOldImage: false,
+        onProgress: progress,
+      });
+    }
+
+    // Sin esto la vuelta atras dura hasta la siguiente comprobacion: el
+    // comprobador veria otra vez que hay version nueva y el auto-update la
+    // volveria a aplicar. Ignorar ese digest concreto deja la puerta abierta a
+    // la SIGUIENTE version, que es lo que se quiere.
+    if (point.currentDigest) {
+      const policy = this.repos.inventory.getPolicy(request.imageRef);
+      this.repos.inventory.savePolicy({ ...policy, ignoredDigest: point.currentDigest });
+      progress('Esta version queda marcada como ignorada para que no vuelva sola');
+    }
   }
 
   async #runCompose(
@@ -745,6 +918,21 @@ export class UpdaterService {
     await this.compose.validate(target);
 
     switch (spec.action) {
+      /**
+       * Actualizar el proyecto entero en una sola operacion.
+       *
+       * Antes, un proyecto con cuatro servicios con novedad eran cuatro
+       * actualizaciones independientes, cada una con su `--no-deps`, y el stack
+       * pasaba por cuatro estados intermedios. Un `pull` seguido de un `up -d`
+       * sobre todo el proyecto es mas rapido y, sobre todo, deja el conjunto
+       * coherente de una vez.
+       */
+      case 'update':
+        progress('Descargando las imagenes nuevas del proyecto');
+        await this.compose.pull(target, options);
+        progress('Aplicando el proyecto con las imagenes nuevas');
+        await this.compose.up(target, options);
+        break;
       case 'up':
         progress('Levantando el proyecto');
         await this.compose.up(target, options);
@@ -780,6 +968,26 @@ export class UpdaterService {
       if (!policy.autoUpdate) continue;
       if (policy.pausedUntil && policy.pausedUntil > Date.now()) continue;
       if (policy.ignoredDigest && policy.ignoredDigest === row.remote_digest) continue;
+
+      // Cuarentena y ventana de mantenimiento. Se consultan aqui y no en el
+      // planificador porque la respuesta depende de la politica de CADA imagen:
+      // una puede llevar 72 horas de espera y la de al lado ninguna.
+      const hold = updateHold({
+        policy,
+        settings,
+        publishedAt: row.remote_created_at,
+        now: Date.now(),
+      });
+      if (hold) {
+        this.log.info(
+          `Se retiene ${row.normalized_ref}: ${
+            hold.reason === 'quarantine'
+              ? 'la version es demasiado reciente'
+              : 'estamos fuera de la ventana de mantenimiento'
+          }`,
+        );
+        continue;
+      }
 
       try {
         const job = await this.update({

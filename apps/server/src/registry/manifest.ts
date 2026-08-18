@@ -49,6 +49,32 @@ export interface Platform {
   variant: string | null;
 }
 
+/**
+ * Lo que se puede averiguar de una version publicada sin descargarla.
+ *
+ * Todo es opcional a proposito: cada registry publica lo que quiere y muchas
+ * imagenes no llevan etiquetas OCI. Un campo a null significa "no se ha podido
+ * averiguar", y quien lo consuma debe seguir funcionando igual.
+ */
+export interface RemoteRelease {
+  /** Fecha de publicacion, o null si no es fiable. Ver `plausibleDate`. */
+  createdAt: number | null;
+  sourceUrl: string | null;
+  revision: string | null;
+  version: string | null;
+}
+
+/**
+ * Etiquetas OCI estandar de las que sale la informacion de version.
+ *
+ * `revision` es el commit exacto, que es lo que permite construir una
+ * comparacion entre la version que tienes y la publicada.
+ */
+export const OCI_SOURCE = 'org.opencontainers.image.source';
+export const OCI_REVISION = 'org.opencontainers.image.revision';
+export const OCI_VERSION = 'org.opencontainers.image.version';
+export const OCI_CREATED = 'org.opencontainers.image.created';
+
 export class RegistryClient {
   readonly #tokens = new TokenCache();
 
@@ -246,9 +272,181 @@ export class RegistryClient {
     return null;
   }
 
+  /**
+   * Fecha de publicacion y etiquetas de origen de la version remota.
+   *
+   * Cuesta hasta tres peticiones (indice, manifest de la plataforma y blob de
+   * configuracion), asi que NO va en el camino caliente: solo se llama cuando
+   * la comprobacion ya ha encontrado una novedad, que es lo raro.
+   *
+   * Nunca lanza. Todo esto es informacion adicional: que un registry no
+   * publique etiquetas OCI no puede convertir una comprobacion correcta en un
+   * error.
+   */
+  async fetchRelease(
+    ref: ImageReference,
+    credentials: RegistryCredentials | null,
+    platform: Platform,
+  ): Promise<RemoteRelease> {
+    const empty: RemoteRelease = {
+      createdAt: null,
+      sourceUrl: null,
+      revision: null,
+      version: null,
+    };
+
+    try {
+      // Docker Hub publica la fecha en su API propia, y es la fiable: la del
+      // blob de configuracion la fijan las builds reproducibles a una constante.
+      const hubDate =
+        ref.host === 'registry-1.docker.io' ? await this.#hubTagDate(ref) : null;
+
+      const manifest = await this.#fetchManifestJson(ref, credentials, ref.tag);
+      if (!manifest) return { ...empty, createdAt: hubDate };
+
+      // Anotaciones del indice: algunas imagenes las traen aqui y ahorran bajar
+      // el blob de configuracion entero.
+      const annotations = manifest.annotations ?? {};
+
+      let config = manifest.config;
+      if (!config && Array.isArray(manifest.manifests)) {
+        // Es un indice: hay que bajar el manifest de nuestra plataforma.
+        const child = pickPlatformChild(manifest.manifests, platform);
+        if (!child) {
+          return {
+            createdAt: hubDate ?? plausibleDate(annotations[OCI_CREATED]),
+            sourceUrl: annotations[OCI_SOURCE] ?? null,
+            revision: annotations[OCI_REVISION] ?? null,
+            version: annotations[OCI_VERSION] ?? null,
+          };
+        }
+        const childManifest = await this.#fetchManifestJson(ref, credentials, child.digest);
+        config = childManifest?.config;
+        Object.assign(annotations, childManifest?.annotations ?? {});
+      }
+
+      if (!config?.digest) {
+        return {
+          createdAt: hubDate ?? plausibleDate(annotations[OCI_CREATED]),
+          sourceUrl: annotations[OCI_SOURCE] ?? null,
+          revision: annotations[OCI_REVISION] ?? null,
+          version: annotations[OCI_VERSION] ?? null,
+        };
+      }
+
+      const blob = await this.#fetchConfigBlob(ref, credentials, config.digest);
+      const labels = { ...annotations, ...(blob?.config?.Labels ?? {}) };
+
+      return {
+        createdAt: hubDate ?? plausibleDate(blob?.created ?? annotations[OCI_CREATED]),
+        sourceUrl: labels[OCI_SOURCE] ?? null,
+        revision: labels[OCI_REVISION] ?? null,
+        version: labels[OCI_VERSION] ?? null,
+      };
+    } catch {
+      return empty;
+    }
+  }
+
+  /** Fecha del tag segun la API publica de Hub, que no gasta cuota de pulls. */
+  async #hubTagDate(ref: ImageReference): Promise<number | null> {
+    try {
+      const url = `https://hub.docker.com/v2/repositories/${ref.repository}/tags/${encodeURIComponent(ref.tag)}`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+      if (!response.ok) return null;
+      const body = (await response.json()) as { last_updated?: string };
+      return plausibleDate(body.last_updated);
+    } catch {
+      return null;
+    }
+  }
+
+  async #fetchManifestJson(
+    ref: ImageReference,
+    credentials: RegistryCredentials | null,
+    reference: string,
+  ): Promise<ManifestJson | null> {
+    const url = `https://${ref.host}/v2/${ref.repository}/manifests/${encodeURIComponent(reference)}`;
+    const response = await this.#getWithAuth(url, ref, credentials, ACCEPT_MANIFEST);
+    if (!response?.ok) return null;
+    return (await response.json()) as ManifestJson;
+  }
+
+  async #fetchConfigBlob(
+    ref: ImageReference,
+    credentials: RegistryCredentials | null,
+    digest: string,
+  ): Promise<ConfigBlob | null> {
+    const url = `https://${ref.host}/v2/${ref.repository}/blobs/${encodeURIComponent(digest)}`;
+    const response = await this.#getWithAuth(url, ref, credentials, 'application/json, */*');
+    if (!response?.ok) return null;
+    return (await response.json()) as ConfigBlob;
+  }
+
+  /** GET resolviendo el challenge una sola vez, como el resto de metodos. */
+  async #getWithAuth(
+    url: string,
+    ref: ImageReference,
+    credentials: RegistryCredentials | null,
+    accept: string,
+  ): Promise<Response | null> {
+    try {
+      let response = await fetch(url, {
+        headers: { Accept: accept },
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (response.status === 401) {
+        const challenge = parseChallenge(response.headers.get('www-authenticate'));
+        const auth = await this.#authorizedHeaders(ref, credentials, challenge);
+        response = await fetch(url, {
+          headers: { Accept: accept, ...auth },
+          signal: AbortSignal.timeout(20_000),
+        });
+      }
+      return response;
+    } catch {
+      return null;
+    }
+  }
+
   invalidateHost(host: string): void {
     this.#tokens.invalidate(host);
   }
+}
+
+interface ManifestJson {
+  manifests?: ManifestIndexChild[];
+  config?: { digest?: string };
+  annotations?: Record<string, string>;
+}
+
+interface ConfigBlob {
+  created?: string;
+  config?: { Labels?: Record<string, string> | null };
+}
+
+/**
+ * Convierte una fecha ISO en epoch, descartando las que no significan nada.
+ *
+ * Existe por un problema real: las builds reproducibles fijan `created` a una
+ * constante, casi siempre el epoch de Unix (1970) o el 1 de enero de 1980 que
+ * usa SOURCE_DATE_EPOCH en algunas cadenas. Tomarlas por buenas haria que una
+ * imagen recien publicada pareciera tener cincuenta anos y la cuarentena la
+ * dejara pasar siempre, que es justo lo contrario de lo que se pide.
+ *
+ * Ante la duda devuelve null, y quien llama decide. La politica de la app es
+ * dejar pasar la actualizacion cuando la fecha se desconoce, y decirlo.
+ */
+export function plausibleDate(value: string | undefined | null): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  // Antes de 2000 no hay imagenes de contenedor: es una constante de build.
+  if (ms < Date.UTC(2000, 0, 1)) return null;
+  // Una fecha en el futuro tampoco es de fiar; se admite un dia de margen por
+  // relojes desajustados.
+  if (ms > Date.now() + 86_400_000) return null;
+  return ms;
 }
 
 /**

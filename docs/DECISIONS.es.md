@@ -334,3 +334,131 @@ aunque no tenga contenedores, de lo que solo se ha editado.
 
 Por lo mismo, los ficheros se direccionan por **clave de proyecto** y no por
 nombre. Direccionar por nombre habría vuelto a pisar ADR-004 desde otra puerta.
+
+## La cuarentena deja pasar lo que no sabe fechar
+
+La espera antes de auto-actualizar necesita saber cuándo se publicó una versión.
+Esa fecha no siempre está, y cuando está no siempre vale: las builds
+reproducibles fijan `created` del blob de configuración a una constante, casi
+siempre el epoch de Unix. Tomarla por buena haría que una imagen recién
+publicada pareciera tener cincuenta años y la cuarentena la dejara pasar
+siempre, que es justo lo contrario de lo que se pide.
+
+De ahí que las fechas anteriores al año 2000 se descarten, y que para Docker Hub
+se prefiera el `last_updated` de su API propia, que sí es fiable.
+
+Queda el caso de no poder averiguarla. **Se deja pasar la actualización**, y se
+dice en la interfaz. La alternativa (retener indefinidamente lo que no se puede
+fechar) convertiría cualquier registry que no publique etiquetas OCI en un
+auto-update que no funciona y que nadie sabe por qué. Un ajuste que a veces no
+protege es peor que uno que no protege nunca solo si no lo cuenta; contándolo,
+es la opción honesta.
+
+## Volver atrás marca como ignorada la versión de la que se sale
+
+Deshacer una actualización sin más duraría hasta la siguiente comprobación: el
+comprobador volvería a ver que hay versión nueva y el auto-update la aplicaría
+otra vez, probablemente esa misma noche. La función sería una trampa.
+
+Por eso, al volver atrás, el digest del que se sale queda en `ignored_digest`.
+Se ignora **ese digest concreto**, no la imagen: la siguiente versión que se
+publique sí entrará, que es lo que se quiere. Es el mismo mecanismo que ya usaba
+el botón de "ignorar esta versión" de los avisos de Telegram.
+
+### Y por qué hace falta reetiquetar
+
+La vuelta atrás descarga la versión vieja por digest y le devuelve su etiqueta
+original antes de recrear. Sin ese paso no funcionaría con Compose, porque el
+fichero del proyecto nombra la etiqueta (`image: algo:latest`) y no el digest:
+mientras la etiqueta apunte a la versión nueva, levantar el proyecto la volvería
+a traer.
+
+Ese reetiquetado obligó además a añadir `skipPull` al recreador. La primera
+versión reetiquetaba y acto seguido recreaba, y el recreador hacía un `pull` de
+esa misma etiqueta contra el registry: se traía otra vez la versión nueva y
+deshacía la vuelta atrás. El contenedor acababa exactamente en la versión de la
+que se quería salir, el trabajo terminaba en "correcto" y no había ni un error en
+el log. Se encontró ejecutando una vuelta atrás de verdad; ni el typecheck ni las
+pruebas de tipos podían verlo.
+
+## La vigilancia avisa de transiciones, no de situaciones
+
+Un contenedor caído genera **un** aviso, no uno cada cinco minutos mientras siga
+caído. Eso obliga a guardar estado, que es lo que hace la tabla
+`container_watch`. Deducirlo del historial de notificaciones no vale: ese
+historial se purga por retención, así que el mismo contenedor dejaría de avisar
+o avisaría de más según el día.
+
+Tres decisiones dentro de esa tabla:
+
+- **La clave es el nombre, no el id.** Al recrear un contenedor (que es lo que
+  hace cualquier actualización) el id cambia entero, y con el id cada
+  actualización parecería un contenedor que desaparece y otro que nace.
+- **Salir con código 0 no avisa.** Es una parada limpia, casi siempre alguien
+  que lo paró a propósito. Avisar de eso sería avisar al usuario de lo que él
+  mismo acaba de hacer, que es la forma más rápida de que apague los avisos.
+- **El updater silencia lo que va a tocar.** Durante una actualización el
+  contenedor pasa por parado, borrado y recreado. Sin ese silencio, cada
+  actualización correcta dispararía una alarma de caída.
+
+## Los volúmenes no se limpian en masa
+
+Una imagen huérfana se vuelve a descargar; los datos de un volumen no vuelven.
+Por eso la pantalla de espacio en disco lista los volúmenes sin usar de uno en
+uno, con su tamaño y de qué proyecto vienen, y no ofrece ningún botón de
+"limpiar todos". `docker volume prune` existe para quien quiera ese riesgo, y no
+hace falta que lo demos hecho.
+
+"No lo usa nadie" tampoco significa "sobra": puede ser justamente los datos de
+algo que se paró en marzo y se quiere recuperar en octubre.
+
+### Hacen falta dos llamadas al daemon
+
+`/system/df` calcula los tamaños pero devuelve los volúmenes **sin** sus
+etiquetas; `/volumes` trae las etiquetas pero no el tamaño. Comprobado en vivo
+contra Podman. Cruzarlas es obligatorio para poder decir de qué proyecto viene
+cada volumen, que es el dato que permite decidir si sobra.
+
+El cruce tiene una trampa: `/system/df` devuelve `Labels: {}`, un objeto vacío y
+no nulo, así que un `??` se queda con él y las etiquetas buenas no se usan nunca.
+No falla nada; el dato sale en blanco.
+
+## La copia de seguridad no lleva secretos
+
+Ni contraseñas de registry, ni el secreto del segundo factor, ni passkeys. Un
+fichero que se descarga y acaba en la carpeta de descargas, en un correo o en un
+disco compartido no es sitio para eso, y todo lo omitido se vuelve a dar de alta
+en unos minutos. Lo que de verdad cuesta rehacer, y es el núcleo de la copia, son
+las políticas por imagen.
+
+Los registries sí se exportan, sin su secreto, para saber cuáles hay que volver a
+configurar: una lista de lo que falta vale más que nada.
+
+**Los chats de Telegram se exportan pero no se restauran.** Dar de alta un chat
+autorizado desde un fichero se saltaría el código de vinculación de un solo uso,
+que no es burocracia: es la prueba de que quien pide el acceso controla ese chat.
+Si bastara con importar un JSON, cualquiera que pudiera subir una copia se
+añadiría a sí mismo como administrador del bot.
+
+## El service worker es deliberadamente cobarde
+
+Existe para una sola cosa: que la aplicación se pueda instalar en la pantalla de
+inicio del móvil y arranque sin la barra del navegador. No pretende funcionar sin
+conexión, porque un panel que gestiona contenedores en vivo sin servidor no sirve
+de nada.
+
+Tres reglas que evitan los desastres clásicos:
+
+1. **Nunca toca `/api/`.** Ahí viven las mutaciones y el flujo SSE de métricas, y
+   un worker que intercepte un `EventSource` lo rompe de formas muy difíciles de
+   depurar.
+2. **Solo cachea los assets con hash en el nombre.** Su contenido no cambia
+   nunca, así que servirlos desde caché no puede dar una versión vieja.
+3. **El HTML va siempre a la red primero.** Servir un index cacheado apuntaría a
+   assets que ya no existen tras un despliegue, y dejaría la aplicación rota
+   hasta una recarga forzada.
+
+Se registra con `updateViaCache: 'none'` y con la versión en la URL, porque el
+servidor sirve los estáticos con `immutable` a un año y el navegador compara el
+script byte a byte: con la URL fija y el contenido idéntico, no llegaría a
+actualizarse nunca.

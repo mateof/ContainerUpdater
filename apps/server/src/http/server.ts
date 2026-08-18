@@ -24,6 +24,7 @@ import { registerPasskeyRoutes } from './routes/passkeys.js';
 import { registerTotpRoutes } from './routes/totp.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerEventRoutes } from './routes/events.js';
+import { registerStorageRoutes } from './routes/storage.js';
 
 export const SESSION_COOKIE = 'cu_session';
 
@@ -183,6 +184,7 @@ export async function buildServer(app: AppContext): Promise<FastifyInstance> {
   await registerTotpRoutes(fastify, app);
   await registerSettingsRoutes(fastify, app);
   await registerEventRoutes(fastify, app);
+  await registerStorageRoutes(fastify, app);
 
   fastify.get('/api/health', async () => ({
     ok: true,

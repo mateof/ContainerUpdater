@@ -9,6 +9,15 @@ const DEFAULTS: AppSettings = {
   notifyOnUpdateAvailable: true,
   notifyOnUpdateApplied: true,
   notifyOnFailure: true,
+  notifyOnContainerDown: true,
+  notifyOnContainerRecovered: true,
+  restartLoopThreshold: 3,
+  // 24 horas por defecto y no 0: el valor que protege sin que nadie tenga que
+  // saber que existe. Quien quiera las versiones al momento lo baja a 0.
+  defaultMinAgeHours: 24,
+  maintenanceWindowEnabled: false,
+  maintenanceStartHour: 4,
+  maintenanceEndHour: 6,
   metricsIntervalSeconds: 5,
   metricsHistoryEnabled: false,
   historyRetentionDays: 30,

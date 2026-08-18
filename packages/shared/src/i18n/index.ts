@@ -3,10 +3,17 @@ import { en } from './en.js';
 import { gl } from './gl.js';
 import type { Translated } from './catalog.js';
 
-export type Locale = 'es' | 'en' | 'gl';
+/**
+ * La lista manda; el tipo se deriva de ella.
+ *
+ * Antes eran dos declaraciones independientes (la union escrita a mano y el
+ * array) que coincidian por disciplina. Asi es imposible anadir un idioma al
+ * array y que el tipo no se entere, o al reves.
+ */
+export const locales = ['es', 'en', 'gl'] as const;
+export type Locale = (typeof locales)[number];
 
 export const catalogs: Record<Locale, Translated<Catalog>> = { es, en, gl };
-export const locales: Locale[] = ['es', 'en', 'gl'];
 export const defaultLocale: Locale = 'es';
 
 export { es, en, gl };
@@ -17,7 +24,7 @@ export type { Catalog, Translated };
  * donde estaban escritos los idiomas, y cada copia es una que se puede olvidar.
  */
 export function isLocale(value: unknown): value is Locale {
-  return typeof value === 'string' && (locales as string[]).includes(value);
+  return typeof value === 'string' && (locales as readonly string[]).includes(value);
 }
 
 /**

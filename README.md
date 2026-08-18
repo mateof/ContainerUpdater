@@ -32,10 +32,28 @@ it gathers in one place the things that used to mean opening an SSH session.
   not.
 - **Per-image auto-update**: you mark the ones you want updated on their own and
   the rest just notify.
+- **Quarantine before auto-updating**: a version must have been published for a
+  while (24 hours by default) before auto-update applies it. Most broken releases
+  are fixed within two or three days, so you skip them without noticing. Manual
+  updates never wait.
+- **Optional maintenance window**: automatic updates only land inside the hours
+  you choose.
+- **Roll back to the previous version** afterwards, not only when an update fails
+  on the spot. The version you leave is marked so it does not come back on its
+  own.
+- **What changed in the new version**: a link to the commit comparison between
+  what you have and what was published, taken from the image's own OCI labels.
 - **Force**: pulls again and recreates even when nothing changed.
 - **Image cleanup**: marks the ones nobody uses, or that only stopped
   containers use, and deletes them. With stopped containers it names them
   first, because they will no longer be able to start.
+- **Update a whole project** at once instead of service by service: one `pull`
+  and one `up` that leave the stack coherent.
+- **Disk space**: how much images, containers, volumes and build cache take, and
+  what can be freed. Unused volumes are deleted one at a time, never in bulk.
+- **Down alerts**: tells you when a container has gone down, has been restarting
+  in a loop, or has stopped being healthy, and when it recovers. Stopping it
+  yourself does not alert.
 - **Performance** of the NAS and of each container, live.
 - **Telegram bot** restricted to the accounts you authorise, which notifies
   without repeating itself and takes commands.
@@ -48,6 +66,10 @@ it gathers in one place the things that used to mean opening an SSH session.
 - **Passkey sign-in** (WebAuthn), compatible with Bitwarden and the system
   keychain. Requires HTTPS with a domain name: browsers do not allow them on
   the NAS IP, and the app explains that rather than failing.
+- **Configuration backup**: exports each image policy and your settings to a
+  file. It carries no passwords, on purpose.
+- **Installable on a phone**: add it to the home screen and it starts without the
+  browser chrome.
 - **Interface in Spanish, English and Galician**, with a flagged selector and
   light and dark themes.
 

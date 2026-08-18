@@ -6,6 +6,7 @@
  */
 import type {
   AppSettings,
+  BackupFile,
   CheckRun,
   ComposeProject,
   ContainerSummary,
@@ -19,7 +20,10 @@ import type {
   ProjectFiles,
   ProjectsDirInfo,
   RegistryConfig,
+  RestoreReport,
+  RollbackPoint,
   ServiceAction,
+  StorageUsage,
   TelegramUser,
   TotpEnrollment,
   TotpStatus,
@@ -329,6 +333,30 @@ export const api = {
     }>('/self-update/plan'),
   /** Tras esto el servidor se para en unos segundos: la interfaz debe reconectar. */
   selfUpdate: () => post<{ started: boolean; strategy: string }>('/self-update'),
+
+  /**
+   * A que version se puede volver.
+   *
+   * Se pide antes de ensenar el boton: un boton apagado sin explicacion es
+   * justo lo que ya paso con "Editar ficheros", asi que aqui la respuesta trae
+   * el porque.
+   */
+  rollbackPoint: (ref: string) =>
+    get<{ point: RollbackPoint | null }>(`/images/${encodeRef(ref)}/rollback`),
+
+  /** 202: la vuelta atras corre en segundo plano como cualquier actualizacion. */
+  revertImage: (ref: string) =>
+    post<{ job: UpdateJob; queued: number }>(`/images/${encodeRef(ref)}/revert`),
+
+  /** Uso de disco. Tarda segundos: el daemon lo calcula recorriendo el disco. */
+  storage: () => get<{ usage: StorageUsage }>('/storage'),
+  deleteVolume: (name: string) =>
+    del<{ ok: true }>(`/storage/volumes/${encodeURIComponent(name)}`),
+  pruneBuildCache: () => post<{ freed: number }>('/storage/build-cache/prune'),
+
+  backup: () => get<BackupFile>('/backup'),
+  restoreBackup: (body: { file: unknown; settings: boolean; policies: boolean }) =>
+    post<{ report: RestoreReport }>('/backup/restore', body),
 
   runCheck: () => post<{ started: boolean }>('/checks/run'),
   checkRuns: () => get<{ runs: CheckRun[] }>('/checks/runs'),

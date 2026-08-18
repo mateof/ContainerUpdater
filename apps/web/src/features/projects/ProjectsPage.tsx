@@ -45,12 +45,14 @@ const ACTION_LABEL: Record<ServiceAction, string> = {
 };
 
 const PROJECT_ACTION_LABEL: Record<ProjectAction, string> = {
+  update: 'projects.updateProject',
   up: 'projects.up',
   restart: 'projects.restart',
   down: 'projects.down',
 };
 
 const PROJECT_ACTION_CONFIRM: Record<ProjectAction, string> = {
+  update: 'projects.confirmUpdateAll',
   up: 'projects.confirmUp',
   restart: 'projects.confirmRestart',
   down: 'projects.confirmDown',
@@ -299,6 +301,25 @@ export function ProjectsPage(): ReactNode {
                 </div>
 
                 <div className="flex shrink-0 gap-1">
+                  {/*
+                    Actualizar el proyecto entero: un solo `pull` + `up` en vez
+                    de una operacion por servicio. Solo aparece cuando de verdad
+                    hay algo que actualizar, para no anadir un boton mas que casi
+                    nunca sirve.
+                  */}
+                  {project.updatesAvailable > 0 ? (
+                    <Tooltip content={t('projects.updateProject')}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label={t('projects.updateProject')}
+                        disabled={!project.yamlAccessible}
+                        onClick={() => setConfirm({ project, action: 'update' })}
+                      >
+                        <IconDownload size={16} />
+                      </Button>
+                    </Tooltip>
+                  ) : null}
                   <Tooltip content={t('projects.restart')}>
                     <Button
                       size="icon"

@@ -4,8 +4,17 @@
  * no se puedan desincronizar.
  */
 import { z } from 'zod';
+import { PROJECT_ACTIONS, SERVICE_ACTIONS } from './types.js';
+import { locales } from './i18n/index.js';
 
-export const localeSchema = z.enum(['es', 'en', 'gl']);
+/**
+ * Los enums que tienen una lista canonica se DERIVAN de ella.
+ *
+ * Escribirlos a mano es como se anadio el galego a la lista de idiomas y el
+ * validador se quedo con dos: nada fallaba, y el idioma simplemente no pasaba
+ * por aqui. Derivarlos hace imposible esa clase de fallo.
+ */
+export const localeSchema = z.enum(locales);
 
 export const trackModeSchema = z.enum(['digest', 'semver', 'both']);
 export const semverChannelSchema = z.enum(['patch', 'minor', 'major']);
@@ -109,6 +118,12 @@ export const imagePolicySchema = z.object({
   cleanupOldImage: z.boolean().optional(),
   pausedUntil: z.number().int().nullable().optional(),
   ignoredDigest: z.string().nullable().optional(),
+  /**
+   * Horas de cuarentena. `null` hereda el valor global, `0` lo anula para esta
+   * imagen. El tope de un mes evita que un dedo de mas deje una imagen
+   * congelada durante anos sin que se note.
+   */
+  minAgeHours: z.number().int().min(0).max(720).nullable().optional(),
 });
 
 export const updateRequestSchema = z.object({
@@ -145,7 +160,7 @@ export const imageDeleteSchema = z.object({
 export const serviceActionSchema = z.object({
   projectKey: z.string().min(1).max(1024),
   serviceName: z.string().min(1).max(255),
-  action: z.enum(['recreate', 'restart', 'stop', 'start', 'pull']),
+  action: z.enum(SERVICE_ACTIONS),
 });
 
 /**
@@ -194,7 +209,7 @@ export const projectFilesUpdateSchema = z.object({
 
 export const projectActionSchema = z.object({
   projectKey: z.string().min(1).max(1024),
-  action: z.enum(['up', 'restart', 'down']),
+  action: z.enum(PROJECT_ACTIONS),
 });
 
 /** Ver en claro una sola variable, no el fichero entero. */
@@ -241,6 +256,14 @@ export const settingsSchema = z.object({
   notifyOnUpdateAvailable: z.boolean().optional(),
   notifyOnUpdateApplied: z.boolean().optional(),
   notifyOnFailure: z.boolean().optional(),
+  notifyOnContainerDown: z.boolean().optional(),
+  notifyOnContainerRecovered: z.boolean().optional(),
+  // Con 1 avisaria de cualquier reinicio suelto, que no es un bucle.
+  restartLoopThreshold: z.number().int().min(2).max(50).optional(),
+  defaultMinAgeHours: z.number().int().min(0).max(720).optional(),
+  maintenanceWindowEnabled: z.boolean().optional(),
+  maintenanceStartHour: z.number().int().min(0).max(23).optional(),
+  maintenanceEndHour: z.number().int().min(0).max(23).optional(),
   // Por debajo de 2s el muestreo cuesta mas CPU de la que mide en un NAS.
   metricsIntervalSeconds: z.number().int().min(2).max(60).optional(),
   metricsHistoryEnabled: z.boolean().optional(),
@@ -248,6 +271,23 @@ export const settingsSchema = z.object({
   registryConcurrency: z.number().int().min(1).max(10).optional(),
   defaultLocale: localeSchema.optional(),
   allowTelegramGroups: z.boolean().optional(),
+});
+
+/** Un volumen a borrar. El nombre es lo unico que hace falta. */
+export const volumeSchema = z.object({
+  name: z.string().min(1).max(255),
+});
+
+/**
+ * Que partes de una copia se aplican.
+ *
+ * Sin valores por defecto permisivos: restaurar es destructivo sobre lo que ya
+ * hay, y quien llama tiene que decir explicitamente que quiere pisar.
+ */
+export const restoreSchema = z.object({
+  settings: z.boolean().default(false),
+  policies: z.boolean().default(true),
+  file: z.unknown(),
 });
 
 export const profileSchema = z.object({
@@ -269,3 +309,4 @@ export type ImagePolicyInput = z.infer<typeof imagePolicySchema>;
 export type UpdateRequestInput = z.infer<typeof updateRequestSchema>;
 export type RegistryInput = z.infer<typeof registrySchema>;
 export type SettingsInput = z.infer<typeof settingsSchema>;
+export type RestoreInput = z.infer<typeof restoreSchema>;

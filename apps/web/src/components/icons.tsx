@@ -276,3 +276,39 @@ export const IconKey = (p: IconProps) => (
     <path d="M10.8 12.2 20 3l1.5 1.5-1.5 1.5 1.5 1.5-2 2-1.5-1.5-2.2 2.2" />
   </Icon>
 );
+
+/** Enlace que sale de la aplicacion. Acompana a los enlaces de "que cambia". */
+export const IconExternal = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M15 3h6v6" />
+    <path d="M10 14 21 3" />
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+  </Icon>
+);
+
+/** Vuelta atras: una flecha que retrocede sobre un arco. */
+export const IconRevert = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 7v6h6" />
+    <path d="M3.5 13a9 9 0 1 0 2.1-9.4L3 7" />
+  </Icon>
+);
+
+/** Disco, para la seccion de espacio en disco. */
+export const IconDatabase = (p: IconProps) => (
+  <Icon {...p}>
+    <ellipse cx="12" cy="5" rx="9" ry="3" />
+    <path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5" />
+    <path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3" />
+  </Icon>
+);
+
+/** Papelera. Para borrados que hay que poder distinguir de un cierre. */
+export const IconTrash = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 6h18" />
+    <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+    <path d="M10 11v6M14 11v6" />
+  </Icon>
+);

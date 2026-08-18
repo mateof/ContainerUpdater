@@ -24,6 +24,7 @@ import { IMAGE_USAGE_LABEL, IMAGE_USAGE_TONE, UPDATE_STATUS_LABEL, UPDATE_STATUS
 import { ImageDetailDialog } from './ImageDetailDialog';
 import { UpdateDialog } from './UpdateDialog';
 import { SelfUpdateDialog } from './SelfUpdateDialog';
+import { RevertDialog } from './RevertDialog';
 import { JobIndicator } from '@/components/JobIndicator';
 import { useLive } from '@/hooks/LiveContext';
 
@@ -119,6 +120,7 @@ export function ImagesPage(): ReactNode {
    * imagenes, resaltar una obliga a buscarla igualmente.
    */
   const [confirmDelete, setConfirmDelete] = useState<TrackedImage | null>(null);
+  const [confirmRevert, setConfirmRevert] = useState<TrackedImage | null>(null);
 
   const remove = useMutation({
     mutationFn: ({ ref, force }: { ref: string; force: boolean }) => api.deleteImage(ref, force),
@@ -242,6 +244,7 @@ export function ImagesPage(): ReactNode {
               }}
               onDetail={() => setDetail(image)}
               onDelete={() => setConfirmDelete(image)}
+              onRevert={() => setConfirmRevert(image)}
               isSelf={image.ref === selfImageRef}
               activeJob={live.activeByImage.get(image.ref)}
             />
@@ -254,6 +257,14 @@ export function ImagesPage(): ReactNode {
       ) : null}
 
       {selfUpdate ? <SelfUpdateDialog onClose={() => setSelfUpdate(false)} /> : null}
+
+      {confirmRevert ? (
+        <RevertDialog
+          imageRef={confirmRevert.ref}
+          onClose={() => setConfirmRevert(null)}
+          onDone={invalidate}
+        />
+      ) : null}
 
       {/* Borrar una imagen con contenedores parados los deja sin poder
           arrancar. Se nombran uno a uno antes de confirmar: decir "se borrara
@@ -309,6 +320,7 @@ function ImageRow({
   onUpdate,
   onDetail,
   onDelete,
+  onRevert,
   isSelf,
   activeJob,
 }: {
@@ -319,6 +331,7 @@ function ImageRow({
   onUpdate: (force: boolean) => void;
   onDetail: () => void;
   onDelete: () => void;
+  onRevert: () => void;
   isSelf: boolean;
   activeJob: UpdateJob | undefined;
 }): ReactNode {
@@ -479,6 +492,15 @@ function ImageRow({
                   : t('images.autoUpdateEnable'),
                 disabled: !actionable,
                 onSelect: () => onToggleAuto(!image.policy.autoUpdate),
+              },
+              {
+                // Solo aparece si de verdad hay a donde volver. Un boton
+                // apagado permanente no informa de nada.
+                key: 'revert',
+                label: t('images.revert'),
+                disabled: !image.canRollback || !actionable || isSelf,
+                hidden: !image.canRollback,
+                onSelect: onRevert,
               },
               { type: 'separator', key: 'sep' },
               {

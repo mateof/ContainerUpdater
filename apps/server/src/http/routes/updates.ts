@@ -8,6 +8,7 @@ import {
 import { localImageName, parseImageReference } from '../../registry/reference.js';
 import type { AppContext } from '../../app.js';
 import {
+  NoRollbackPointError,
   RecreateUnsupportedError,
   SelfUpdateRejectedError,
   UpdateInProgressError,
@@ -34,6 +35,55 @@ export async function registerUpdateRoutes(
     });
 
     return { policy: updated };
+  });
+
+  /**
+   * A que version se puede volver, si es que hay alguna.
+   *
+   * Se consulta antes de ofrecer el boton: no es lo mismo un boton apagado sin
+   * explicacion que decir "no hay ninguna actualizacion anterior guardada".
+   */
+  fastify.get('/api/images/:ref/rollback', { onRequest: [fastify.requireAuth] }, async (request) => {
+    const ref = decodeURIComponent((request.params as { ref: string }).ref);
+    return { point: app.repos.history.findRollbackPoint(ref) };
+  });
+
+  /**
+   * Vuelve a la version anterior.
+   *
+   * Devuelve 202 como el resto de operaciones largas: el progreso llega por SSE.
+   */
+  fastify.post('/api/images/:ref/revert', { onRequest: [fastify.requireOperator] }, async (request, reply) => {
+    const ref = decodeURIComponent((request.params as { ref: string }).ref);
+
+    try {
+      const { job } = await app.updater.enqueueRevert({
+        imageRef: ref,
+        trigger: 'manual',
+        actorUserId: request.currentUser!.id,
+      });
+
+      app.repos.history.audit({
+        actorType: 'user',
+        actorId: String(request.currentUser!.id),
+        action: 'image.reverted',
+        target: ref,
+        ip: request.ip,
+      });
+
+      return reply.code(202).send({ job, queued: app.updater.queued });
+    } catch (error) {
+      if (error instanceof NoRollbackPointError) {
+        return reply.code(409).send({ error: 'no-rollback-point' });
+      }
+      if (error instanceof SelfUpdateRejectedError) {
+        return reply.code(409).send({ error: 'self-update-rejected' });
+      }
+      if (error instanceof UpdateInProgressError) {
+        return reply.code(409).send({ error: 'update-in-progress' });
+      }
+      throw error;
+    }
   });
 
   /**

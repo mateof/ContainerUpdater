@@ -1,5 +1,12 @@
 import type { Db } from '../index.js';
-import type { CheckRun, JobStatus, UpdateJob, UpdateMode, UpdateStrategy } from '@cu/shared';
+import type {
+  CheckRun,
+  JobStatus,
+  RollbackPoint,
+  UpdateJob,
+  UpdateMode,
+  UpdateStrategy,
+} from '@cu/shared';
 
 interface RunRow {
   id: number;
@@ -30,6 +37,9 @@ interface JobRow {
   error: string | null;
   started_at: number | null;
   finished_at: number | null;
+  rollback_digests: string | null;
+  rollback_tag: string | null;
+  created_at: number;
 }
 
 export function createHistoryRepository(db: Db) {
@@ -133,13 +143,23 @@ export function createHistoryRepository(db: Db) {
       actorChatId: number | null;
       fromDigest: string | null;
       fromTag: string | null;
+      /**
+       * Digests locales ANTES de tocar nada: a donde se vuelve si sale mal.
+       *
+       * Se apunta al encolar y no al terminar por un motivo simple: al terminar
+       * la imagen local ya es la nueva y la anterior puede haberse limpiado del
+       * disco. Si no se guarda ahora, se pierde.
+       */
+      rollbackDigests?: string[] | null;
+      rollbackTag?: string | null;
     }): number {
       const info = db
         .prepare(
           `INSERT INTO update_jobs
              (image_ref, container_id, container_name, project_key, mode, strategy, trigger,
-              actor_user_id, actor_chat_id, status, from_digest, from_tag, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)`,
+              actor_user_id, actor_chat_id, status, from_digest, from_tag,
+              rollback_digests, rollback_tag, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?)`,
         )
         .run(
           input.imageRef,
@@ -153,9 +173,49 @@ export function createHistoryRepository(db: Db) {
           input.actorChatId,
           input.fromDigest,
           input.fromTag,
+          input.rollbackDigests?.length ? JSON.stringify(input.rollbackDigests) : null,
+          input.rollbackTag ?? null,
           Date.now(),
         );
       return Number(info.lastInsertRowid);
+    },
+
+    /**
+     * Ultimo punto al que se puede volver para una imagen.
+     *
+     * Solo cuentan las actualizaciones que salieron bien: si fallo y se
+     * revirtio sola, ya estas en la version vieja y no hay nada que deshacer.
+     * Y se excluyen los propios `revert` para que no se pueda entrar en un
+     * bucle de deshacer el deshacer.
+     */
+    findRollbackPoint(imageRef: string): RollbackPoint | null {
+      const row = db
+        .prepare(
+          `SELECT * FROM update_jobs
+            WHERE image_ref = ? AND status = 'success' AND mode IN ('update', 'force')
+              AND rollback_digests IS NOT NULL
+            ORDER BY finished_at DESC LIMIT 1`,
+        )
+        .get(imageRef) as JobRow | undefined;
+      if (!row?.rollback_digests) return null;
+
+      let digests: string[] = [];
+      try {
+        const parsed = JSON.parse(row.rollback_digests) as unknown;
+        if (Array.isArray(parsed)) digests = parsed.filter((v): v is string => typeof v === 'string');
+      } catch {
+        return null;
+      }
+      if (digests.length === 0) return null;
+
+      return {
+        jobId: row.id,
+        imageRef: row.image_ref,
+        digests,
+        tag: row.rollback_tag,
+        appliedAt: row.finished_at ?? row.created_at,
+        currentDigest: row.to_digest,
+      };
     },
 
     markJobRunning(id: number): void {

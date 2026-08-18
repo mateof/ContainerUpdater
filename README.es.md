@@ -22,10 +22,28 @@ reúne en un sitio lo que hasta ahora obligaba a entrar por SSH.
   YAML es accesible y recreando el contenedor por la API cuando no lo es.
 - **Auto-actualización por imagen**: marcas las que quieres que se actualicen
   solas y el resto solo avisan.
+- **Cuarentena antes de actualizar sola**: una versión tiene que llevar
+  publicada un tiempo (24 horas por defecto) antes de que el auto-update la
+  aplique. La mayoría de versiones rotas se corrigen en dos o tres días, así que
+  te las saltas sin enterarte. Actualizar a mano nunca espera.
+- **Ventana de mantenimiento** opcional: las automáticas solo entran en la franja
+  horaria que digas.
+- **Volver a la versión anterior** después, no solo si la actualización falla en
+  el momento. Deja marcada la versión de la que sales para que no vuelva sola.
+- **Qué cambia en la versión nueva**: enlace a la comparación de commits entre lo
+  que tienes y lo publicado, sacado de las etiquetas OCI de la propia imagen.
 - **Forzado**: vuelve a descargar y recrea aunque no haya novedad.
 - **Limpieza de imágenes**: marca las que no usa nadie o solo usan contenedores
   parados, y las borra. Con contenedores parados avisa nombrándolos, porque
   dejarán de poder arrancar.
+- **Actualizar un proyecto entero** de una vez, en lugar de servicio por
+  servicio: un `pull` y un `up` que dejan el stack coherente.
+- **Espacio en disco**: cuánto ocupan imágenes, contenedores, volúmenes y caché
+  de construcción, y qué se puede soltar. Los volúmenes sin usar se borran de uno
+  en uno, nunca en masa.
+- **Avisos de caída**: te dice cuándo un contenedor se ha caído, lleva un rato en
+  bucle de reinicios o ha dejado de estar sano, y cuándo se recupera. Pararlo tú
+  no avisa.
 - **Rendimiento** del NAS y de cada contenedor, en vivo.
 - **Bot de Telegram** restringido a las cuentas que autorices, que notifica sin
   repetirse y acepta comandos.
@@ -38,6 +56,10 @@ reúne en un sitio lo que hasta ahora obligaba a entrar por SSH.
 - **Entrada con passkey** (WebAuthn), compatible con Bitwarden y con el
   llavero del sistema. Requiere HTTPS con nombre de dominio: por la IP del NAS
   el navegador no las permite, y la aplicación lo explica en vez de fallar.
+- **Copia de la configuración**: exporta las políticas de cada imagen y los
+  ajustes a un fichero. No lleva contraseñas, a propósito.
+- **Instalable en el móvil**: se añade a la pantalla de inicio y arranca sin la
+  barra del navegador.
 - **Interfaz en español, inglés y galego**, con selector con banderas y tema
   claro y oscuro.
 

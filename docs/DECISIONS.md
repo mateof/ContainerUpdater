@@ -333,3 +333,130 @@ visible even with no containers, from what has merely been edited.
 
 For the same reason, files are addressed by **project key** rather than by name.
 Addressing by name would have walked back into ADR-004 through another door.
+
+## Quarantine lets through what it cannot date
+
+Waiting before auto-updating requires knowing when a version was published. That
+date is not always there, and when it is it is not always usable: reproducible
+builds pin the config blob's `created` field to a constant, almost always the
+Unix epoch. Taking it at face value would make a freshly published image look
+fifty years old and quarantine would always let it through, which is exactly the
+opposite of what was asked for.
+
+Hence dates before the year 2000 are discarded, and for Docker Hub the
+`last_updated` field of its own API is preferred, which is reliable.
+
+That leaves the case of not being able to find out at all. **The update is let
+through**, and the interface says so. The alternative (holding back indefinitely
+whatever cannot be dated) would turn any registry that does not publish OCI
+labels into an auto-update that does not work and nobody knows why. A setting
+that sometimes fails to protect is worse than one that never protects only if it
+keeps quiet about it; saying it out loud makes it the honest option.
+
+## Rolling back marks the version you leave as ignored
+
+Undoing an update and nothing else would last until the next check: the checker
+would see a new version again and auto-update would reapply it, probably that
+same night. The feature would be a trap.
+
+So when rolling back, the digest being left behind goes into `ignored_digest`.
+**That specific digest** is ignored, not the image: the next version published
+will still be applied, which is what you want. It is the same mechanism already
+used by the "ignore this version" button in the Telegram alerts.
+
+### And why retagging is necessary
+
+Rolling back pulls the old version by digest and gives it back its original tag
+before recreating. Without that step it would not work with Compose, because the
+project file names the tag (`image: something:latest`) and not the digest: while
+the tag points at the new version, bringing the project up would fetch it again.
+
+That retagging also forced a `skipPull` option into the recreator. The first
+version retagged and then immediately recreated, and the recreator pulled that
+same tag from the registry: it fetched the new version again and undid the
+rollback. The container ended up on exactly the version you were trying to leave,
+the job finished as "successful" and there was not a single error in the log. It
+was found by running a real rollback; neither typechecking nor type-level tests
+could see it.
+
+## The watchdog alerts on transitions, not on situations
+
+A container that goes down produces **one** alert, not one every five minutes for
+as long as it stays down. That requires keeping state, which is what the
+`container_watch` table is for. Deriving it from the notification history does
+not work: that history is purged by retention, so the same container would stop
+alerting or alert twice depending on the day.
+
+Three decisions inside that table:
+
+- **The key is the name, not the id.** Recreating a container (which is what any
+  update does) changes the id entirely, so keying by id would make every update
+  look like one container vanishing and another being born.
+- **Exiting with code 0 does not alert.** That is a clean stop, almost always
+  somebody stopping it on purpose. Alerting on that means alerting the user about
+  what they themselves just did, which is the fastest way to get alerts switched
+  off.
+- **The updater mutes what it is about to touch.** During an update a container
+  goes through stopped, removed and recreated. Without that mute, every
+  successful update would fire a down alert.
+
+## Volumes are not pruned in bulk
+
+An orphaned image can be pulled again; the data in a volume cannot. That is why
+the disk space screen lists unused volumes one by one, with their size and which
+project they came from, and offers no "clean everything" button. `docker volume
+prune` exists for anyone who wants that risk, and we do not need to hand it over
+ready-made.
+
+"Nobody is using it" does not mean "it is disposable" either: it can be precisely
+the data of something stopped in March and wanted back in October.
+
+### Two daemon calls are required
+
+`/system/df` computes sizes but returns volumes **without** their labels;
+`/volumes` carries the labels but no size. Verified live against Podman. Joining
+them is mandatory in order to say which project each volume came from, which is
+the fact that lets you decide whether it is disposable.
+
+The join has a trap: `/system/df` returns `Labels: {}`, an empty object rather
+than null, so a `??` keeps it and the real labels are never used. Nothing fails;
+the field just comes out blank.
+
+## The backup carries no secrets
+
+No registry passwords, no second-factor secret, no passkeys. A file that gets
+downloaded and ends up in a downloads folder, in an email or on a shared drive is
+no place for those, and everything omitted takes minutes to set up again. What
+actually costs time to redo, and is therefore the core of the backup, are the
+per-image policies.
+
+Registries are exported, without their secret, so you know which ones to
+configure again: a list of what is missing is worth more than nothing.
+
+**Telegram chats are exported but not restored.** Registering an authorised chat
+from a file would bypass the single-use link code, which is not bureaucracy: it
+is the proof that whoever asks for access controls that chat. If importing a JSON
+were enough, anyone able to upload a backup would add themselves as an
+administrator of the bot.
+
+## The service worker is deliberately cowardly
+
+It exists for one thing: so the app can be installed on a phone's home screen and
+start without the browser chrome. It does not try to work offline, because a
+panel that manages live containers is useless without its server.
+
+Three rules that avoid the classic disasters:
+
+1. **It never touches `/api/`.** That is where mutations and the metrics SSE
+   stream live, and a worker intercepting an `EventSource` breaks it in ways that
+   are very hard to debug.
+2. **It only caches hash-named assets.** Their content never changes, so serving
+   them from cache cannot hand back a stale version.
+3. **HTML always goes to the network first.** Serving a cached index would point
+   at assets that no longer exist after a deploy, leaving the app broken until a
+   forced reload.
+
+It is registered with `updateViaCache: 'none'` and with the version in the URL,
+because the server serves static files as `immutable` for a year and the browser
+compares the script byte by byte: with a fixed URL and identical content, it
+would never update.

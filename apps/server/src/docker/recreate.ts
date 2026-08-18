@@ -32,6 +32,17 @@ export interface RecreateOptions {
   credentials: RegistryCredentials | null;
   removeImageFirst: boolean;
   cleanupOldImage: boolean;
+  /**
+   * Saltarse la descarga porque la imagen correcta ya esta en disco.
+   *
+   * Existe por la vuelta atras, y por un fallo muy concreto que se vio
+   * ejecutandola de verdad: la vuelta atras descarga la version vieja por
+   * digest y le devuelve su etiqueta, pero acto seguido esto hacia un pull de
+   * ESA MISMA etiqueta contra el registry, se traia otra vez la version nueva y
+   * deshacia el trabajo. El contenedor acababa exactamente en la version de la
+   * que se queria salir, y sin ningun error que lo delatara.
+   */
+  skipPull?: boolean;
   onProgress: (line: string) => void;
 }
 
@@ -110,8 +121,12 @@ export class ContainerRecreator {
       } else {
         // Camino normal: primero el pull. Si falla, no hemos tocado nada y el
         // servicio sigue en pie.
-        onProgress(`Descargando ${options.ref.normalized}`);
-        await this.docker.pullImage(options.ref, options.credentials, onProgress);
+        if (options.skipPull) {
+          onProgress('La imagen ya esta en disco: no se descarga nada');
+        } else {
+          onProgress(`Descargando ${options.ref.normalized}`);
+          await this.docker.pullImage(options.ref, options.credentials, onProgress);
+        }
 
         // Renombrar en lugar de borrar es lo que hace posible el rollback:
         // libera el nombre para el contenedor nuevo sin destruir el viejo.

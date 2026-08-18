@@ -27,6 +27,9 @@ import { SelfUpdateService } from './services/self-update.js';
 import { HostMetricsService } from './services/host.js';
 import { MetricsService } from './services/metrics.js';
 import { NotifierService } from './services/notifier.js';
+import { WatchdogService } from './services/watchdog.js';
+import { StorageService } from './services/storage.js';
+import { BackupService } from './services/backup.js';
 import { Scheduler } from './scheduler/index.js';
 import { TelegramBot } from './telegram/bot.js';
 
@@ -49,6 +52,9 @@ export interface AppContext {
   metrics: MetricsService;
   host: HostMetricsService;
   notifier: NotifierService;
+  watchdog: WatchdogService;
+  storage: StorageService;
+  backup: BackupService;
   scheduler: Scheduler;
   telegram: TelegramBot;
   /** Entorno detectado y rutas resueltas, para el panel de diagnostico. */
@@ -246,6 +252,9 @@ export async function createApp(config: Config): Promise<AppContext> {
   const metrics = new MetricsService(docker, inventory, host, repos, log.child('metrics'));
 
   const notifier = new NotifierService(repos, log.child('notifier'));
+  const watchdog = new WatchdogService(repos, log.child('watchdog'));
+  const storage = new StorageService(docker, log.child('storage'));
+  const backup = new BackupService(repos, config.version, log.child('backup'));
 
   const scheduler = new Scheduler({
     repos,
@@ -254,6 +263,7 @@ export async function createApp(config: Config): Promise<AppContext> {
     updater,
     notifier,
     metrics,
+    watchdog,
     timezone: config.timezone,
     log: log.child('scheduler'),
   });
@@ -345,6 +355,9 @@ export async function createApp(config: Config): Promise<AppContext> {
     metrics,
     host,
     notifier,
+    watchdog,
+    storage,
+    backup,
     scheduler,
     telegram,
     runtime: {

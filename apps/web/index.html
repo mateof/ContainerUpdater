@@ -6,6 +6,18 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="robots" content="noindex, nofollow" />
     <title>ContainerUpdater</title>
+
+    <!--
+      Instalable en el movil. `apple-mobile-web-app-capable` sigue haciendo
+      falta: Safari no lee el manifest para decidir si abre sin barra, usa esta
+      meta suya de siempre.
+    -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0d9488" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Containers" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d9488'/%3E%3Cpath d='M9 13h4v4H9zm5 0h4v4h-4zm5 0h4v4h-4zm-5-5h4v4h-4z' fill='white'/%3E%3Cpath d='M7 19c2 4 6 6 9 6s7-2 9-6' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
     <script>
       // Se aplica el tema antes de pintar para que no haya un destello blanco

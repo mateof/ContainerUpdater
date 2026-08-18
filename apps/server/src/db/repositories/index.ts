@@ -9,6 +9,7 @@ import { createSettingsRepository, createTagCacheRepository } from './settings.j
 import { createManagedProjectRepository } from './projects.js';
 import { createPasskeyRepository } from './passkeys.js';
 import { createTotpRepository } from './totp.js';
+import { createWatchRepository } from './watch.js';
 
 export function createRepositories(db: Db, keyring: Keyring) {
   return {
@@ -26,6 +27,7 @@ export function createRepositories(db: Db, keyring: Keyring) {
     telegram: createTelegramRepository(db),
     settings: createSettingsRepository(db),
     tagCache: createTagCacheRepository(db),
+    watch: createWatchRepository(db),
   };
 }
 
@@ -39,3 +41,4 @@ export type { UserRow } from './users.js';
 export type { PasskeyRow } from './passkeys.js';
 export type { TotpRow } from './totp.js';
 export type { RegistryCredentials } from './registries.js';
+export type { AlertKind, WatchRow } from './watch.js';

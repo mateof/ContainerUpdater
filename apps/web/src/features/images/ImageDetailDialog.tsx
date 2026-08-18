@@ -1,11 +1,18 @@
 import { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { CrossLink } from '@/components/Filters';
 import type { ReactNode } from 'react';
-import type { SemverChannel, TrackMode, TrackedImage } from '@cu/shared';
+import type {
+  ReleaseInfo,
+  SemverChannel,
+  TrackMode,
+  TrackedImage,
+  UpdateHold,
+} from '@cu/shared';
 import { api } from '@/api/client';
 import { Badge, Button, Field, Modal, Select, Switch, useToast } from '@/components/ui';
+import { IconExternal } from '@/components/icons';
 import { displayImage, formatBytes, formatDateTime, formatRelative } from '@/lib/format';
 import { UPDATE_STATUS_LABEL, UPDATE_STATUS_TONE } from '@/lib/labels';
 
@@ -25,6 +32,12 @@ export function ImageDetailDialog({
   const [policy, setPolicy] = useState(image.policy);
   const readOnly = image.source !== 'registry';
 
+  // Para poder decir cuanta cuarentena se hereda cuando la imagen no tiene la
+  // suya. Misma clave que la pantalla de Ajustes, asi que se reutiliza la cache
+  // en vez de pedirlo otra vez.
+  const settings = useQuery({ queryKey: ['settings'], queryFn: () => api.settings() });
+  const defaultMinAgeHours = settings.data?.settings.defaultMinAgeHours ?? 24;
+
   const save = useMutation({
     mutationFn: () =>
       api.savePolicy(image.ref, {
@@ -36,6 +49,7 @@ export function ImageDetailDialog({
         cleanupOldImage: policy.cleanupOldImage,
         removeImageOnForce: policy.removeImageOnForce,
         ignoredDigest: policy.ignoredDigest,
+        minAgeHours: policy.minAgeHours,
       }),
     onSuccess: () => {
       notify(t('common.copied'), 'ok');
@@ -104,6 +118,10 @@ export function ImageDetailDialog({
           </Detail>
         </div>
 
+        {image.release && image.status === 'update-available' ? (
+          <ReleasePanel release={image.release} hold={image.hold} />
+        ) : null}
+
         {image.localDigests.length > 0 ? (
           <div>
             <p className="text-[0.75rem] font-medium mb-1">{t('images.digest')}</p>
@@ -165,6 +183,40 @@ export function ImageDetailDialog({
               </Field>
             ) : null}
 
+            {/*
+              La cuarentena solo se ofrece si la imagen se actualiza sola: en
+              las manuales no retiene nada y seria un campo que promete algo que
+              no hace.
+            */}
+            {policy.autoUpdate ? (
+              <Field
+                label={t('images.minAge')}
+                hint={
+                  policy.minAgeHours === null
+                    ? t('images.minAgeInheritHelp', { hours: defaultMinAgeHours })
+                    : t('images.minAgeHelp')
+                }
+              >
+                <Select
+                  value={policy.minAgeHours === null ? 'inherit' : String(policy.minAgeHours)}
+                  onChange={(event) =>
+                    setPolicy({
+                      ...policy,
+                      minAgeHours:
+                        event.target.value === 'inherit' ? null : Number(event.target.value),
+                    })
+                  }
+                >
+                  <option value="inherit">{t('images.minAgeInherit')}</option>
+                  <option value="0">{t('images.minAgeNone')}</option>
+                  <option value="24">{t('images.minAgeHours', { count: 24 })}</option>
+                  <option value="72">{t('images.minAgeHours', { count: 72 })}</option>
+                  <option value="168">{t('images.minAgeDays', { count: 7 })}</option>
+                  <option value="336">{t('images.minAgeDays', { count: 14 })}</option>
+                </Select>
+              </Field>
+            ) : null}
+
             <Switch
               checked={policy.notify}
               onCheckedChange={(value) => setPolicy({ ...policy, notify: value })}
@@ -191,6 +243,71 @@ export function ImageDetailDialog({
         )}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Que trae la version publicada y por que no ha entrado todavia.
+ *
+ * Las dos cosas van juntas a proposito: aparecen en el mismo momento (cuando
+ * hay novedad) y responden a la misma pregunta del usuario, que es "y esto que
+ * es y que hago con ello".
+ */
+function ReleasePanel({
+  release,
+  hold,
+}: {
+  release: ReleaseInfo;
+  hold: UpdateHold | null;
+}): ReactNode {
+  const { t } = useTranslation();
+  const link = release.compareUrl ?? release.releasesUrl;
+
+  return (
+    <div className="space-y-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-inset)] px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[0.75rem] font-medium">{t('images.newVersion')}</p>
+        {release.remoteVersion ? (
+          <Badge tone="accent">{release.remoteVersion}</Badge>
+        ) : null}
+      </div>
+
+      {release.publishedAt !== null ? (
+        <p className="text-[0.75rem] text-[var(--text-muted)]">
+          {t('images.publishedAt', { when: formatRelative(release.publishedAt) })}
+        </p>
+      ) : (
+        // Se dice que no se sabe en vez de callarlo: es lo que explica por que
+        // la cuarentena no ha retenido esta imagen.
+        <p className="text-[0.75rem] text-[var(--text-muted)]">{t('images.publishedUnknown')}</p>
+      )}
+
+      {hold ? (
+        <p className="text-[0.75rem] text-[var(--warn)]">
+          {hold.reason === 'quarantine'
+            ? t('images.heldQuarantine', {
+                when: hold.until ? formatDateTime(hold.until) : '',
+              })
+            : t('images.heldWindow', {
+                when: hold.until ? formatDateTime(hold.until) : '',
+              })}
+        </p>
+      ) : null}
+
+      {link ? (
+        <a
+          href={link}
+          target="_blank"
+          // noreferrer ademas de noopener: la URL sale de una etiqueta que
+          // controla quien publica la imagen, no nosotros.
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-[0.75rem] text-[var(--accent)] hover:underline"
+        >
+          {release.compareUrl ? t('images.whatChanged') : t('images.viewReleases')}
+          <IconExternal size={12} />
+        </a>
+      ) : null}
+    </div>
   );
 }
 
