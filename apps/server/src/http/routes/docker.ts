@@ -69,7 +69,7 @@ export async function registerDockerRoutes(
   });
 
   fastify.get('/api/containers', { onRequest: [fastify.requireAuth] }, async () => ({
-    containers: app.inventory.snapshot.containers,
+    containers: app.inventory.listContainers(),
   }));
 
   fastify.get('/api/containers/:id', { onRequest: [fastify.requireAuth] }, async (request, reply) => {
@@ -123,15 +123,17 @@ export async function registerDockerRoutes(
   }));
 
   fastify.get('/api/projects', { onRequest: [fastify.requireAuth] }, async () => ({
-    projects: app.inventory.snapshot.projects,
+    // Recalculado, no el snapshot: ver `listProjects`. Servir el cache hacia
+    // que la tarjeta anunciara actualizaciones que ya no existian.
+    projects: app.inventory.listProjects(),
   }));
 
   fastify.post('/api/inventory/refresh', { onRequest: [fastify.requireAuth] }, async () => {
-    const snapshot = await app.inventory.refresh();
+    await app.inventory.refresh();
     return {
-      containers: snapshot.containers,
+      containers: app.inventory.listContainers(),
       images: app.inventory.listImages(),
-      projects: snapshot.projects,
+      projects: app.inventory.listProjects(),
     };
   });
 }

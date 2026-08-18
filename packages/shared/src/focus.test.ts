@@ -11,6 +11,7 @@ function container(input: Partial<ContainerSummary> & { name: string }): Contain
     state: 'running',
     status: 'Up',
     exitCode: null,
+    updateAvailable: false,
     health: 'none',
     createdAt: 0,
     startedAt: null,

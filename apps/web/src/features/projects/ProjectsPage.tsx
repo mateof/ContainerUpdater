@@ -134,20 +134,15 @@ export function ProjectsPage(): ReactNode {
    * React Query comparte esta consulta con Contenedores e Imagenes, asi que no
    * es una peticion extra si ya se ha visitado cualquiera de las dos.
    */
-  const { data: imageData } = useQuery({ queryKey: ['images'], queryFn: () => api.images() });
-  const updatableContainers = useMemo(
-    () =>
-      new Set(
-        (imageData?.images ?? [])
-          .filter((image) => image.status === 'update-available')
-          // `inUseBy` trae nombres de contenedor, salidos del mismo inventario
-          // que alimenta los del proyecto, asi que casan por construccion. Si
-          // dos servicios comparten imagen, los dos salen marcados, que es lo
-          // correcto: los dos se actualizan.
-          .flatMap((image) => image.inUseBy),
-      ),
-    [imageData],
-  );
+  /**
+   * Que servicios tienen novedad lo dice ahora el propio proyecto.
+   *
+   * Antes se cruzaba aqui: se pedia la lista de imagenes y se comparaban los
+   * nombres de contenedor contra el `inUseBy` de cada una. Funcionaba, pero
+   * ataba esta pantalla a que dos consultas distintas estuvieran igual de
+   * frescas, y no lo estaban: la cabecera podia anunciar "2 actualizaciones"
+   * sin que ningun servicio saliera marcado.
+   */
 
   const focused = useMemo(
     () => (focusKey ? all.filter((project) => project.key === focusKey) : all),
@@ -295,13 +290,36 @@ export function ProjectsPage(): ReactNode {
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
           {projects.map((project) => {
-            // Trabajo vivo sobre este proyecto, si lo hay. Los de proyecto no
-            // llevan contenedor, asi que no salian en `activeByContainer` y la
-            // tarjeta no tenia forma de saber que estaba ocupada.
-            const projectJob = live.activeByProject.get(project.key);
+            /**
+             * Trabajo vivo sobre este proyecto, si lo hay.
+             *
+             * Cuenta cualquiera de los dos: el que actua sobre el proyecto
+             * entero (que no lleva contenedor, y por eso no sale en
+             * `activeByContainer`) y el que actua sobre uno de sus servicios.
+             * Los dos ocupan la cola y bloquean lo demas, asi que la cabecera
+             * debe decir que se esta trabajando en los dos casos; antes solo lo
+             * decia en el primero y actualizar un servicio parecia no hacer
+             * nada.
+             */
+            const projectJob =
+              live.activeByProject.get(project.key) ??
+              project.containers
+                .map((container) => live.activeByContainer.get(container.id))
+                .find((job) => job !== undefined);
+
+            // Nombres de los servicios con novedad, que es lo que se enseña en
+            // la cabecera. Se prefiere el nombre de servicio al del contenedor:
+            // es el que aparece en el fichero del proyecto.
+            const pendientes = project.containers
+              .filter((container) => container.updateAvailable)
+              .map((container) => container.serviceName || container.name);
 
             return (
-            <Card key={project.key} className="p-4" glow={project.updatesAvailable > 0}>
+            <Card
+              key={project.key}
+              className="p-4"
+              glow={projectJob !== undefined || project.updatesAvailable > 0}
+            >
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -311,10 +329,24 @@ export function ProjectsPage(): ReactNode {
                         {t(STRATEGY_LABEL[project.strategy])}
                       </Badge>
                     </Tooltip>
-                    {project.updatesAvailable > 0 ? (
-                      <Badge tone="accent">
-                        {project.updatesAvailable} {t('nav.updates').toLowerCase()}
-                      </Badge>
+                    {/*
+                      El contador nombra los servicios afectados en vez de dar
+                      solo el total. Con un proyecto de ocho servicios, "3
+                      actualizaciones" obliga a recorrer la lista buscando
+                      cuales; decir "uno, dos y tres" responde a la pregunta de
+                      un vistazo. La lista de abajo los sigue marcando uno a uno.
+                    */}
+                    {pendientes.length > 0 ? (
+                      <Tooltip content={t('projects.updatesInServices', { list: pendientes.join(', ') })}>
+                        <span>
+                          <Badge tone="accent">
+                            <IconDownload size={11} />
+                            {pendientes.length <= 3
+                              ? pendientes.join(', ')
+                              : t('projects.updatesCount', { count: pendientes.length })}
+                          </Badge>
+                        </span>
+                      </Tooltip>
                     ) : null}
                   </div>
                   <p className="mt-0.5 truncate font-mono text-[0.6875rem] text-[var(--text-muted)]">
@@ -432,7 +464,7 @@ export function ProjectsPage(): ReactNode {
                   const running = container.state === 'running';
                   const activeJob = live.activeByContainer.get(container.id);
                   const service = container.serviceName;
-                  const hasUpdate = updatableContainers.has(container.name);
+                  const hasUpdate = container.updateAvailable;
 
                   return (
                     <li

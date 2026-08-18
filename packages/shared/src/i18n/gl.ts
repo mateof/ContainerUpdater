@@ -341,6 +341,9 @@ export const gl: Translated<Catalog> = {
     filterUnknown: 'Sen comprobar',
   },
   projects: {
+    updatesCount: '{{count}} con actualizacion',
+    updatesInServices: 'Tenen version nova: {{list}}',
+    working: 'Traballando neste proxecto',
     updateProject: 'Actualizar o proxecto enteiro',
     updateBadge: 'Nova',
     serviceHasUpdate: 'Este servizo ten unha imaxe nova dispoñible',

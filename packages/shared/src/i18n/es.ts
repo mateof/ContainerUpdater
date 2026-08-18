@@ -339,6 +339,9 @@ export const es = {
     filterUnknown: 'Sin comprobar',
   },
   projects: {
+    updatesCount: '{{count}} con actualizacion',
+    updatesInServices: 'Tienen version nueva: {{list}}',
+    working: 'Trabajando en este proyecto',
     updateProject: 'Actualizar el proyecto entero',
     updateBadge: 'Nueva',
     serviceHasUpdate: 'Este servicio tiene una imagen nueva disponible',

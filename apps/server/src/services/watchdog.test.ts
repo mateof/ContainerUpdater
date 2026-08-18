@@ -17,6 +17,7 @@ function container(patch: Partial<ContainerSummary> = {}): ContainerSummary {
     startedAt: null,
     restartCount: 0,
     exitCode: null,
+    updateAvailable: false,
     ports: [],
     projectKey: null,
     projectName: null,

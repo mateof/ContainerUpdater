@@ -227,6 +227,16 @@ export interface ContainerSummary {
   serviceName: string | null;
   /** true si es la propia app. No se puede auto-actualizar. */
   isSelf: boolean;
+  /**
+   * Si la imagen de este contenedor tiene version nueva.
+   *
+   * Lo calcula el servidor cruzando por `imageRef`, que es la referencia
+   * normalizada. La interfaz lo hacia antes por su cuenta, cruzando el nombre
+   * del contenedor contra la lista `inUseBy` de cada imagen: funcionaba, pero
+   * ataba la pantalla de Proyectos a una segunda consulta y a que los dos
+   * listados estuvieran igual de frescos, que es justo lo que fallaba.
+   */
+  updateAvailable: boolean;
 }
 
 export type UpdateStrategy = 'compose' | 'recreate' | 'unsupported';

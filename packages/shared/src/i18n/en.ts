@@ -335,6 +335,9 @@ export const en: Translated<Catalog> = {
     filterUnknown: 'Not checked',
   },
   projects: {
+    updatesCount: '{{count}} with updates',
+    updatesInServices: 'These have a new version: {{list}}',
+    working: 'Working on this project',
     updateProject: 'Update the whole project',
     updateBadge: 'New',
     serviceHasUpdate: 'This service has a newer image available',

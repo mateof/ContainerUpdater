@@ -151,6 +151,69 @@ export class InventoryService {
     });
   }
 
+  /**
+   * Referencias con version nueva, leidas de la base de datos.
+   *
+   * Se consulta al servir y no se guarda en el snapshot por la misma razon que
+   * `listImages` no sirve el cache: el estado lo escribe el COMPROBADOR
+   * directamente en la base de datos, mientras que el snapshot se reconstruye
+   * solo al refrescar el inventario. Servir el cache enseñaria el estado de
+   * hace hasta cinco minutos.
+   */
+  #updatableRefs(): Set<string> {
+    const refs = new Set<string>();
+    for (const row of this.repos.inventory.listImages()) {
+      if (row.status === 'update-available') refs.add(row.normalized_ref);
+    }
+    return refs;
+  }
+
+  /**
+   * Contenedores con su estado de actualizacion al dia.
+   *
+   * El cruce va por `imageRef` (la referencia normalizada) y nunca por `image`,
+   * que es lo que dice el daemon: comprobado en un entorno real, de 21
+   * contenedores solo coincidian 3.
+   */
+  listContainers(): ContainerSummary[] {
+    const updatable = this.#updatableRefs();
+    return this.#snapshot.containers.map((container) => ({
+      ...container,
+      updateAvailable: container.imageRef !== null && updatable.has(container.imageRef),
+    }));
+  }
+
+  /**
+   * Proyectos con su cuenta de actualizaciones RECALCULADA.
+   *
+   * Existe por un fallo concreto: la tarjeta decia "2 actualizaciones" mientras
+   * ninguno de sus servicios aparecia marcado, porque los dos numeros venian de
+   * sitios distintos. La cuenta salia del snapshot, calculada al refrescar el
+   * inventario y ademas ANTES de que ese mismo refresco reconciliara el estado
+   * de las imagenes, asi que iba siempre un ciclo por detras; las marcas de cada
+   * servicio salian de la lista de imagenes, que si se lee fresca.
+   *
+   * Al terminar de actualizar un proyecto el efecto era el peor posible: la
+   * cabecera seguia anunciando actualizaciones pendientes y no habia ni una que
+   * enseñar.
+   *
+   * Ahora las dos cosas salen del mismo sitio y no pueden discrepar.
+   */
+  listProjects(): ComposeProject[] {
+    const updatable = this.#updatableRefs();
+    return this.#snapshot.projects.map((project) => {
+      const containers = project.containers.map((container) => ({
+        ...container,
+        updateAvailable: container.imageRef !== null && updatable.has(container.imageRef),
+      }));
+      return {
+        ...project,
+        containers,
+        updatesAvailable: containers.filter((container) => container.updateAvailable).length,
+      };
+    });
+  }
+
   get selfContainerId(): string | null {
     return this.#selfContainerId;
   }
@@ -167,8 +230,15 @@ export class InventoryService {
 
     const summaries = containers.map((container) => this.#toSummary(container));
     await this.#enrichStopped(summaries);
-    const projects = await this.#buildProjects(containers, summaries);
+
+    // Las imagenes ANTES que los proyectos, y el orden no es indiferente:
+    // `#syncImages` es quien reconcilia el estado tras una actualizacion (marca
+    // al dia lo que ya tiene el digest nuevo), y `#buildProjects` cuenta cuantas
+    // actualizaciones tiene cada proyecto leyendo justamente ese estado. Al
+    // reves, la cuenta describia el mundo anterior a la actualizacion que se
+    // acababa de aplicar.
     const trackedImages = this.#syncImages(images, containers);
+    const projects = await this.#buildProjects(containers, summaries);
 
     // Se limpia lo que ya no existe. El margen de un segundo evita que una
     // fila escrita en este mismo ciclo se considere obsoleta.
@@ -288,6 +358,10 @@ export class InventoryService {
       projectName: membership?.projectName ?? null,
       serviceName: membership?.serviceName ?? null,
       isSelf: container.Id === this.#selfContainerId,
+      // Se rellena al servir, no aqui: el estado de las imagenes lo escribe el
+      // comprobador en la base de datos y cambia sin que el inventario se
+      // refresque.
+      updateAvailable: false,
     };
   }
 
