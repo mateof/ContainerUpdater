@@ -505,6 +505,9 @@ export const en: Translated<Catalog> = {
     reportSkipped: 'Skipped: {{items}}',
   },
   settings: {
+    unsaved: 'You have unsaved changes',
+    discardChanges: 'Discard',
+    savedOnChange: 'Settings in this section are saved immediately',
     notifyOnContainerDown: 'A container goes down or enters a restart loop',
     notifyOnContainerDownHelp: 'Alerts when something exits with an error, restarts repeatedly or stops being healthy. Stopping it yourself does not alert.',
     notifyOnContainerRecovered: 'And when it recovers',

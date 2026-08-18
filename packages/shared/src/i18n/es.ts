@@ -512,6 +512,9 @@ export const es = {
     reportSkipped: 'Omitido: {{items}}',
   },
   settings: {
+    unsaved: 'Tienes cambios sin guardar',
+    discardChanges: 'Descartar',
+    savedOnChange: 'Los ajustes de esta seccion se guardan al momento',
     notifyOnContainerDown: 'Un contenedor se cae o entra en bucle',
     notifyOnContainerDownHelp: 'Avisa cuando algo sale con error, reinicia sin parar o deja de estar sano. Una parada hecha a mano no avisa.',
     notifyOnContainerRecovered: 'Y cuando vuelve a estar bien',

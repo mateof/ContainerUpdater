@@ -514,6 +514,9 @@ export const gl: Translated<Catalog> = {
     reportSkipped: 'Omitido: {{items}}',
   },
   settings: {
+    unsaved: 'Tes cambios sen gardar',
+    discardChanges: 'Descartar',
+    savedOnChange: 'Os axustes desta seccion gardanse ao momento',
     notifyOnContainerDown: 'Un contedor cae ou entra en bucle',
     notifyOnContainerDownHelp: 'Avisa cando algo sae con erro, reinicia sen parar ou deixa de estar san. Unha parada feita a man non avisa.',
     notifyOnContainerRecovered: 'E cando volve estar ben',

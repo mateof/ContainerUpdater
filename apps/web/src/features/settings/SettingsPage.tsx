@@ -71,6 +71,25 @@ export function SettingsPage(): ReactNode {
 
   const patch = (changes: Partial<AppSettings>) => setDraft({ ...draft, ...changes });
 
+  /**
+   * Si hay algo pendiente de guardar EN ESTA PARTE de la pantalla.
+   *
+   * Hace falta porque el boton de guardar no manda sobre toda la pagina, y eso
+   * confundia: las secciones de abajo (registries, Telegram, segundo factor,
+   * almacenamiento, copia) aplican sus cambios al momento, cada una con su
+   * propia peticion. Un boton siempre visible y flotando por encima de todas
+   * ellas daba a entender que tambien las gobernaba, o peor, que lo que acababas
+   * de hacer alli seguia sin guardar.
+   *
+   * Se recorren las claves del propio objeto en vez de enumerarlas a mano: asi
+   * un ajuste nuevo entra en la comparacion solo, sin que nadie se acuerde de
+   * anadirlo aqui. Todos los valores son primitivos, asi que `!==` basta.
+   */
+  const saved = data?.settings ?? null;
+  const dirty =
+    saved !== null &&
+    (Object.keys(draft) as Array<keyof AppSettings>).some((key) => draft[key] !== saved[key]);
+
   return (
     <div className="space-y-5 max-w-3xl">
       <h1 className="text-xl font-semibold tracking-tight">{t('settings.title')}</h1>
@@ -281,15 +300,40 @@ export function SettingsPage(): ReactNode {
         </div>
       </Card>
 
-      <div className="sticky bottom-4 flex justify-end">
-        <Button
-          variant="primary"
-          loading={save.isPending}
-          onClick={() => save.mutate(draft)}
-          className="shadow-[var(--shadow-lg)]"
-        >
-          {t('common.save')}
-        </Button>
+      {/*
+        Solo aparece cuando hay cambios sin guardar, y por eso lleva tambien un
+        boton para descartarlos: sin el, una vez aparecida la barra no habria
+        forma de quitarla salvo guardando o recargando la pagina.
+      */}
+      {dirty ? (
+        <div className="sticky bottom-4 z-20 flex flex-wrap items-center justify-end gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 shadow-[var(--shadow-lg)]">
+          <span className="mr-auto text-[0.8125rem] text-[var(--text-muted)]">
+            {t('settings.unsaved')}
+          </span>
+          <Button variant="ghost" onClick={() => setDraft(saved)} disabled={save.isPending}>
+            {t('settings.discardChanges')}
+          </Button>
+          <Button variant="primary" loading={save.isPending} onClick={() => save.mutate(draft)}>
+            {t('common.save')}
+          </Button>
+        </div>
+      ) : null}
+
+      {/*
+        Frontera explicita entre las dos mitades de la pantalla.
+        
+        Arriba, ajustes que viajan juntos en una sola peticion y necesitan el
+        boton. Abajo, cosas que se aplican al momento porque cada una es una
+        operacion con su propio efecto: dar de alta una passkey, vincular un
+        chat, borrar un volumen. Sin decirlo, la unica forma de averiguar de que
+        lado esta cada campo es probar y ver si el boton se enciende.
+      */}
+      <div className="flex items-center gap-3 pt-1" role="separator">
+        <span className="h-px flex-1 bg-[var(--border)]" />
+        <span className="text-[0.6875rem] text-[var(--text-muted)]">
+          {t('settings.savedOnChange')}
+        </span>
+        <span className="h-px flex-1 bg-[var(--border)]" />
       </div>
 
       <TotpSection />
