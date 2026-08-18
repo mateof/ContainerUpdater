@@ -340,6 +340,8 @@ export const es = {
   },
   projects: {
     updateProject: 'Actualizar el proyecto entero',
+    updateBadge: 'Nueva',
+    serviceHasUpdate: 'Este servicio tiene una imagen nueva disponible',
     confirmUpdateAll: 'Se descargaran las imagenes nuevas de {{name}} y se aplicara el proyecto de una vez, en lugar de servicio por servicio.',
     searchHint: 'Proyecto, carpeta, servicio o imagen',
     filterAll: 'Todos',

@@ -15,6 +15,7 @@ export const LiveContext = createContext<LiveState>({
   activeJob: null,
   activeByImage: new Map(),
   activeByContainer: new Map(),
+  activeByProject: new Map(),
   activeRun: null,
   checkingImage: null,
 });

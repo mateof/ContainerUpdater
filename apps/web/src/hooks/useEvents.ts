@@ -24,6 +24,14 @@ export interface LiveState {
    */
   activeByImage: Map<string, UpdateJob>;
   activeByContainer: Map<string, UpdateJob>;
+  /**
+   * Indexados por clave de proyecto.
+   *
+   * Los trabajos de proyecto no llevan `containerId`, asi que no aparecen en
+   * `activeByContainer` y la tarjeta no tenia forma de saber que estaba
+   * trabajando.
+   */
+  activeByProject: Map<string, UpdateJob>;
   activeRun: CheckRun | null;
   checkingImage: string | null;
 }
@@ -86,6 +94,12 @@ export function useEvents(enabled: boolean): LiveState {
           void queryClient.invalidateQueries({ queryKey: ['images'] });
           void queryClient.invalidateQueries({ queryKey: ['containers'] });
           void queryClient.invalidateQueries({ queryKey: ['status'] });
+          // Los proyectos tambien: su contador de actualizaciones sale del
+          // estado de las imagenes, que el servidor acaba de reconciliar. Sin
+          // esto, actualizar un proyecto entero terminaba bien pero la tarjeta
+          // seguia diciendo que tenia actualizaciones hasta recargar la pagina
+          // o hasta el siguiente ciclo de comprobacion, que puede tardar horas.
+          void queryClient.invalidateQueries({ queryKey: ['projects'] });
         }
       });
 
@@ -153,9 +167,10 @@ export function useEvents(enabled: boolean): LiveState {
     return null;
   }, [jobs]);
 
-  const { activeByImage, activeByContainer } = useMemo(() => {
+  const { activeByImage, activeByContainer, activeByProject } = useMemo(() => {
     const byImage = new Map<string, UpdateJob>();
     const byContainer = new Map<string, UpdateJob>();
+    const byProject = new Map<string, UpdateJob>();
 
     for (const job of jobs.values()) {
       if (job.status !== 'running' && job.status !== 'queued') continue;
@@ -164,9 +179,15 @@ export function useEvents(enabled: boolean): LiveState {
       const existing = byImage.get(job.imageRef);
       if (!existing || job.status === 'running') byImage.set(job.imageRef, job);
       if (job.containerId) byContainer.set(job.containerId, job);
+      if (job.projectKey) {
+        // Mismo criterio que con las imagenes: manda el que ya corre sobre el
+        // que espera turno.
+        const enCurso = byProject.get(job.projectKey);
+        if (!enCurso || job.status === 'running') byProject.set(job.projectKey, job);
+      }
     }
 
-    return { activeByImage: byImage, activeByContainer: byContainer };
+    return { activeByImage: byImage, activeByContainer: byContainer, activeByProject: byProject };
   }, [jobs]);
 
   return {
@@ -176,6 +197,7 @@ export function useEvents(enabled: boolean): LiveState {
     activeJob,
     activeByImage,
     activeByContainer,
+    activeByProject,
     activeRun,
     checkingImage,
   };

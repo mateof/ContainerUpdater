@@ -342,6 +342,8 @@ export const gl: Translated<Catalog> = {
   },
   projects: {
     updateProject: 'Actualizar o proxecto enteiro',
+    updateBadge: 'Nova',
+    serviceHasUpdate: 'Este servizo ten unha imaxe nova dispoñible',
     confirmUpdateAll: 'Descargaranse as imaxes novas de {{name}} e aplicarase o proxecto dunha vez, en lugar de servizo por servizo.',
     searchHint: 'Proxecto, cartafol, servizo ou imaxe',
     filterAll: 'Todos',

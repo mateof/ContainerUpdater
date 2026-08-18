@@ -336,6 +336,8 @@ export const en: Translated<Catalog> = {
   },
   projects: {
     updateProject: 'Update the whole project',
+    updateBadge: 'New',
+    serviceHasUpdate: 'This service has a newer image available',
     confirmUpdateAll: 'The new images for {{name}} will be pulled and the whole project applied in one go, instead of service by service.',
     searchHint: 'Project, folder, service or image',
     filterAll: 'All',

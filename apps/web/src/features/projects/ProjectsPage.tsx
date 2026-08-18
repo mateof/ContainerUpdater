@@ -123,6 +123,32 @@ export function ProjectsPage(): ReactNode {
   const { data, isLoading } = useQuery({ queryKey: ['projects'], queryFn: () => api.projects() });
   const all = data?.projects ?? [];
 
+  /**
+   * Que contenedores tienen imagen con novedad.
+   *
+   * El proyecto solo trae el numero de actualizaciones, no cuales son, asi que
+   * con cuatro servicios el usuario veia "2 actualizaciones" sin saber de cual
+   * de los cuatro. Se cruza con el inventario de imagenes, que es de donde sale
+   * ese mismo numero en el servidor.
+   *
+   * React Query comparte esta consulta con Contenedores e Imagenes, asi que no
+   * es una peticion extra si ya se ha visitado cualquiera de las dos.
+   */
+  const { data: imageData } = useQuery({ queryKey: ['images'], queryFn: () => api.images() });
+  const updatableContainers = useMemo(
+    () =>
+      new Set(
+        (imageData?.images ?? [])
+          .filter((image) => image.status === 'update-available')
+          // `inUseBy` trae nombres de contenedor, salidos del mismo inventario
+          // que alimenta los del proyecto, asi que casan por construccion. Si
+          // dos servicios comparten imagen, los dos salen marcados, que es lo
+          // correcto: los dos se actualizan.
+          .flatMap((image) => image.inUseBy),
+      ),
+    [imageData],
+  );
+
   const focused = useMemo(
     () => (focusKey ? all.filter((project) => project.key === focusKey) : all),
     [all, focusKey],
@@ -268,7 +294,13 @@ export function ProjectsPage(): ReactNode {
         </Card>
       ) : (
         <div className="grid gap-3 lg:grid-cols-2">
-          {projects.map((project) => (
+          {projects.map((project) => {
+            // Trabajo vivo sobre este proyecto, si lo hay. Los de proyecto no
+            // llevan contenedor, asi que no salian en `activeByContainer` y la
+            // tarjeta no tenia forma de saber que estaba ocupada.
+            const projectJob = live.activeByProject.get(project.key);
+
+            return (
             <Card key={project.key} className="p-4" glow={project.updatesAvailable > 0}>
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -300,7 +332,15 @@ export function ProjectsPage(): ReactNode {
                   ) : null}
                 </div>
 
-                <div className="flex shrink-0 gap-1">
+                <div className="flex shrink-0 items-center gap-1">
+                  {/* Mientras hay trabajo, el indicador SUSTITUYE a los botones,
+                      igual que en las filas de servicio. Dejarlos visibles, aunque
+                      esten apagados, invita a pulsarlos otra vez y no dice nada
+                      que el indicador no diga mejor. */}
+                  {projectJob ? (
+                    <JobIndicator job={projectJob} />
+                  ) : (
+                  <>
                   {/*
                     Actualizar el proyecto entero: un solo `pull` + `up` en vez
                     de una operacion por servicio. Solo aparece cuando de verdad
@@ -370,6 +410,8 @@ export function ProjectsPage(): ReactNode {
                       },
                     ]}
                   />
+                  </>
+                  )}
                 </div>
               </div>
 
@@ -390,6 +432,7 @@ export function ProjectsPage(): ReactNode {
                   const running = container.state === 'running';
                   const activeJob = live.activeByContainer.get(container.id);
                   const service = container.serviceName;
+                  const hasUpdate = updatableContainers.has(container.name);
 
                   return (
                     <li
@@ -398,6 +441,20 @@ export function ProjectsPage(): ReactNode {
                     >
                       <StatusDot state={running ? 'running' : 'stopped'} />
                       <span className="min-w-0 flex-1 truncate">{service || container.name}</span>
+                      {/* Que servicio concreto tiene la novedad. El proyecto solo
+                          daba el total, asi que con varios servicios habia que
+                          adivinar cual de ellos era. */}
+                      {hasUpdate ? (
+                        <Tooltip content={t('projects.serviceHasUpdate')}>
+                          <span className="shrink-0">
+                            <Badge tone="accent">
+                              <IconDownload size={11} />
+                              {t('projects.updateBadge')}
+                            </Badge>
+                          </span>
+                        </Tooltip>
+                      ) : null}
+
                       <span className="hidden truncate text-[0.6875rem] lg:block lg:max-w-[38%]">
                         {container.imageRef ? (
                           <CrossLink
@@ -479,7 +536,8 @@ export function ProjectsPage(): ReactNode {
                 })}
               </ul>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
