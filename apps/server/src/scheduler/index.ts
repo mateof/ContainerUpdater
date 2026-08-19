@@ -83,6 +83,21 @@ export class Scheduler {
       }),
     );
 
+    /**
+     * Las automaticas, con su propio reloj.
+     *
+     * Cada media hora, y NO atado a las comprobaciones: lo que decide si algo
+     * puede entrar es su cuarentena y la franja horaria, y las dos cosas cambian
+     * con el reloj, no cuando toca preguntar a los registries. Media hora es
+     * suficientemente fino para una franja de un par de horas y suficientemente
+     * espaciado para no despertar los discos del NAS.
+     */
+    this.#jobs.push(
+      new Cron('*/30 * * * *', { timezone, protect: true, name: 'auto-updates' }, () => {
+        void this.applyAutoUpdates();
+      }),
+    );
+
     this.#jobs.push(
       new Cron('0 4 * * *', { timezone, protect: true, name: 'refresh-tags' }, () => {
         repos.tagCache.invalidateOlderThan(24 * 3600_000);
@@ -180,31 +195,59 @@ export class Scheduler {
       metrics.broadcast({ type: 'check-done', payload: { run: summary.run } });
       await notifier.notifyUpdatesAvailable(summary.outcomes);
 
-      const settings = repos.settings.getAll();
-      if (settings.autoUpdateEnabled) {
-        const jobs = await updater.runAutoUpdates();
-        for (const job of jobs) {
-          if (job.status === 'success') {
-            await notifier.notifyUpdateApplied({
-              imageRef: job.imageRef,
-              containerName: job.containerName ?? '',
-              fromTag: job.fromTag,
-              toTag: job.toTag,
-              automatic: true,
-            });
-          } else if (job.status === 'failed' || job.status === 'rolled-back') {
-            await notifier.notifyFailure({
-              imageRef: job.imageRef,
-              error: job.error ?? 'error desconocido',
-              rolledBack: job.status === 'rolled-back',
-            });
-          }
-        }
-      }
+      await this.applyAutoUpdates();
 
       metrics.broadcast({ type: 'inventory-changed', payload: {} });
     } catch (error) {
       log.error('Fallo el ciclo de comprobacion', error);
+    }
+  }
+
+  /**
+   * Aplica las automaticas que ya puedan aplicarse, y avisa del resultado.
+   *
+   * Se ejecuta desde DOS sitios y esa es la razon de existir de este metodo:
+   * despues de cada comprobacion, y ademas por su cuenta cada media hora.
+   *
+   * Lo segundo hace falta porque antes esto solo corria pegado a la
+   * comprobacion, y eso convertia el cron de comprobaciones en el que decidia
+   * de verdad cuando se actualizaba. Con el cron por defecto (00, 06, 12 y 18)
+   * y una ventana de mantenimiento de 04:00 a 08:00, la unica oportunidad del
+   * dia era la comprobacion de las 06:00; si en ese momento la version aun
+   * estaba en cuarentena, la siguiente ocasion era 24 horas despues. Y con una
+   * ventana de 02:00 a 04:00, donde no cae ninguna comprobacion, el auto-update
+   * no se habria ejecutado NUNCA, sin ningun aviso de que eso pasaba.
+   *
+   * Correr aparte es barato: no hace ninguna peticion a los registries, solo
+   * mira que imagenes ya se sabe que tienen novedad y cuales han cumplido ya su
+   * cuarentena o han entrado en la franja horaria.
+   */
+  async applyAutoUpdates(): Promise<void> {
+    const { repos, updater, notifier, log } = this.deps;
+
+    if (!repos.settings.getAll().autoUpdateEnabled) return;
+
+    try {
+      const jobs = await updater.runAutoUpdates();
+      for (const job of jobs) {
+        if (job.status === 'success') {
+          await notifier.notifyUpdateApplied({
+            imageRef: job.imageRef,
+            containerName: job.containerName ?? '',
+            fromTag: job.fromTag,
+            toTag: job.toTag,
+            automatic: true,
+          });
+        } else if (job.status === 'failed' || job.status === 'rolled-back') {
+          await notifier.notifyFailure({
+            imageRef: job.imageRef,
+            error: job.error ?? 'error desconocido',
+            rolledBack: job.status === 'rolled-back',
+          });
+        }
+      }
+    } catch (error) {
+      log.error('Fallo aplicando las actualizaciones automaticas', error);
     }
   }
 

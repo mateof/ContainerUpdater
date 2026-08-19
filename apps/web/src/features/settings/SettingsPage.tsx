@@ -90,6 +90,25 @@ export function SettingsPage(): ReactNode {
     saved !== null &&
     (Object.keys(draft) as Array<keyof AppSettings>).some((key) => draft[key] !== saved[key]);
 
+  /**
+   * Aviso del navegador al cerrar o recargar con cambios sin guardar.
+   *
+   * Un interruptor que se mueve parece que ya ha hecho algo, asi que es facil
+   * darlo por hecho y salir. Se pierde en silencio y el ajuste simplemente
+   * nunca existio, que es peor que un error: no hay nada que mirar. El texto lo
+   * pone el navegador, no se puede personalizar.
+   */
+  useEffect(() => {
+    if (!dirty) return;
+    const avisar = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      // Sigue haciendo falta en algunos navegadores pese a estar en desuso.
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [dirty]);
+
   return (
     <div className="space-y-5 max-w-3xl">
       <h1 className="text-xl font-semibold tracking-tight">{t('settings.title')}</h1>
