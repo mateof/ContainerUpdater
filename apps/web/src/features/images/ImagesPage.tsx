@@ -122,6 +122,89 @@ export function ImagesPage(): ReactNode {
   const [confirmDelete, setConfirmDelete] = useState<TrackedImage | null>(null);
   const [confirmRevert, setConfirmRevert] = useState<TrackedImage | null>(null);
 
+  /**
+   * Seleccion para actualizar varias de una vez.
+   *
+   * Se guardan REFERENCIAS y no objetos: la lista se recarga sola con cada
+   * evento del servidor, y quedarse con los objetos dejaria una seleccion que
+   * apunta a copias viejas.
+   */
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+
+  const toggleSelected = (ref: string): void =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(ref)) next.delete(ref);
+      else next.add(ref);
+      return next;
+    });
+
+  /**
+   * Que se puede actualizar en lote: solo lo que de verdad tiene novedad y se
+   * puede tocar. La propia aplicacion queda fuera porque no puede recrearse a si
+   * misma, y colarla en un lote la haria fallar entera.
+   */
+  const bulkCandidates = useMemo(
+    () =>
+      images.filter(
+        (image) =>
+          image.status === 'update-available' &&
+          image.source === 'registry' &&
+          image.ref !== selfImageRef,
+      ),
+    [images, selfImageRef],
+  );
+
+  // La seleccion se limpia de lo que ya no aplica (se actualizo, o dejo de
+  // tener novedad), o el contador prometeria trabajos que no se van a encolar.
+  const selectedRefs = useMemo(
+    () => bulkCandidates.filter((image) => selected.has(image.ref)).map((image) => image.ref),
+    [bulkCandidates, selected],
+  );
+
+  /**
+   * Encola las seleccionadas de una en una.
+   *
+   * En serie y no con `Promise.all`: el servidor las mete en una cola global de
+   * todas formas, pero lanzarlas a la vez puede pasarse del tope de cola y
+   * rechazar las ultimas sin que se sepa cuales. Asi se cuenta exactamente
+   * cuantas entraron y se puede decir que fallo.
+   */
+  const bulkUpdate = useMutation({
+    mutationFn: async (refs: string[]) => {
+      let ok = 0;
+      let lastError: string | null = null;
+      for (const ref of refs) {
+        try {
+          await api.updateImage(ref, { mode: 'update' });
+          ok += 1;
+        } catch (error) {
+          lastError = error instanceof ApiError ? error.code : String(error);
+        }
+      }
+      return { ok, total: refs.length, lastError };
+    },
+    onSuccess: (result) => {
+      if (result.ok === result.total) {
+        notify(t('images.bulkQueued', { count: result.ok }), 'ok');
+      } else {
+        notify(
+          t('images.bulkPartial', {
+            ok: result.ok,
+            total: result.total,
+            reason: result.lastError ?? '',
+          }),
+          'info',
+        );
+      }
+      setSelected(new Set());
+      setConfirmBulk(false);
+      invalidate();
+    },
+    onError: () => notify(t('common.error'), 'danger'),
+  });
+
   const remove = useMutation({
     mutationFn: ({ ref, force }: { ref: string; force: boolean }) => api.deleteImage(ref, force),
     onSuccess: () => {
@@ -211,7 +294,20 @@ export function ImagesPage(): ReactNode {
         <FocusBanner label={t('images.focusRef')} value={focusRef} onClear={clearFocus} />
       ) : null}
 
-      <FilterPills value={filter} onChange={setFilter} options={options} />
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterPills value={filter} onChange={setFilter} options={options} />
+        {/* Con siete imagenes pendientes, marcarlas una a una es el trabajo que
+            precisamente se queria evitar. Solo aparece si hay mas de una. */}
+        {bulkCandidates.length > 1 && selectedRefs.length !== bulkCandidates.length ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setSelected(new Set(bulkCandidates.map((image) => image.ref)))}
+          >
+            {t('images.selectAllUpdatable')}
+          </Button>
+        ) : null}
+      </div>
 
       {isLoading ? (
         <div className="space-y-2">
@@ -247,10 +343,60 @@ export function ImagesPage(): ReactNode {
               onRevert={() => setConfirmRevert(image)}
               isSelf={image.ref === selfImageRef}
               activeJob={live.activeByImage.get(image.ref)}
+              // La casilla solo existe donde tiene sentido pulsarla: en algo que
+              // de verdad se puede actualizar. Ponerla en todas y desactivarla
+              // en la mayoria seria una columna de casillas muertas.
+              selectable={bulkCandidates.some((c) => c.ref === image.ref)}
+              selected={selected.has(image.ref)}
+              onSelect={() => toggleSelected(image.ref)}
             />
           ))}
         </ul>
       )}
+
+      {/*
+        Barra de seleccion, que aparece solo cuando hay algo seleccionado. Va
+        pegada abajo para que no haya que volver arriba tras marcar la ultima.
+      */}
+      {selectedRefs.length > 0 ? (
+        <div className="sticky bottom-4 z-20 flex flex-wrap items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 shadow-[var(--shadow-lg)]">
+          <span className="mr-auto text-[0.8125rem]">
+            {t('images.selectedCount', { count: selectedRefs.length })}
+          </span>
+          <Button variant="ghost" onClick={() => setSelected(new Set())}>
+            {t('images.clearSelection')}
+          </Button>
+          <Button
+            variant="primary"
+            icon={<IconDownload size={15} />}
+            loading={bulkUpdate.isPending}
+            onClick={() => setConfirmBulk(true)}
+          >
+            {t('images.updateSelected', { count: selectedRefs.length })}
+          </Button>
+        </div>
+      ) : null}
+
+      {confirmBulk ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(value) => !value && setConfirmBulk(false)}
+          title={t('images.updateSelected', { count: selectedRefs.length })}
+          description={t('images.bulkConfirm', { count: selectedRefs.length })}
+          confirmLabel={t('common.confirm')}
+          cancelLabel={t('common.cancel')}
+          loading={bulkUpdate.isPending}
+          onConfirm={() => bulkUpdate.mutate(selectedRefs)}
+        >
+          <ul className="max-h-52 space-y-0.5 overflow-y-auto text-[0.75rem] text-[var(--text-muted)]">
+            {selectedRefs.map((ref) => (
+              <li key={ref} className="truncate font-mono">
+                {displayImage(ref)}
+              </li>
+            ))}
+          </ul>
+        </ConfirmDialog>
+      ) : null}
 
       {detail ? (
         <ImageDetailDialog image={detail} onClose={() => setDetail(null)} onSaved={invalidate} />
@@ -323,6 +469,9 @@ function ImageRow({
   onRevert,
   isSelf,
   activeJob,
+  selectable,
+  selected,
+  onSelect,
 }: {
   image: TrackedImage;
   checking: boolean;
@@ -334,6 +483,9 @@ function ImageRow({
   onRevert: () => void;
   isSelf: boolean;
   activeJob: UpdateJob | undefined;
+  selectable: boolean;
+  selected: boolean;
+  onSelect: () => void;
 }): ReactNode {
   const { t } = useTranslation();
   const hasUpdate = image.status === 'update-available';
@@ -348,6 +500,18 @@ function ImageRow({
         )}
         glow={hasUpdate}
       >
+        {/* Fuera del boton de detalle: una casilla dentro de un boton no se
+            puede pulsar sin abrir tambien la ficha. */}
+        {selectable ? (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onSelect}
+            aria-label={t('images.select')}
+            className="size-4 shrink-0 cursor-pointer accent-[var(--accent)]"
+          />
+        ) : null}
+
         <button
           type="button"
           onClick={onDetail}
@@ -393,6 +557,20 @@ function ImageRow({
             </div>
 
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[0.6875rem] text-[var(--text-muted)]">
+              {/*
+                La version instalada, y SOLO cuando aporta algo.
+                
+                Con `mongo:8.2` la etiqueta ya lo dice y repetirlo seria ruido;
+                con `latest` es justo el dato que faltaba, porque el nombre no
+                dice nada y el digest es ilegible.
+              */}
+              {image.installedVersion && image.installedVersion !== image.tag ? (
+                <Tooltip content={t('images.installedVersionHelp')}>
+                  <span className="font-medium text-[var(--text)]">
+                    {t('images.installedVersion', { version: image.installedVersion })}
+                  </span>
+                </Tooltip>
+              ) : null}
               {image.sizeBytes ? <span>{formatBytes(image.sizeBytes)}</span> : null}
               {image.localDigests[0] ? (
                 <span className="font-mono">{shortDigest(image.localDigests[0], 10)}</span>

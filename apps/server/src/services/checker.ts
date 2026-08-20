@@ -15,6 +15,7 @@ import {
   pickPlatformChild,
 } from '../registry/manifest.js';
 import { localImageName, parseImageReference } from '../registry/reference.js';
+import { VersionResolver } from '../registry/version.js';
 import { findUpgradeCandidate } from '../registry/semver.js';
 import type { ImageRow, Repositories } from '../db/repositories/index.js';
 import type { DockerApi } from '../docker/api.js';
@@ -72,6 +73,7 @@ class CircuitBreaker {
 
 export class CheckerService {
   readonly #registry = new RegistryClient();
+  readonly #versions = new VersionResolver(this.#registry);
   readonly #breaker = new CircuitBreaker();
   #running = false;
 
@@ -206,6 +208,11 @@ export class CheckerService {
       this.#breaker.recordSuccess(ref.host);
       this.repos.registries.setStatus(ref.host, 'ok', null);
 
+      // Que version tienes instalada. Se resuelve aqui porque ya estamos
+      // hablando con este registry, y solo cuando hace falta: si el digest para
+      // el que se resolvio sigue siendo el actual, no hay nada que rehacer.
+      await this.#resolveInstalledVersion(row, ref, localDigests, credentials);
+
       // Un digest que el usuario decidio ignorar no vuelve a contar como
       // novedad hasta que aparezca otro distinto.
       if (hasUpdate && remoteDigest && policy.ignoredDigest === remoteDigest && !candidateTag) {
@@ -279,6 +286,37 @@ export class CheckerService {
       this.#breaker.recordFailure(ref.host);
       this.log.warn(`Fallo comprobando ${row.normalized_ref}`, error);
       return { ...base, status: 'error', error: (error as Error).message };
+    }
+  }
+
+  /**
+   * Averigua que version esta instalada, si hace falta.
+   *
+   * Barato en el caso normal: con una etiqueta que ya nombra la version
+   * (`mongo:8.2`) no se consulta nada, y en Docker Hub es una sola peticion que
+   * ademas no gasta cuota. Solo una etiqueta rodante en un registry que no sea
+   * Hub obliga a varias peticiones, y ahi va acotado.
+   */
+  async #resolveInstalledVersion(
+    row: ImageRow,
+    ref: ReturnType<typeof parseImageReference>,
+    localDigests: string[],
+    credentials: ReturnType<Repositories['registries']['getCredentials']>,
+  ): Promise<void> {
+    const actual = localDigests[0] ?? null;
+    // Ya resuelto para este mismo digest: nada que hacer.
+    if (actual !== null && row.installed_version_for === actual) return;
+
+    try {
+      const resolved = await this.#versions.resolve(ref, localDigests, credentials);
+      this.repos.inventory.recordInstalledVersion({
+        ref: row.normalized_ref,
+        version: resolved.version,
+        method: resolved.method,
+        forDigest: actual,
+      });
+    } catch (error) {
+      this.log.debug(`No se ha podido resolver la version de ${row.normalized_ref}`, error);
     }
   }
 

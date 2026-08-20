@@ -124,6 +124,21 @@ export interface TrackedImage {
   inUseByRunning: string[];
   usage: ImageUsage;
   policy: ImagePolicy;
+  /**
+   * Que version tienes instalada, en legible.
+   *
+   * Sale de preguntarle al registry que otras etiquetas apuntan a tu mismo
+   * digest: si `latest` y `v3.7.2` son el mismo contenido, tu `latest` es
+   * v3.7.2. NO sale de las etiquetas OCI de la imagen, que mienten a menudo
+   * porque se heredan de la imagen base sin sobrescribir.
+   */
+  installedVersion: string | null;
+  /**
+   * Como se averiguo: `tag` cuando la propia etiqueta ya lo decia, o el registry
+   * cuando hubo que resolverlo. Sirve para no repetir en pantalla un dato que ya
+   * esta a la vista en el nombre.
+   */
+  installedVersionMethod: 'tag' | 'hub' | 'registry' | null;
   /** Que trae la version publicada. null si no se ha podido averiguar. */
   release: ReleaseInfo | null;
   /** Por que no se ha aplicado sola, cuando hay novedad y es automatica. */

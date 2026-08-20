@@ -36,6 +36,9 @@ export interface ImageRow {
   remote_version: string | null;
   local_source_url: string | null;
   local_revision: string | null;
+  installed_version: string | null;
+  installed_version_method: string | null;
+  installed_version_for: string | null;
 }
 
 export interface ProjectRow {
@@ -224,6 +227,25 @@ export function createInventoryRepository(db: Db) {
         input.version,
         input.ref,
       );
+    },
+
+    /**
+     * Guarda la version instalada y para que digest se averiguo.
+     *
+     * El digest es lo que evita enseñar un dato rancio: al actualizar la imagen
+     * cambia, deja de coincidir y el valor se vuelve a resolver solo.
+     */
+    recordInstalledVersion(input: {
+      ref: string;
+      version: string | null;
+      method: string | null;
+      forDigest: string | null;
+    }): void {
+      db.prepare(
+        `UPDATE tracked_images
+            SET installed_version = ?, installed_version_method = ?, installed_version_for = ?
+          WHERE normalized_ref = ?`,
+      ).run(input.version, input.method, input.forDigest, input.ref);
     },
 
     /**
