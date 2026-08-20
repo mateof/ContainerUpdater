@@ -231,6 +231,8 @@ export const es = {
     none: 'Sin control',
   },
   images: {
+    checkSelected: 'Comprobar {{count}}',
+    bulkChecked: '{{count}} imagenes comprobadas',
     installedVersionLabel: 'Version instalada',
     sameContentTags: 'Etiquetas con este mismo contenido',
     installedVersion: 'Version {{version}}',

@@ -141,9 +141,23 @@ export function ImagesPage(): ReactNode {
     });
 
   /**
-   * Que se puede actualizar en lote: solo lo que de verdad tiene novedad y se
-   * puede tocar. La propia aplicacion queda fuera porque no puede recrearse a si
-   * misma, y colarla en un lote la haria fallar entera.
+   * Que se puede seleccionar: cualquier imagen de registry.
+   *
+   * Antes solo se podian marcar las que YA tenian actualizacion, porque la
+   * seleccion nacio para actualizar en lote. Comprobar en lote necesita lo
+   * contrario: se comprueba justamente lo que todavia no se sabe si tiene
+   * novedad.
+   */
+  const selectables = useMemo(
+    () => images.filter((image) => image.source === 'registry'),
+    [images],
+  );
+
+  /**
+   * De lo seleccionado, que se puede actualizar de verdad.
+   *
+   * La propia aplicacion queda fuera porque no puede recrearse a si misma, y
+   * colarla en un lote lo haria fallar entero.
    */
   const bulkCandidates = useMemo(
     () =>
@@ -158,10 +172,26 @@ export function ImagesPage(): ReactNode {
 
   // La seleccion se limpia de lo que ya no aplica (se actualizo, o dejo de
   // tener novedad), o el contador prometeria trabajos que no se van a encolar.
+  /** Seleccionadas que siguen existiendo y se pueden comprobar. */
   const selectedRefs = useMemo(
+    () => selectables.filter((image) => selected.has(image.ref)).map((image) => image.ref),
+    [selectables, selected],
+  );
+
+  /** De esas, las que ademas se pueden actualizar ahora mismo. */
+  const selectedUpdatable = useMemo(
     () => bulkCandidates.filter((image) => selected.has(image.ref)).map((image) => image.ref),
     [bulkCandidates, selected],
   );
+
+  const bulkCheck = useMutation({
+    mutationFn: (refs: string[]) => api.checkImages(refs),
+    onSuccess: () => {
+      notify(t('images.bulkChecked', { count: selectedRefs.length }), 'ok');
+      invalidate();
+    },
+    onError: () => notify(t('common.error'), 'danger'),
+  });
 
   /**
    * Encola las seleccionadas de una en una.
@@ -298,7 +328,7 @@ export function ImagesPage(): ReactNode {
         <FilterPills value={filter} onChange={setFilter} options={options} />
         {/* Con siete imagenes pendientes, marcarlas una a una es el trabajo que
             precisamente se queria evitar. Solo aparece si hay mas de una. */}
-        {bulkCandidates.length > 1 && selectedRefs.length !== bulkCandidates.length ? (
+        {bulkCandidates.length > 1 && selectedUpdatable.length !== bulkCandidates.length ? (
           <Button
             size="sm"
             variant="ghost"
@@ -346,7 +376,7 @@ export function ImagesPage(): ReactNode {
               // La casilla solo existe donde tiene sentido pulsarla: en algo que
               // de verdad se puede actualizar. Ponerla en todas y desactivarla
               // en la mayoria seria una columna de casillas muertas.
-              selectable={bulkCandidates.some((c) => c.ref === image.ref)}
+              selectable={image.source === 'registry'}
               selected={selected.has(image.ref)}
               onSelect={() => toggleSelected(image.ref)}
             />
@@ -367,13 +397,25 @@ export function ImagesPage(): ReactNode {
             {t('images.clearSelection')}
           </Button>
           <Button
-            variant="primary"
-            icon={<IconDownload size={15} />}
-            loading={bulkUpdate.isPending}
-            onClick={() => setConfirmBulk(true)}
+            variant="secondary"
+            icon={<IconRefresh size={15} />}
+            loading={bulkCheck.isPending}
+            onClick={() => bulkCheck.mutate(selectedRefs)}
           >
-            {t('images.updateSelected', { count: selectedRefs.length })}
+            {t('images.checkSelected', { count: selectedRefs.length })}
           </Button>
+          {/* Actualizar solo aparece si algo de lo marcado tiene novedad: un
+              boton que no haria nada confunde mas que ayuda. */}
+          {selectedUpdatable.length > 0 ? (
+            <Button
+              variant="primary"
+              icon={<IconDownload size={15} />}
+              loading={bulkUpdate.isPending}
+              onClick={() => setConfirmBulk(true)}
+            >
+              {t('images.updateSelected', { count: selectedUpdatable.length })}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -381,15 +423,15 @@ export function ImagesPage(): ReactNode {
         <ConfirmDialog
           open
           onOpenChange={(value) => !value && setConfirmBulk(false)}
-          title={t('images.updateSelected', { count: selectedRefs.length })}
-          description={t('images.bulkConfirm', { count: selectedRefs.length })}
+          title={t('images.updateSelected', { count: selectedUpdatable.length })}
+          description={t('images.bulkConfirm', { count: selectedUpdatable.length })}
           confirmLabel={t('common.confirm')}
           cancelLabel={t('common.cancel')}
           loading={bulkUpdate.isPending}
-          onConfirm={() => bulkUpdate.mutate(selectedRefs)}
+          onConfirm={() => bulkUpdate.mutate(selectedUpdatable)}
         >
           <ul className="max-h-52 space-y-0.5 overflow-y-auto text-[0.75rem] text-[var(--text-muted)]">
-            {selectedRefs.map((ref) => (
+            {selectedUpdatable.map((ref) => (
               <li key={ref} className="truncate font-mono">
                 {displayImage(ref)}
               </li>

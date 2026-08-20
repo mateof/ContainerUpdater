@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import {
+  bulkCheckSchema,
   imageDeleteSchema,
   imagePolicySchema,
   serviceActionSchema,
@@ -153,6 +154,20 @@ export async function registerUpdateRoutes(
     const summary = await app.checker.runCheck('manual', { refs: [ref] });
     await app.notifier.notifyUpdatesAvailable(summary.outcomes);
     return { run: summary.run, outcome: summary.outcomes[0] ?? null };
+  });
+
+  /**
+   * Comprueba varias imagenes en una sola pasada.
+   *
+   * Mejor que repetir la peticion de una en una desde el navegador: se reparte
+   * con el limite de concurrencia que ya tiene configurado el usuario, sale una
+   * unica fila en el historial en vez de veinte, y los avisos se mandan juntos.
+   */
+  fastify.post('/api/images/check', { onRequest: [fastify.requireAuth] }, async (request) => {
+    const { refs } = bulkCheckSchema.parse(request.body);
+    const summary = await app.checker.runCheck('manual', { refs });
+    await app.notifier.notifyUpdatesAvailable(summary.outcomes);
+    return { run: summary.run, outcomes: summary.outcomes };
   });
 
   fastify.post('/api/images/:ref/update', { onRequest: [fastify.requireOperator] }, async (request, reply) => {

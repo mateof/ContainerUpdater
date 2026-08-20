@@ -275,6 +275,17 @@ export const settingsSchema = z.object({
   allowTelegramGroups: z.boolean().optional(),
 });
 
+/**
+ * Comprobar varias imagenes de una vez.
+ *
+ * El tope no es por rendimiento sino por educacion con los registries: cada
+ * referencia es al menos una peticion, y 50 de golpe es mas de lo que nadie
+ * necesita pulsando un boton.
+ */
+export const bulkCheckSchema = z.object({
+  refs: z.array(z.string().min(1).max(512)).min(1).max(50),
+});
+
 /** Un volumen a borrar. El nombre es lo unico que hace falta. */
 export const volumeSchema = z.object({
   name: z.string().min(1).max(255),
@@ -312,3 +323,4 @@ export type UpdateRequestInput = z.infer<typeof updateRequestSchema>;
 export type RegistryInput = z.infer<typeof registrySchema>;
 export type SettingsInput = z.infer<typeof settingsSchema>;
 export type RestoreInput = z.infer<typeof restoreSchema>;
+export type BulkCheckInput = z.infer<typeof bulkCheckSchema>;

@@ -233,6 +233,8 @@ export const gl: Translated<Catalog> = {
     none: 'Sen control',
   },
   images: {
+    checkSelected: 'Comprobar {{count}}',
+    bulkChecked: '{{count}} imaxes comprobadas',
     installedVersionLabel: 'Version instalada',
     sameContentTags: 'Etiquetas con este mesmo contido',
     installedVersion: 'Version {{version}}',

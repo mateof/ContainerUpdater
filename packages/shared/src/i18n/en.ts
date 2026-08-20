@@ -229,6 +229,8 @@ export const en: Translated<Catalog> = {
     none: 'No healthcheck',
   },
   images: {
+    checkSelected: 'Check {{count}}',
+    bulkChecked: '{{count}} images checked',
     installedVersionLabel: 'Installed version',
     sameContentTags: 'Tags pointing at this same content',
     installedVersion: 'Version {{version}}',

@@ -249,6 +249,8 @@ export const api = {
 
   imagePlan: (ref: string) => get<{ plan: UpdatePlan }>(`/images/${encodeRef(ref)}/plan`),
   checkImage: (ref: string) => post<{ run: CheckRun }>(`/images/${encodeRef(ref)}/check`),
+  /** Varias de una pasada, con el limite de concurrencia del servidor. */
+  checkImages: (refs: string[]) => post<{ run: CheckRun }>('/images/check', { refs }),
   savePolicy: (ref: string, patch: Partial<ImagePolicy>) =>
     put<{ policy: ImagePolicy }>(`/images/${encodeRef(ref)}/policy`, patch),
   /**

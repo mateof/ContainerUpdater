@@ -126,8 +126,25 @@ export class CheckerService {
     trigger: string,
     options: { refs?: string[]; onProgress?: (ref: string, run: CheckRun) => void } = {},
   ): Promise<CheckSummary> {
-    if (this.#running) throw new Error('Ya hay una comprobacion en curso');
-    this.#running = true;
+    /**
+     * La exclusion mutua es solo para el barrido COMPLETO.
+     *
+     * Antes valia para cualquier comprobacion, y eso hacia que pulsar
+     * "comprobar" en una imagen y despues en otra sin esperar diera un error:
+     * la segunda se topaba con la primera. No habia motivo. Lo que la guarda
+     * protege es que dos barridos enteros no se pisen (doble consulta a cada
+     * registry y dos filas de ejecucion solapadas); comprobar una imagen suelta
+     * es una peticion `HEAD` y puede convivir con cualquier cosa.
+     *
+     * Si coinciden dos sobre la MISMA imagen, la ultima en terminar escribe su
+     * resultado. No hay nada que corromper: es la misma consulta dando la misma
+     * respuesta.
+     */
+    const barridoCompleto = options.refs === undefined;
+    if (barridoCompleto) {
+      if (this.#running) throw new Error('Ya hay una comprobacion en curso');
+      this.#running = true;
+    }
 
     const runId = this.repos.history.startRun(trigger);
     const settings = this.repos.settings.getAll();
@@ -184,7 +201,10 @@ export class CheckerService {
         updatesFound,
         errors,
       });
-      this.repos.settings.setRaw('last_check_at', String(Date.now()));
+      // Solo el barrido completo mueve la fecha de "ultima comprobacion": si la
+      // moviera comprobar una imagen suelta, el planificador creeria que ya se
+      // ha repasado todo y la recuperacion al arrancar dejaria de dispararse.
+      if (barridoCompleto) this.repos.settings.setRaw('last_check_at', String(Date.now()));
     } catch (error) {
       this.repos.history.finishRun(runId, {
         imagesChecked: candidates.length,
@@ -194,7 +214,7 @@ export class CheckerService {
       });
       throw error;
     } finally {
-      this.#running = false;
+      if (barridoCompleto) this.#running = false;
     }
 
     const run = this.repos.history.getRun(runId);
