@@ -93,6 +93,11 @@ export function ImageDetailDialog({
           <Detail label={t('images.tag')}>
             <span className="font-mono">{image.tag}</span>
           </Detail>
+          {image.installedVersion ? (
+            <Detail label={t('images.installedVersionLabel')}>
+              <span className="font-mono">{image.installedVersion}</span>
+            </Detail>
+          ) : null}
           <Detail label={t('images.size')}>{formatBytes(image.sizeBytes)}</Detail>
           <Detail label={t('images.created')}>{formatDateTime(image.imageCreatedAt)}</Detail>
           <Detail label={t('images.lastChecked')}>{formatRelative(image.lastCheckedAt)}</Detail>
@@ -120,6 +125,26 @@ export function ImageDetailDialog({
 
         {image.release && image.status === 'update-available' ? (
           <ReleasePanel release={image.release} hold={image.hold} />
+        ) : null}
+
+        {/*
+          Todas las etiquetas que apuntan a este mismo contenido. Una imagen
+          suele tener varias (`latest`, `v1.2`, `1.2.3`) y son la misma cosa;
+          verlas juntas es la respuesta completa a que tienes instalado.
+        */}
+        {image.installedVersionAliases.length > 0 ? (
+          <div>
+            <p className="mb-1 text-[0.75rem] font-medium">{t('images.sameContentTags')}</p>
+            <div className="flex flex-wrap gap-1">
+              {[image.installedVersion, ...image.installedVersionAliases]
+                .filter((tag): tag is string => Boolean(tag))
+                .map((tag) => (
+                  <Badge key={tag} tone={tag === image.tag ? 'accent' : 'neutral'}>
+                    {tag}
+                  </Badge>
+                ))}
+            </div>
+          </div>
         ) : null}
 
         {image.localDigests.length > 0 ? (

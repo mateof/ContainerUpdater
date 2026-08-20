@@ -98,6 +98,28 @@ export class Scheduler {
       }),
     );
 
+    /**
+     * Rellena las versiones instaladas que falten.
+     *
+     * Aparte del ciclo de comprobacion por el mismo motivo que las automaticas:
+     * atarlo a un cron de seis horas hacia que una funcionalidad recien
+     * instalada pareciera no funcionar durante media manana. Cada pasada resuelve
+     * como mucho unas pocas, asi que se rellenan solas sin castigar a nadie.
+     */
+    this.#jobs.push(
+      new Cron('*/10 * * * *', { timezone, protect: true, name: 'fill-versions' }, async () => {
+        try {
+          await this.deps.checker.fillMissingVersions();
+        } catch (error) {
+          log.debug('Fallo rellenando versiones instaladas', error);
+        }
+      }),
+    );
+
+    // Y una primera pasada al arrancar, para no esperar diez minutos tras
+    // instalar una version nueva.
+    setTimeout(() => void this.deps.checker.fillMissingVersions().catch(() => undefined), 20_000);
+
     this.#jobs.push(
       new Cron('0 4 * * *', { timezone, protect: true, name: 'refresh-tags' }, () => {
         repos.tagCache.invalidateOlderThan(24 * 3600_000);

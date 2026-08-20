@@ -111,6 +111,7 @@ export class InventoryService {
       return {
       installedVersion: row.installed_version,
       installedVersionMethod: row.installed_version_method as TrackedImage['installedVersionMethod'],
+      installedVersionAliases: parseJsonArray(row.installed_version_aliases ?? '[]'),
       ref: row.normalized_ref,
       host: row.host,
       repository: row.repository,
@@ -647,6 +648,7 @@ export class InventoryService {
         imageCreatedAt: row.image_created_at,
         installedVersion: row.installed_version,
         installedVersionMethod: row.installed_version_method as TrackedImage['installedVersionMethod'],
+        installedVersionAliases: parseJsonArray(row.installed_version_aliases ?? '[]'),
         release: buildReleaseInfo({
           sourceUrl: row.remote_source_url ?? row.local_source_url,
           localRevision: row.local_revision,

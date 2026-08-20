@@ -16,7 +16,9 @@
  * mismo digest que tienes en disco. Si `latest` y `v3.7.2` son el mismo digest,
  * entonces tu `latest` es v3.7.2. No hay heuristica: es el mismo contenido.
  */
+import { rcompare } from 'semver';
 import { RegistryClient } from './manifest.js';
+import { parseTag, type ParsedTag } from './semver.js';
 import type { ImageReference } from './reference.js';
 import type { RegistryCredentials } from '../db/repositories/index.js';
 
@@ -68,6 +70,41 @@ export function pareceVersion(tag: string): boolean {
 export function especificidad(tag: string): number {
   const numeros = tag.match(/\d+/g)?.length ?? 0;
   return numeros * 100 + tag.length;
+}
+
+/**
+ * Ordena las candidatas por probabilidad de ser la respuesta: de mas nueva a
+ * mas vieja.
+ *
+ * Es la diferencia entre encontrarla y no encontrarla. La primera version
+ * ordenaba por "especificidad" (cuantos numeros lleva la etiqueta), y en un
+ * repositorio de versiones (`0.1.0`, `0.2.0`, ... `0.36.0`) casi todas empatan:
+ * el desempate lo daba el orden del registry, que las devuelve de mas vieja a
+ * mas nueva. Con un tope de peticiones, se acababa consultando justo las mas
+ * antiguas, que son las que menos probablemente apuntan a un `latest`.
+ * Comprobado con un repositorio real de 28 etiquetas: la buena era la ultima.
+ *
+ * Las que no se pueden interpretar como version van al final, pero no se
+ * descartan: alguna sera una fecha o un hash de commit.
+ */
+export function ordenarPorProbabilidad(tags: string[]): string[] {
+  const conVersion: Array<{ tag: string; parsed: ParsedTag }> = [];
+  const resto: string[] = [];
+
+  for (const tag of tags) {
+    const parsed = parseTag(tag);
+    if (parsed) conVersion.push({ tag, parsed });
+    else resto.push(tag);
+  }
+
+  conVersion.sort((a, b) => {
+    const orden = rcompare(a.parsed.coerced, b.parsed.coerced);
+    // A igualdad de version, la mas concreta primero: entre `1.2` y `1.2.3`
+    // interesa antes la segunda.
+    return orden !== 0 ? orden : especificidad(b.tag) - especificidad(a.tag);
+  });
+
+  return [...conVersion.map((entry) => entry.tag), ...resto];
 }
 
 function elegir(tags: string[], etiquetaActual: string): ResolvedVersion['version'] {
@@ -171,20 +208,24 @@ export class VersionResolver {
     ref: ImageReference,
     locales: Set<string>,
     credentials: RegistryCredentials | null,
-    tope = 12,
+    tope = 20,
   ): Promise<ResolvedVersion> {
     const todas = await this.registry.listTags(ref, credentials);
-    const candidatas = todas
-      .filter((tag) => tag !== ref.tag && pareceVersion(tag))
-      .sort((a, b) => especificidad(b) - especificidad(a))
-      .slice(0, tope);
+    const candidatas = ordenarPorProbabilidad(
+      todas.filter((tag) => tag !== ref.tag && pareceVersion(tag)),
+    ).slice(0, tope);
 
     const coincidencias: string[] = [];
     for (const tag of candidatas) {
       const head = await this.registry.headManifest({ ...ref, tag }, credentials).catch(() => null);
-      if (head?.digest && locales.has(head.digest)) coincidencias.push(tag);
-      // En cuanto hay una, ya se sabe la respuesta: seguir solo aporta alias.
-      if (coincidencias.length >= 3) break;
+      if (head?.digest && locales.has(head.digest)) {
+        coincidencias.push(tag);
+        // Se para en la PRIMERA. Como las candidatas van de mas nueva a mas
+        // vieja, la primera que coincide ya es la respuesta; seguir solo
+        // aportaria alias, y aqui cada alias cuesta una peticion mas. Medido:
+        // recolectar hasta tres subia una resolucion de 2 a 11 segundos.
+        break;
+      }
     }
 
     const version = elegir(coincidencias, ref.tag);

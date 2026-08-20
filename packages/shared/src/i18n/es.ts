@@ -227,6 +227,8 @@ export const es = {
     none: 'Sin control',
   },
   images: {
+    installedVersionLabel: 'Version instalada',
+    sameContentTags: 'Etiquetas con este mismo contenido',
     installedVersion: 'Version {{version}}',
     installedVersionHelp: 'Version que tienes instalada. Se averigua preguntando al registry que otras etiquetas apuntan a tu mismo digest, asi que es exacta y no una suposicion.',
     installedVersionUnknown: 'No se ha podido averiguar la version',

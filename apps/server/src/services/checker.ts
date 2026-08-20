@@ -87,6 +87,41 @@ export class CheckerService {
     return this.#running;
   }
 
+  /**
+   * Rellena las versiones instaladas que falten, sin comprobar actualizaciones.
+   *
+   * Existe porque resolverlas solo dentro del ciclo de comprobacion las ata a su
+   * cron: al estrenar la funcionalidad, todas las imagenes se quedaban sin
+   * version hasta la siguiente comprobacion programada, que puede tardar horas,
+   * y daba la impresion de que no funcionaba.
+   *
+   * Es barato: la mayoria se resuelven sin ninguna peticion (la etiqueta ya
+   * nombra la version) y en Docker Hub es una llamada que no gasta cuota. Aun
+   * asi va acotado por si hay muchas pendientes de golpe.
+   */
+  async fillMissingVersions(limite = 10): Promise<number> {
+    const pendientes = this.repos.inventory
+      .listCheckable()
+      .filter((row) => {
+        const actual = parseDigests(row.local_digests)[0] ?? null;
+        return actual !== null && row.installed_version_for !== actual;
+      })
+      .slice(0, limite);
+
+    let hechas = 0;
+    for (const row of pendientes) {
+      try {
+        const ref = parseImageReference(row.normalized_ref);
+        const credentials = this.repos.registries.getCredentials(ref.host);
+        await this.#resolveInstalledVersion(row, ref, parseDigests(row.local_digests), credentials);
+        hechas += 1;
+      } catch (error) {
+        this.log.debug(`No se ha podido resolver la version de ${row.normalized_ref}`, error);
+      }
+    }
+    return hechas;
+  }
+
   async runCheck(
     trigger: string,
     options: { refs?: string[]; onProgress?: (ref: string, run: CheckRun) => void } = {},
@@ -313,6 +348,7 @@ export class CheckerService {
         ref: row.normalized_ref,
         version: resolved.version,
         method: resolved.method,
+        aliases: resolved.aliases,
         forDigest: actual,
       });
     } catch (error) {

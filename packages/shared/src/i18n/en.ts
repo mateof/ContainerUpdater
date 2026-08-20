@@ -225,6 +225,8 @@ export const en: Translated<Catalog> = {
     none: 'No healthcheck',
   },
   images: {
+    installedVersionLabel: 'Installed version',
+    sameContentTags: 'Tags pointing at this same content',
     installedVersion: 'Version {{version}}',
     installedVersionHelp: 'The version you have installed. Worked out by asking the registry which other tags point at your exact digest, so it is precise rather than a guess.',
     installedVersionUnknown: 'The version could not be determined',

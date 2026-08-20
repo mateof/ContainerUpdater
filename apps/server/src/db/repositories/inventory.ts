@@ -38,6 +38,7 @@ export interface ImageRow {
   local_revision: string | null;
   installed_version: string | null;
   installed_version_method: string | null;
+  installed_version_aliases: string | null;
   installed_version_for: string | null;
 }
 
@@ -239,13 +240,21 @@ export function createInventoryRepository(db: Db) {
       ref: string;
       version: string | null;
       method: string | null;
+      aliases: string[];
       forDigest: string | null;
     }): void {
       db.prepare(
         `UPDATE tracked_images
-            SET installed_version = ?, installed_version_method = ?, installed_version_for = ?
+            SET installed_version = ?, installed_version_method = ?,
+                installed_version_aliases = ?, installed_version_for = ?
           WHERE normalized_ref = ?`,
-      ).run(input.version, input.method, input.forDigest, input.ref);
+      ).run(
+        input.version,
+        input.method,
+        input.aliases.length > 0 ? JSON.stringify(input.aliases) : null,
+        input.forDigest,
+        input.ref,
+      );
     },
 
     /**

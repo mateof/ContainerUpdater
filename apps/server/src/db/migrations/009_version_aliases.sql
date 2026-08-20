@@ -1,0 +1,11 @@
+-- Las demas etiquetas que apuntan al mismo digest.
+--
+-- Va en migracion propia y no anadida a la 008 porque aquella ya se habia
+-- aplicado en instalaciones reales: `PRAGMA user_version` ya valia 8 y tocar el
+-- fichero no habria vuelto a ejecutarlo nunca. Una migracion aplicada es
+-- historia, no un borrador.
+--
+-- Una imagen suele tener varias etiquetas para el mismo contenido (`latest`,
+-- `v1.2`, `1.2.3`, `stable`). Guardarlas todas responde del todo a "que es esto
+-- que tengo instalado", en vez de elegir una y descartar el resto.
+ALTER TABLE tracked_images ADD COLUMN installed_version_aliases TEXT;

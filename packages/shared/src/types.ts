@@ -139,6 +139,14 @@ export interface TrackedImage {
    * esta a la vista en el nombre.
    */
   installedVersionMethod: 'tag' | 'hub' | 'registry' | null;
+  /**
+   * Las demas etiquetas que apuntan a este mismo digest.
+   *
+   * Una imagen suele tener varias para el mismo contenido (`latest`, `v1.2`,
+   * `1.2.3`), y verlas juntas responde del todo a que es lo que tienes: la
+   * version elegida es solo la mas concreta de la lista.
+   */
+  installedVersionAliases: string[];
   /** Que trae la version publicada. null si no se ha podido averiguar. */
   release: ReleaseInfo | null;
   /** Por que no se ha aplicado sola, cuando hay novedad y es automatica. */

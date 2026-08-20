@@ -229,6 +229,8 @@ export const gl: Translated<Catalog> = {
     none: 'Sen control',
   },
   images: {
+    installedVersionLabel: 'Version instalada',
+    sameContentTags: 'Etiquetas con este mesmo contido',
     installedVersion: 'Version {{version}}',
     installedVersionHelp: 'Version que tes instalada. Averiguase preguntando ao registry que outras etiquetas apuntan ao teu mesmo digest, asi que e exacta e non unha suposicion.',
     installedVersionUnknown: 'Non se puido averiguar a version',
