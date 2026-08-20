@@ -8,6 +8,7 @@ import { useLive } from '@/hooks/LiveContext';
 import { Link } from 'react-router-dom';
 import { Badge, Button, Card, Modal, Spinner, StatusDot, cx } from '@/components/ui';
 import { Meter } from '@/components/Chart';
+import { PortLinks } from '@/components/PortLinks';
 import {
   displayImage,
   formatBytes,
@@ -219,18 +220,7 @@ export function ContainerDetailDialog({
                 {container.ports.length > 0 ? (
                   <div className="pt-2">
                     <p className="mb-1 text-[0.75rem] font-medium">{t('containers.ports')}</p>
-                    <ul className="space-y-0.5">
-                      {container.ports.map((port, index) => (
-                        <li
-                          key={`${port.privatePort}-${index}`}
-                          className="font-mono text-[0.75rem] text-[var(--text-muted)]"
-                        >
-                          {port.publicPort
-                            ? `${port.ip ?? '0.0.0.0'}:${port.publicPort} → ${port.privatePort}/${port.type}`
-                            : `${port.privatePort}/${port.type} (no publicado)`}
-                        </li>
-                      ))}
-                    </ul>
+                    <PortLinks ports={container.ports} />
                   </div>
                 ) : null}
               </>

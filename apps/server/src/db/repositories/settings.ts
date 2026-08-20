@@ -15,6 +15,7 @@ const DEFAULTS: AppSettings = {
   // 24 horas por defecto y no 0: el valor que protege sin que nadie tenga que
   // saber que existe. Quien quiera las versiones al momento lo baja a 0.
   defaultMinAgeHours: 24,
+  serviceHost: '',
   maintenanceWindowEnabled: false,
   maintenanceStartHour: 4,
   maintenanceEndHour: 6,

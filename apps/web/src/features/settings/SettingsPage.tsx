@@ -216,6 +216,22 @@ export function SettingsPage(): ReactNode {
           ) : null}
 
           <Field
+            label={t('settings.serviceHost')}
+            hint={t('settings.serviceHostHelp', {
+              host: typeof window === 'undefined' ? '' : window.location.hostname,
+            })}
+            htmlFor="service-host"
+          >
+            <Input
+              id="service-host"
+              value={draft.serviceHost}
+              placeholder={typeof window === 'undefined' ? '' : window.location.hostname}
+              onChange={(event) => patch({ serviceHost: event.target.value.trim() })}
+              className="font-mono"
+            />
+          </Field>
+
+          <Field
             label={t('settings.registryConcurrency')}
             hint={t('settings.registryConcurrencyHelp')}
             htmlFor="concurrency"

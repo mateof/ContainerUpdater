@@ -261,6 +261,8 @@ export const settingsSchema = z.object({
   // Con 1 avisaria de cualquier reinicio suelto, que no es un bucle.
   restartLoopThreshold: z.number().int().min(2).max(50).optional(),
   defaultMinAgeHours: z.number().int().min(0).max(720).optional(),
+  // Un host o IP, sin esquema ni puerto: eso lo pone la aplicacion.
+  serviceHost: z.string().max(255).regex(/^[A-Za-z0-9._:[\]-]*$/).optional(),
   maintenanceWindowEnabled: z.boolean().optional(),
   maintenanceStartHour: z.number().int().min(0).max(23).optional(),
   maintenanceEndHour: z.number().int().min(0).max(23).optional(),

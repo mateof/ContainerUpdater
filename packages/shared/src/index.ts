@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './schemas.js';
 export * from './focus.js';
 export * from './release.js';
+export * from './ports.js';
 export * from './quarantine.js';
 // Los valores base de las pruebas viven aqui para que anadir un campo a
 // `AppSettings` rompa el typecheck en un sitio y no en diez ficheros de test.

@@ -29,6 +29,7 @@ import {
   IconStop,
 } from '@/components/icons';
 import { CrossLink, FilterPills, FocusBanner, SearchBox } from '@/components/Filters';
+import { PortLinks } from '@/components/PortLinks';
 import { displayImage, formatBytes, formatPercent, formatRate, formatRelative } from '@/lib/format';
 import { CONTAINER_STATE_LABEL, CONTAINER_STATE_TONE, HEALTH_LABEL } from '@/lib/labels';
 import { JobIndicator } from '@/components/JobIndicator';
@@ -298,13 +299,10 @@ export function ContainersPage(): ReactNode {
                             {container.projectName}
                           </CrossLink>
                         ) : null}
-                        {container.ports.length > 0 ? (
-                          <span>
-                            {container.ports
-                              .filter((port) => port.publicPort)
-                              .map((port) => `${port.publicPort}:${port.privatePort}`)
-                              .join(' ')}
-                          </span>
+                        {/* Solo los publicados en la lista: los internos son
+                            ruido aqui y salen en la ficha. */}
+                        {container.ports.some((port) => port.publicPort) ? (
+                          <PortLinks ports={container.ports.filter((port) => port.publicPort)} />
                         ) : null}
                         <span>{formatRelative(container.createdAt)}</span>
                       </div>

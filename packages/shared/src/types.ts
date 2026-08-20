@@ -591,6 +591,15 @@ export interface AppSettings {
    * 0 la desactiva. Se aplica solo al auto-update.
    */
   defaultMinAgeHours: number;
+  /**
+   * Direccion con la que se construyen los enlaces a los servicios.
+   *
+   * Vacio, que es lo normal, significa "la misma por la que estas viendo el
+   * panel", y eso acierta solo. Se rellena cuando el panel se ve por un dominio
+   * que pasa por un proxy inverso y ese dominio no publica los puertos de los
+   * contenedores: ahi hace falta decir la IP de la maquina a mano.
+   */
+  serviceHost: string;
   /** Limitar el auto-update a una franja horaria. */
   maintenanceWindowEnabled: boolean;
   /** Hora local de inicio y fin, 0-23. Si fin < inicio, la franja cruza medianoche. */

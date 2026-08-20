@@ -169,6 +169,10 @@ export const gl: Translated<Catalog> = {
       'Metricas aproximadas: monta /proc:/host/proc:ro para obter datos exactos do NAS.',
   },
   containers: {
+    openService: 'Abrir {{url}} nunha lapela nova',
+    portNotPublished: 'Porto interno: non esta publicado, asi que non sae da maquina',
+    portNotBrowsable: 'Este protocolo non se abre desde un navegador',
+    portLoopback: 'Publicado so en 127.0.0.1: unicamente responde desde a propia maquina',
     title: 'Contedores',
     name: 'Nome',
     image: 'Imaxe',
@@ -527,6 +531,8 @@ export const gl: Translated<Catalog> = {
     reportSkipped: 'Omitido: {{items}}',
   },
   settings: {
+    serviceHost: 'Enderezo para abrir os servizos',
+    serviceHostHelp: 'Baleiro usa o mesmo enderezo polo que estas vendo o panel ({{host}}), que e o correcto case sempre. Enchao so se entras por un dominio detras dun proxy que non publica os portos dos contedores, e pon ali a IP da maquina.',
     unsaved: 'Tes cambios sen gardar',
     discardChanges: 'Descartar',
     savedOnChange: 'Os axustes desta seccion gardanse ao momento',

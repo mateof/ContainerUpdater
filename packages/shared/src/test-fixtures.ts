@@ -31,6 +31,7 @@ export const DEFAULT_TEST_SETTINGS: AppSettings = {
   notifyOnContainerRecovered: true,
   restartLoopThreshold: 3,
   defaultMinAgeHours: 24,
+  serviceHost: '',
   maintenanceWindowEnabled: false,
   maintenanceStartHour: 4,
   maintenanceEndHour: 6,

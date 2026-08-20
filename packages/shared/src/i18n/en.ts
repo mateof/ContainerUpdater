@@ -166,6 +166,10 @@ export const en: Translated<Catalog> = {
       'Approximate metrics: mount /proc:/host/proc:ro to get accurate NAS readings.',
   },
   containers: {
+    openService: 'Open {{url}} in a new tab',
+    portNotPublished: 'Internal port: it is not published, so it does not leave the machine',
+    portNotBrowsable: 'This protocol cannot be opened from a browser',
+    portLoopback: 'Published on 127.0.0.1 only: it answers from that machine alone',
     title: 'Containers',
     name: 'Name',
     image: 'Image',
@@ -518,6 +522,8 @@ export const en: Translated<Catalog> = {
     reportSkipped: 'Skipped: {{items}}',
   },
   settings: {
+    serviceHost: 'Address used to open services',
+    serviceHostHelp: 'Left empty it uses the address you are viewing the panel from ({{host}}), which is right nearly always. Fill it in only if you reach the panel through a domain behind a proxy that does not expose the containers ports, and put the machine IP there.',
     unsaved: 'You have unsaved changes',
     discardChanges: 'Discard',
     savedOnChange: 'Settings in this section are saved immediately',

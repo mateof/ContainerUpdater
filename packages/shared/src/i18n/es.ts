@@ -167,6 +167,10 @@ export const es = {
       'Metricas aproximadas: monta /proc:/host/proc:ro para obtener datos exactos del NAS.',
   },
   containers: {
+    openService: 'Abrir {{url}} en una pestana nueva',
+    portNotPublished: 'Puerto interno: no esta publicado, asi que no sale de la maquina',
+    portNotBrowsable: 'Este protocolo no se abre desde un navegador',
+    portLoopback: 'Publicado solo en 127.0.0.1: unicamente responde desde la propia maquina',
     title: 'Contenedores',
     name: 'Nombre',
     image: 'Imagen',
@@ -525,6 +529,8 @@ export const es = {
     reportSkipped: 'Omitido: {{items}}',
   },
   settings: {
+    serviceHost: 'Direccion para abrir los servicios',
+    serviceHostHelp: 'Vacio usa la misma direccion por la que estas viendo el panel ({{host}}), que es lo correcto casi siempre. Rellenalo solo si entras por un dominio detras de un proxy que no publica los puertos de los contenedores, y pon ahi la IP de la maquina.',
     unsaved: 'Tienes cambios sin guardar',
     discardChanges: 'Descartar',
     savedOnChange: 'Los ajustes de esta seccion se guardan al momento',
