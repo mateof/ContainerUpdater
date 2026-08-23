@@ -1,6 +1,6 @@
 {
   "name": "container-updater",
-  "version": "0.22.0",
+  "version": "0.22.1",
   "private": true,
   "description": "Panel autoalojado para vigilar y actualizar las imagenes Docker de un NAS Synology",
   "license": "MIT",
@@ -20,7 +20,7 @@
     "test": "npm run test --workspaces --if-present",
     "test:watch": "npm run test:watch -w @cu/server",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "npm run typecheck",
+    "lint": "eslint apps/web/src && npm run typecheck",
     "version:patch": "npm version patch --no-git-tag-version --no-workspaces-update",
     "version:minor": "npm version minor --no-git-tag-version --no-workspaces-update",
     "version:major": "npm version major --no-git-tag-version --no-workspaces-update",
@@ -28,6 +28,9 @@
     "docker:push": "docker buildx build --platform linux/amd64,linux/arm64 --build-arg APP_VERSION=$(node -p \"require('./package.json').version\") -t ghcr.io/mateof/container-updater:$(node -p \"require('./package.json').version\") --push ."
   },
   "devDependencies": {
+    "@typescript-eslint/parser": "^8.67.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "typescript": "^5.7.3"
   }
 }

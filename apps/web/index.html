@@ -19,29 +19,13 @@
     <meta name="apple-mobile-web-app-title" content="Containers" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230d9488'/%3E%3Cpath d='M9 13h4v4H9zm5 0h4v4h-4zm5 0h4v4h-4zm-5-5h4v4h-4z' fill='white'/%3E%3Cpath d='M7 19c2 4 6 6 9 6s7-2 9-6' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <script>
-      // Se aplica el tema antes de pintar para que no haya un destello blanco
-      // al cargar con el tema oscuro. Tiene que ir inline y sincrono.
-      (function () {
-        try {
-          // La lista se repite aqui a proposito: este script va inline y sin
-          // modulos para poder correr ANTES de que se pinte nada, asi que no
-          // puede importar la del codigo. Es la unica copia que existe, y si se
-          // queda corta el unico efecto es un destello al cargar un tema nuevo,
-          // no que el tema deje de funcionar.
-          var known = ['dark', 'light', 'terminal', 'neon', 'papel', 'trazo'];
-          var stored = localStorage.getItem('cu-theme');
-          if (known.indexOf(stored) >= 0) {
-            document.documentElement.dataset.theme = stored;
-          } else {
-            var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-          }
-        } catch (e) {
-          document.documentElement.dataset.theme = 'dark';
-        }
-      })();
-    </script>
+    <!--
+      El tema se aplica antes del primer pintado para que no haya destello.
+      Va en un fichero aparte y no inline porque la CSP del servidor es
+      `script-src 'self'`: un script inline queda bloqueado y el tema guardado
+      no se aplicaba hasta que montaba React.
+    -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -51,6 +51,28 @@ export function LoginPage(): ReactNode {
     }
   }
 
+  /**
+   * Si ofrecer el boton de passkey.
+   *
+   * Hacen falta las tres: que el navegador tenga la API, que el origen la
+   * admita (HTTPS con nombre de dominio) y que haya alguna llave registrada.
+   * Un boton que no puede funcionar es peor que no tenerlo.
+   *
+   * Estos dos hooks tienen que quedar POR ENCIMA del `return` de abajo. Estaban
+   * debajo, y eso significaba que en cuanto aparecia el ticket del segundo
+   * factor se ejecutaban menos hooks que en el render anterior: React aborta con
+   * el error 310 y la pantalla de acceso se queda en blanco justo al pedir el
+   * codigo. Lo encontro el linter, no una prueba: sin segundo factor activado no
+   * se llega nunca a ese camino.
+   */
+  const [support, setSupport] = useState<PasskeySupport | null>(null);
+  useEffect(() => {
+    void api
+      .passkeySupport()
+      .then(setSupport)
+      .catch(() => setSupport(null));
+  }, []);
+
   if (ticket) {
     return (
       <AuthShell title={t('totp.stepTitle')} subtitle={t('totp.stepSubtitle')}>
@@ -94,21 +116,6 @@ export function LoginPage(): ReactNode {
     );
   }
 
-
-  /**
-   * Si ofrecer el boton de passkey.
-   *
-   * Hacen falta las tres: que el navegador tenga la API, que el origen la
-   * admita (HTTPS con nombre de dominio) y que haya alguna llave registrada.
-   * Un boton que no puede funcionar es peor que no tenerlo.
-   */
-  const [support, setSupport] = useState<PasskeySupport | null>(null);
-  useEffect(() => {
-    void api
-      .passkeySupport()
-      .then(setSupport)
-      .catch(() => setSupport(null));
-  }, []);
 
   const canUsePasskey =
     support?.available === true &&

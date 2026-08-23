@@ -96,6 +96,11 @@ jobs:
 
       - run: npm ci
 
+      # Caza los fallos de orden de hooks, que el typecheck no ve y que dejan
+      # una pantalla entera en blanco.
+      - name: Reglas de hooks
+        run: npx eslint apps/web/src
+
       - name: Comprobar tipos
         run: npm run typecheck
 

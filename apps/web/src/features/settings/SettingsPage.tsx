@@ -60,6 +60,51 @@ export function SettingsPage(): ReactNode {
     onError: () => notify(t('common.error'), 'danger'),
   });
 
+  /**
+   * Si hay algo pendiente de guardar EN ESTA PARTE de la pantalla.
+   *
+   * Hace falta porque el boton de guardar no manda sobre toda la pagina, y eso
+   * confundia: las secciones de abajo (registries, Telegram, segundo factor,
+   * almacenamiento, copia) aplican sus cambios al momento, cada una con su
+   * propia peticion. Un boton siempre visible y flotando por encima de todas
+   * ellas daba a entender que tambien las gobernaba, o peor, que lo que acababas
+   * de hacer alli seguia sin guardar.
+   *
+   * Se recorren las claves del propio objeto en vez de enumerarlas a mano: asi
+   * un ajuste nuevo entra en la comparacion solo, sin que nadie se acuerde de
+   * anadirlo aqui. Todos los valores son primitivos, asi que `!==` basta.
+   */
+  const saved = data?.settings ?? null;
+  const dirty =
+    draft !== null &&
+    saved !== null &&
+    (Object.keys(draft) as Array<keyof AppSettings>).some((key) => draft[key] !== saved[key]);
+
+  /**
+   * Aviso del navegador al cerrar o recargar con cambios sin guardar.
+   *
+   * Un interruptor que se mueve parece que ya ha hecho algo, asi que es facil
+   * darlo por hecho y salir. Se pierde en silencio y el ajuste simplemente
+   * nunca existio, que es peor que un error: no hay nada que mirar. El texto lo
+   * pone el navegador, no se puede personalizar.
+   *
+   * IMPRESCINDIBLE que este hook quede POR ENCIMA del `return` de carga que
+   * viene justo debajo. Estuvo debajo desde la 0.16.3 y rompia la pantalla
+   * entera: en el primer render (cargando) se ejecutaban cinco hooks y se
+   * salia; en el segundo, seis. React aborta con el error 310 y no pinta nada.
+   * Un `return` temprano por encima de un hook es SIEMPRE un fallo.
+   */
+  useEffect(() => {
+    if (!dirty) return;
+    const avisar = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      // Sigue haciendo falta en algunos navegadores pese a estar en desuso.
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [dirty]);
+
   if (isLoading || !draft) {
     return (
       <div className="space-y-4">
@@ -85,30 +130,6 @@ export function SettingsPage(): ReactNode {
    * un ajuste nuevo entra en la comparacion solo, sin que nadie se acuerde de
    * anadirlo aqui. Todos los valores son primitivos, asi que `!==` basta.
    */
-  const saved = data?.settings ?? null;
-  const dirty =
-    saved !== null &&
-    (Object.keys(draft) as Array<keyof AppSettings>).some((key) => draft[key] !== saved[key]);
-
-  /**
-   * Aviso del navegador al cerrar o recargar con cambios sin guardar.
-   *
-   * Un interruptor que se mueve parece que ya ha hecho algo, asi que es facil
-   * darlo por hecho y salir. Se pierde en silencio y el ajuste simplemente
-   * nunca existio, que es peor que un error: no hay nada que mirar. El texto lo
-   * pone el navegador, no se puede personalizar.
-   */
-  useEffect(() => {
-    if (!dirty) return;
-    const avisar = (event: BeforeUnloadEvent): void => {
-      event.preventDefault();
-      // Sigue haciendo falta en algunos navegadores pese a estar en desuso.
-      event.returnValue = '';
-    };
-    window.addEventListener('beforeunload', avisar);
-    return () => window.removeEventListener('beforeunload', avisar);
-  }, [dirty]);
-
   return (
     <div className="space-y-5 max-w-3xl">
       <h1 className="text-xl font-semibold tracking-tight">{t('settings.title')}</h1>
