@@ -19,9 +19,39 @@
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
+/*
+ * Un tema no es solo una paleta.
+ *
+ * Cambiar unicamente los colores da temas que se distinguen de lejos y se
+ * confunden de cerca: la misma tarjeta redondeada con la misma sombra, pintada
+ * de otro color. Lo que de verdad cambia el caracter de una interfaz es la
+ * FORMA: cuanto se redondea una esquina, si hay sombra o no y de que clase, si
+ * el borde es un pelo o un trazo, y con que tipografia se titula.
+ *
+ * Por eso cada tema define, ademas de su paleta, este puñado de tokens
+ * estructurales. Los valores de aqui son los de reserva: si un tema se olvida
+ * de uno, hereda algo razonable en vez de romperse.
+ */
 :root {
   --radius: 0.75rem;
   --radius-sm: 0.5rem;
+  /* Botones y etiquetas. Separado del resto para poder hacerlos capsula. */
+  --radius-pill: 0.5rem;
+  --border-width: 1px;
+
+  /* Fondo de las tarjetas. Es una propiedad `background` entera, asi que un
+     tema puede poner un degradado donde otro pone un color plano. */
+  --surface: var(--bg-elevated);
+  /* Sombra de las tarjetas: puede ser ninguna, suave, dura o un halo. */
+  --card-shadow: var(--shadow-sm);
+  /* Cromo de la aplicacion: barra lateral, cabecera y pie. */
+  --chrome-bg: var(--bg);
+  --chrome-border: var(--border);
+  /* Tipografia de los titulos. */
+  --font-display: var(--font-sans);
+  --display-weight: 600;
+  --display-spacing: -0.01em;
+  --display-transform: none;
 
   /* Duraciones cortas: un panel de administracion se usa con prisa. */
   --dur-fast: 120ms;
@@ -58,6 +88,8 @@
   --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.4);
   --shadow: 0 2px 4px oklch(0 0 0 / 0.3), 0 8px 24px oklch(0 0 0 / 0.35);
   --shadow-lg: 0 4px 8px oklch(0 0 0 / 0.35), 0 16px 48px oklch(0 0 0 / 0.45);
+  /* El cromo se hunde respecto al contenido: separa sin necesidad de una linea. */
+  --chrome-bg: oklch(0.14 0.012 250);
   color-scheme: dark;
 }
 
@@ -89,7 +121,225 @@
   --shadow-sm: 0 1px 2px oklch(0.2 0.02 250 / 0.06);
   --shadow: 0 1px 2px oklch(0.2 0.02 250 / 0.06), 0 6px 20px oklch(0.2 0.02 250 / 0.08);
   --shadow-lg: 0 2px 6px oklch(0.2 0.02 250 / 0.08), 0 16px 40px oklch(0.2 0.02 250 / 0.12);
+  --chrome-bg: oklch(0.96 0.005 250);
   color-scheme: light;
+}
+
+/* ---------------------------------------------------------------------------
+ * TERMINAL
+ *
+ * Nada de esquinas ni de sombras: rectangulos, lineas de un pixel y titulos en
+ * monoespaciada. Es la forma la que hace el tema, el verde fosforo solo lo
+ * remata. Sin sombras a proposito: una consola no tiene profundidad.
+ * ------------------------------------------------------------------------- */
+:root[data-theme='terminal'] {
+  --bg: oklch(0.13 0.012 160);
+  --bg-elevated: oklch(0.16 0.014 160);
+  --bg-hover: oklch(0.21 0.02 160);
+  --bg-inset: oklch(0.1 0.01 160);
+  --border: oklch(0.32 0.03 160);
+  --border-strong: oklch(0.45 0.05 160);
+  --text: oklch(0.92 0.03 150);
+  --text-muted: oklch(0.7 0.04 150);
+  --text-faint: oklch(0.52 0.03 150);
+
+  --accent: oklch(0.82 0.19 145);
+  --accent-hover: oklch(0.88 0.19 145);
+  --accent-fg: oklch(0.13 0.02 145);
+  --accent-soft: oklch(0.27 0.08 145);
+
+  --ok: oklch(0.82 0.19 145);
+  --ok-soft: oklch(0.25 0.07 145);
+  --warn: oklch(0.85 0.16 95);
+  --warn-soft: oklch(0.3 0.07 95);
+  --danger: oklch(0.7 0.2 25);
+  --danger-soft: oklch(0.3 0.09 25);
+  --info: oklch(0.78 0.12 195);
+  --info-soft: oklch(0.27 0.06 195);
+
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-lg: 0 0 0 1px oklch(0.45 0.05 160);
+
+  --radius: 0;
+  --radius-sm: 0;
+  --radius-pill: 0;
+  --card-shadow: none;
+  --chrome-bg: oklch(0.1 0.01 160);
+  --font-display: var(--font-mono);
+  --display-weight: 500;
+  --display-spacing: 0.02em;
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+ * PAPEL
+ *
+ * Claro y calido, con esquinas muy redondeadas y CERO sombras: la separacion la
+ * dan el color del papel y un borde suave, como en una hoja impresa. Titulos con
+ * la serif del sistema, que es lo que mas cambia la sensacion sin descargar
+ * ninguna fuente.
+ * ------------------------------------------------------------------------- */
+:root[data-theme='papel'] {
+  --bg: oklch(0.965 0.014 85);
+  --bg-elevated: oklch(0.995 0.008 85);
+  --bg-hover: oklch(0.94 0.018 85);
+  --bg-inset: oklch(0.945 0.016 85);
+  --border: oklch(0.87 0.022 75);
+  --border-strong: oklch(0.76 0.03 70);
+  --text: oklch(0.28 0.03 60);
+  --text-muted: oklch(0.5 0.03 60);
+  --text-faint: oklch(0.64 0.025 60);
+
+  --accent: oklch(0.5 0.13 40);
+  --accent-hover: oklch(0.43 0.14 40);
+  --accent-fg: oklch(0.99 0.01 85);
+  --accent-soft: oklch(0.93 0.045 45);
+
+  --ok: oklch(0.5 0.12 150);
+  --ok-soft: oklch(0.93 0.04 150);
+  --warn: oklch(0.58 0.12 70);
+  --warn-soft: oklch(0.94 0.05 75);
+  --danger: oklch(0.5 0.17 28);
+  --danger-soft: oklch(0.93 0.05 28);
+  --info: oklch(0.5 0.1 240);
+  --info-soft: oklch(0.93 0.035 240);
+
+  --shadow-sm: none;
+  --shadow: none;
+  --shadow-lg: 0 8px 30px oklch(0.4 0.05 60 / 0.14);
+
+  --radius: 1.25rem;
+  --radius-sm: 0.875rem;
+  --radius-pill: 999px;
+  --card-shadow: none;
+  --chrome-bg: oklch(0.945 0.02 82);
+  --font-display: ui-serif, Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  --display-weight: 600;
+  --display-spacing: 0;
+  color-scheme: light;
+}
+
+/* ---------------------------------------------------------------------------
+ * NEON
+ *
+ * Oscuro y saturado, donde la profundidad no la da una sombra negra sino un
+ * halo del color de acento. Superficies con un degradado muy leve para que la
+ * tarjeta no sea un rectangulo plano.
+ * ------------------------------------------------------------------------- */
+:root[data-theme='neon'] {
+  --bg: oklch(0.15 0.04 300);
+  --bg-elevated: oklch(0.19 0.05 300);
+  --bg-hover: oklch(0.25 0.07 300);
+  --bg-inset: oklch(0.12 0.035 300);
+  --border: oklch(0.34 0.08 300);
+  --border-strong: oklch(0.5 0.13 305);
+  --text: oklch(0.96 0.02 300);
+  --text-muted: oklch(0.75 0.05 300);
+  --text-faint: oklch(0.58 0.06 300);
+
+  --accent: oklch(0.75 0.2 330);
+  --accent-hover: oklch(0.82 0.2 330);
+  --accent-fg: oklch(0.14 0.04 330);
+  --accent-soft: oklch(0.32 0.11 330);
+
+  --ok: oklch(0.8 0.19 170);
+  --ok-soft: oklch(0.3 0.09 170);
+  --warn: oklch(0.85 0.16 90);
+  --warn-soft: oklch(0.33 0.08 90);
+  --danger: oklch(0.7 0.21 15);
+  --danger-soft: oklch(0.32 0.1 15);
+  --info: oklch(0.75 0.16 265);
+  --info-soft: oklch(0.32 0.09 265);
+
+  --shadow-sm: 0 0 0 1px oklch(0.4 0.1 300 / 0.5);
+  --shadow: 0 4px 20px oklch(0.5 0.2 330 / 0.25);
+  --shadow-lg: 0 8px 40px oklch(0.5 0.2 330 / 0.35);
+
+  --radius: 0.625rem;
+  --radius-sm: 0.375rem;
+  --radius-pill: 999px;
+  --surface: linear-gradient(160deg, oklch(0.21 0.06 305), oklch(0.17 0.045 295));
+  --card-shadow: 0 2px 14px oklch(0.4 0.15 320 / 0.18);
+  --chrome-bg: oklch(0.12 0.04 300);
+  --display-spacing: 0.01em;
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+ * TRAZO
+ *
+ * Claro, con borde grueso y sombra dura desplazada: no simula profundidad con
+ * un desenfoque, la dibuja. Sin curvas suaves y con titulos en mayusculas.
+ * Es el tema que mas se aleja de los demas en forma.
+ * ------------------------------------------------------------------------- */
+:root[data-theme='trazo'] {
+  --bg: oklch(0.97 0.02 95);
+  --bg-elevated: oklch(1 0 0);
+  --bg-hover: oklch(0.94 0.04 95);
+  --bg-inset: oklch(0.95 0.03 95);
+  --border: oklch(0.2 0.02 260);
+  --border-strong: oklch(0.12 0.02 260);
+  --text: oklch(0.16 0.02 260);
+  --text-muted: oklch(0.42 0.02 260);
+  --text-faint: oklch(0.56 0.02 260);
+
+  --accent: oklch(0.55 0.22 265);
+  --accent-hover: oklch(0.46 0.23 265);
+  --accent-fg: oklch(1 0 0);
+  --accent-soft: oklch(0.91 0.07 265);
+
+  --ok: oklch(0.5 0.16 150);
+  --ok-soft: oklch(0.9 0.09 150);
+  --warn: oklch(0.7 0.17 80);
+  --warn-soft: oklch(0.93 0.11 85);
+  --danger: oklch(0.53 0.21 25);
+  --danger-soft: oklch(0.91 0.08 25);
+  --info: oklch(0.55 0.16 240);
+  --info-soft: oklch(0.91 0.07 240);
+
+  --shadow-sm: 2px 2px 0 oklch(0.16 0.02 260);
+  --shadow: 4px 4px 0 oklch(0.16 0.02 260);
+  --shadow-lg: 6px 6px 0 oklch(0.16 0.02 260);
+
+  --radius: 0.25rem;
+  --radius-sm: 0.125rem;
+  --radius-pill: 0.125rem;
+  --border-width: 2px;
+  --card-shadow: 3px 3px 0 oklch(0.16 0.02 260);
+  --chrome-bg: oklch(0.93 0.05 95);
+  --display-weight: 800;
+  --display-spacing: 0.04em;
+  --display-transform: uppercase;
+  color-scheme: light;
+}
+
+/*
+ * Los titulos usan la tipografia del tema.
+ *
+ * Se hace aqui y no en cada componente porque es una regla de tema, no de
+ * pantalla: si hubiera que acordarse de poner una clase en cada `h1`, el primero
+ * que se olvide rompe el tema entero sin que nadie lo note.
+ */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: var(--display-weight);
+  letter-spacing: var(--display-spacing);
+  text-transform: var(--display-transform);
+}
+
+/* Superficie del tema: fondo, borde y sombra de las tarjetas. */
+.cu-surface {
+  background: var(--surface);
+  border: var(--border-width) solid var(--border);
+  box-shadow: var(--card-shadow);
+}
+
+/* Cromo de la aplicacion: barra lateral, cabecera y pie. */
+.cu-chrome {
+  background: var(--chrome-bg);
 }
 
 * {

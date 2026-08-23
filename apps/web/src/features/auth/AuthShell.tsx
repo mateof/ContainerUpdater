@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
-import { Button, Menu, useTheme } from '@/components/ui';
-import { IconMoon, IconSun } from '@/components/icons';
+import { Button, Menu } from '@/components/ui';
+import { ThemeMenu } from '@/components/ThemeMenu';
 import { MadeBy } from '@/components/MadeBy';
 import { currentLocale, setLocale } from '@/i18n';
 import { useState } from 'react';
@@ -23,7 +23,6 @@ export function AuthShell({
   children: ReactNode;
 }): ReactNode {
   const { t } = useTranslation();
-  const [theme, setTheme] = useTheme();
   const [, forceRender] = useState(0);
 
   return (
@@ -41,14 +40,9 @@ export function AuthShell({
       />
 
       <div className="absolute right-4 top-4 flex items-center gap-1">
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label={t('nav.theme')}
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        >
-          {theme === 'dark' ? <IconSun size={16} /> : <IconMoon size={16} />}
-        </Button>
+        {/* Tambien antes de entrar: el tema es de quien mira la pantalla, no
+            de la sesion, y elegirlo aqui evita tener que entrar a oscuras. */}
+        <ThemeMenu />
         <Menu
           trigger={
             <Button size="icon" variant="ghost" aria-label={t('nav.language')}>

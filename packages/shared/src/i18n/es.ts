@@ -39,6 +39,12 @@ export const es = {
     showLess: 'Ver menos',
   },
   nav: {
+    theme_dark: 'Oscuro',
+    theme_light: 'Claro',
+    theme_terminal: 'Terminal',
+    theme_neon: 'Neon',
+    theme_papel: 'Papel',
+    theme_trazo: 'Trazo',
     dashboard: 'Panel',
     containers: 'Contenedores',
     images: 'Imagenes',

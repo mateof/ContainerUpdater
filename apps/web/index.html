@@ -24,11 +24,19 @@
       // al cargar con el tema oscuro. Tiene que ir inline y sincrono.
       (function () {
         try {
+          // La lista se repite aqui a proposito: este script va inline y sin
+          // modulos para poder correr ANTES de que se pinte nada, asi que no
+          // puede importar la del codigo. Es la unica copia que existe, y si se
+          // queda corta el unico efecto es un destello al cargar un tema nuevo,
+          // no que el tema deje de funcionar.
+          var known = ['dark', 'light', 'terminal', 'neon', 'papel', 'trazo'];
           var stored = localStorage.getItem('cu-theme');
-          var dark =
-            stored === 'dark' ||
-            (stored !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+          if (known.indexOf(stored) >= 0) {
+            document.documentElement.dataset.theme = stored;
+          } else {
+            var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+          }
         } catch (e) {
           document.documentElement.dataset.theme = 'dark';
         }

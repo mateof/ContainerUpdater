@@ -73,7 +73,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       // `active:scale` en vez de mover el borde: transform va al compositor y
       // no fuerza layout.
       className={cx(
-        'inline-flex items-center rounded-[var(--radius-sm)] font-medium select-none',
+        'inline-flex items-center rounded-[var(--radius-pill)] font-medium select-none',
         'transition-[background-color,border-color,color,transform,opacity] duration-[var(--dur-fast)]',
         'active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50',
         BUTTON_VARIANTS[variant],
@@ -126,8 +126,12 @@ export function Card({
   return (
     <div
       className={cx(
-        'rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg-elevated)]',
-        'shadow-[var(--shadow-sm)]',
+        // `cu-surface` trae fondo, borde y sombra DEL TEMA: un tema puede
+        // poner un degradado donde otro pone color plano, o una sombra dura
+        // desplazada donde otro no pone ninguna. Con las clases sueltas de
+        // antes, todos los temas compartian la misma tarjeta pintada de otro
+        // color.
+        'rounded-[var(--radius)] cu-surface',
         /*
          * `min-w-0` es lo que impide que la tarjeta se salga de la pantalla.
          *
@@ -209,7 +213,7 @@ export function Badge({
     <span
       title={title}
       className={cx(
-        'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5',
+        'inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] border px-2 py-0.5',
         'text-[0.6875rem] font-medium whitespace-nowrap',
         BADGE_TONES[tone],
         className,
@@ -861,25 +865,53 @@ export function useToast(): (message: string, tone?: Toast['tone']) => void {
 // Tema
 // ---------------------------------------------------------------------------
 
-export type Theme = 'light' | 'dark' | 'system';
+/**
+ * Los temas disponibles.
+ *
+ * Cada uno declara si es claro u oscuro, y eso NO es decorativo: es lo que
+ * permite que la opcion "Automatico" elija la pareja correcta segun el sistema,
+ * y lo que agrupa la lista del selector para que no haya que probarlos uno a uno
+ * para saber cual deja la pantalla blanca a las tres de la manana.
+ */
+export const THEMES = [
+  { id: 'dark', mode: 'dark' },
+  { id: 'light', mode: 'light' },
+  { id: 'terminal', mode: 'dark' },
+  { id: 'neon', mode: 'dark' },
+  { id: 'papel', mode: 'light' },
+  { id: 'trazo', mode: 'light' },
+] as const;
+
+export type ThemeId = (typeof THEMES)[number]['id'];
+export type Theme = ThemeId | 'system';
+
+/** Derivado de la lista, no escrito aparte: dos copias acaban discrepando. */
+const THEME_IDS = new Set<string>(THEMES.map((theme) => theme.id));
+
+export function themeMode(id: ThemeId): 'light' | 'dark' {
+  return THEMES.find((theme) => theme.id === id)?.mode ?? 'dark';
+}
 
 export function useTheme(): [Theme, (theme: Theme) => void] {
   const [theme, setThemeState] = useState<Theme>(() => {
     try {
       const stored = localStorage.getItem('cu-theme');
-      return stored === 'light' || stored === 'dark' ? stored : 'system';
+      return stored && THEME_IDS.has(stored) ? (stored as ThemeId) : 'system';
     } catch {
       return 'system';
     }
   });
 
   const apply = useCallback((next: Theme) => {
-    const dark =
-      next === 'dark' ||
-      (next === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const id: ThemeId =
+      next === 'system'
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light'
+        : next;
     // Cambiar un atributo del html es todo lo que hace falta: los tokens son
     // custom properties, asi que React no vuelve a renderizar nada.
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    document.documentElement.dataset.theme = id;
   }, []);
 
   useEffect(() => {

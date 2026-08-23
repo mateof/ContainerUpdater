@@ -41,6 +41,12 @@ export const gl: Translated<Catalog> = {
     showLess: 'Ver menos',
   },
   nav: {
+    theme_dark: 'Escuro',
+    theme_light: 'Claro',
+    theme_terminal: 'Terminal',
+    theme_neon: 'Neon',
+    theme_papel: 'Papel',
+    theme_trazo: 'Trazo',
     dashboard: 'Panel',
     containers: 'Contedores',
     images: 'Imaxes',

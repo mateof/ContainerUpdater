@@ -38,6 +38,12 @@ export const en: Translated<Catalog> = {
     showLess: 'Show less',
   },
   nav: {
+    theme_dark: 'Dark',
+    theme_light: 'Light',
+    theme_terminal: 'Terminal',
+    theme_neon: 'Neon',
+    theme_papel: 'Paper',
+    theme_trazo: 'Ink',
     dashboard: 'Dashboard',
     containers: 'Containers',
     images: 'Images',

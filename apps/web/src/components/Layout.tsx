@@ -10,8 +10,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { useEvents } from '@/hooks/useEvents';
 import { LiveContext } from '@/hooks/LiveContext';
 import { setLocale, currentLocale } from '@/i18n';
-import { Badge, Button, Menu, Spinner, Tooltip, cx, useTheme } from './ui';
+import { Badge, Button, Menu, Spinner, THEMES, Tooltip, cx, useTheme } from './ui';
 import { MadeBy, REPO_URL } from './MadeBy';
+import { ThemeMenu } from './ThemeMenu';
 import { HelpDialog } from '@/features/help/HelpDialog';
 import {
   IconContainer,
@@ -73,7 +74,9 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
         <aside
           className={cx(
             'hidden md:flex w-[216px] shrink-0 flex-col gap-1 p-3',
-            'border-r border-[var(--border)] bg-[var(--bg-elevated)]',
+            // El cromo lo pinta el tema: unos lo hunden respecto al contenido,
+            // otros lo levantan, y el de trazo lo separa con una linea gruesa.
+            'border-r-[length:var(--border-width)] border-[var(--border)] cu-chrome',
           )}
         >
           <div className="flex items-center gap-2.5 px-2 py-3 mb-2">
@@ -156,16 +159,7 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
 
             <ConnectionIndicator connected={live.connected} dockerOk={status?.dockerConnected} />
             <div className="flex items-center gap-1 px-1">
-              <Tooltip content={t('nav.theme')}>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-label={t('nav.theme')}
-                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                >
-                  {theme === 'dark' ? <IconSun size={16} /> : <IconMoon size={16} />}
-                </Button>
-              </Tooltip>
+              <ThemeMenu />
 
               {/* Se recorre `locales` en vez de enumerarlos: anadir un idioma es
                   anadirlo al catalogo, sin tocar esta pantalla. Antes estaban a
@@ -227,7 +221,7 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
             no habia forma de llegar a ello: el idioma se podia cambiar desde el
             escritorio y desde el telefono no se veia por ningun sitio.
           */}
-          <header className="md:hidden sticky top-0 z-30 flex items-center gap-2 border-b border-[var(--border)] px-4 py-2 cu-glass">
+          <header className="md:hidden sticky top-0 z-30 flex items-center gap-2 border-b-[length:var(--border-width)] border-[var(--border)] px-4 py-2 cu-glass cu-chrome">
             <Logo />
             <span className="flex-1 truncate text-[0.875rem] font-semibold">
               {t('common.appName')}
@@ -269,12 +263,15 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
                 </Button>
               }
               items={[
-                {
-                  key: 'theme',
-                  label: theme === 'dark' ? t('nav.themeLight') : t('nav.themeDark'),
-                  icon: theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />,
-                  onSelect: () => setTheme(theme === 'dark' ? 'light' : 'dark'),
-                },
+                ...THEMES.map((entry) => ({
+                  key: `theme-${entry.id}`,
+                  label:
+                    entry.id === theme
+                      ? `${t(`nav.theme_${entry.id}`)} ✓`
+                      : t(`nav.theme_${entry.id}`),
+                  onSelect: () => setTheme(entry.id),
+                })),
+                { type: 'separator' as const, key: 'sep-theme' },
                 {
                   key: 'github',
                   label: 'GitHub',
@@ -301,7 +298,7 @@ export function Layout({ children }: { children: ReactNode }): ReactNode {
           </main>
 
           {/* Navegacion inferior en movil. */}
-          <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 flex border-t border-[var(--border)] cu-glass">
+          <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 flex border-t-[length:var(--border-width)] border-[var(--border)] cu-glass cu-chrome">
             {NAV.map(({ to, key, Icon, end }) => (
               <NavLink
                 key={to}
