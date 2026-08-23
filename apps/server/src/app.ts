@@ -28,6 +28,7 @@ import { HostMetricsService } from './services/host.js';
 import { MetricsService } from './services/metrics.js';
 import { NotifierService } from './services/notifier.js';
 import { WatchdogService } from './services/watchdog.js';
+import { DockerEventsWatcher } from './services/events.js';
 import { StorageService } from './services/storage.js';
 import { BackupService } from './services/backup.js';
 import { Scheduler } from './scheduler/index.js';
@@ -53,6 +54,7 @@ export interface AppContext {
   host: HostMetricsService;
   notifier: NotifierService;
   watchdog: WatchdogService;
+  dockerEvents: DockerEventsWatcher;
   storage: StorageService;
   backup: BackupService;
   scheduler: Scheduler;
@@ -253,6 +255,20 @@ export async function createApp(config: Config): Promise<AppContext> {
 
   const notifier = new NotifierService(repos, log.child('notifier'));
   const watchdog = new WatchdogService(repos, log.child('watchdog'));
+
+  /**
+   * Escucha del daemon para reflejar los cambios al instante.
+   *
+   * Se le pasa como aviso el mismo evento que ya usa el resto: la interfaz no
+   * distingue si el refresco vino de un cron o de que alguien acaba de crear un
+   * proyecto desde Container Manager, simplemente se pone al dia.
+   */
+  const dockerEvents = new DockerEventsWatcher(
+    docker,
+    inventory,
+    () => metrics.broadcast({ type: 'inventory-changed', payload: {} }),
+    log.child('docker-events'),
+  );
   const storage = new StorageService(docker, log.child('storage'));
   const backup = new BackupService(repos, config.version, log.child('backup'));
 
@@ -327,9 +343,13 @@ export async function createApp(config: Config): Promise<AppContext> {
 
   await telegram.start();
   scheduler.start();
+  dockerEvents.start();
 
   const shutdown = async (): Promise<void> => {
     log.info('Cerrando...');
+    // El primero: mantiene una conexion abierta al socket y hay que soltarla
+    // antes de cerrar la base, o el ultimo refresco escribiria sobre ella.
+    dockerEvents.stop();
     scheduler.stop();
     metrics.stop();
     await telegram.stop();
@@ -356,6 +376,7 @@ export async function createApp(config: Config): Promise<AppContext> {
     host,
     notifier,
     watchdog,
+    dockerEvents,
     storage,
     backup,
     scheduler,

@@ -220,3 +220,19 @@ export interface VolumeListItem {
   Scope?: string;
   UsageData?: { Size?: number; RefCount?: number } | null;
 }
+
+/**
+ * Un evento del daemon.
+ *
+ * Los campos van opcionales porque Docker y Podman no publican exactamente lo
+ * mismo, y porque la forma cambio entre versiones de la API: `status` y `id`
+ * son los nombres antiguos, `Action` y `Actor` los actuales. Se aceptan los dos.
+ */
+export interface DockerEvent {
+  Type?: string;
+  Action?: string;
+  status?: string;
+  id?: string;
+  Actor?: { ID?: string; Attributes?: Record<string, string> };
+  time?: number;
+}

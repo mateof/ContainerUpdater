@@ -11,6 +11,7 @@ import type {
   ImageInspect,
   ImageListItem,
   NetworkAttachment,
+  DockerEvent,
   SystemDf,
   VolumeListItem,
 } from './types.js';
@@ -210,6 +211,36 @@ export class DockerApi {
       method: 'POST',
       path: `/images/${encodeURIComponent(source)}/tag?repo=${encodeURIComponent(repo)}&tag=${encodeURIComponent(tag)}`,
     });
+  }
+
+  /**
+   * Flujo de eventos del daemon.
+   *
+   * Es lo que permite que el panel se entere de los cambios al instante en vez
+   * de esperar al refresco periodico. Una sola conexion abierta y ninguna
+   * consulta: el daemon empuja cuando pasa algo, asi que sale mas barato que
+   * sondear.
+   *
+   * No termina por su cuenta: se corta con el `signal` o cuando el daemon se
+   * reinicia, y ahi quien llama vuelve a conectar.
+   */
+  async streamEvents(
+    onEvent: (event: DockerEvent) => void,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const filters = encodeURIComponent(
+      JSON.stringify({ type: ['container', 'image', 'volume', 'network'] }),
+    );
+    await this.client.streamLines(
+      { method: 'GET', path: `/events?filters=${filters}`, timeoutMs: 0, signal },
+      (line) => {
+        try {
+          onEvent(JSON.parse(line) as DockerEvent);
+        } catch {
+          // Una linea suelta que no es JSON no puede tumbar el flujo entero.
+        }
+      },
+    );
   }
 
   // -- Almacenamiento -------------------------------------------------------

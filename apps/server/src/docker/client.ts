@@ -37,7 +37,10 @@ interface RequestOptions {
   path: string;
   body?: unknown;
   headers?: Record<string, string>;
+  /** `0` = sin limite, para flujos que no terminan (los eventos del daemon). */
   timeoutMs?: number;
+  /** Cierra el flujo desde fuera, para el apagado ordenado. */
+  signal?: AbortSignal;
   /** No anteponer el prefijo de version. Solo para /version y /_ping. */
   raw?: boolean;
 }
@@ -287,9 +290,39 @@ export class DockerClient {
         res.on('error', reject);
       });
 
-      req.setTimeout(options.timeoutMs ?? 30 * 60_000, () => {
-        req.destroy(new Error('Tiempo de espera agotado durante la descarga'));
-      });
+      /**
+       * `timeoutMs: 0` significa "sin limite".
+       *
+       * Hace falta para el flujo de eventos del daemon, que por definicion no
+       * termina: con el limite de media hora la conexion se cortaria sola cada
+       * treinta minutos y el panel dejaria de enterarse de los cambios durante
+       * el hueco hasta que alguien reconectara.
+       */
+      const limite = options.timeoutMs ?? 30 * 60_000;
+      if (limite > 0) {
+        req.setTimeout(limite, () => {
+          req.destroy(new Error('Tiempo de espera agotado durante la descarga'));
+        });
+      }
+
+      if (options.signal) {
+        if (options.signal.aborted) {
+          req.destroy();
+          resolve();
+          return;
+        }
+        options.signal.addEventListener(
+          'abort',
+          () => {
+            // Cerrar a proposito no es un fallo: se resuelve en vez de
+            // rechazar, o el cierre ordenado del servicio pareceria un error.
+            req.destroy();
+            resolve();
+          },
+          { once: true },
+        );
+      }
+
       req.on('error', reject);
       req.end();
     });
