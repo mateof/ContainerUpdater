@@ -439,6 +439,7 @@ export const en: Translated<Catalog> = {
       'The {{service}} image will be pulled without touching the container. Changes apply when you recreate it.',
   },
   updates: {
+    goToImage: 'View the image',
     title: 'Updates',
     history: 'History',
     job: 'Job',

@@ -445,6 +445,7 @@ export const es = {
       'Se descargara la imagen de {{service}} sin tocar el contenedor. Los cambios se aplicaran cuando lo recrees.',
   },
   updates: {
+    goToImage: 'Ver la imagen',
     title: 'Actualizaciones',
     history: 'Historial',
     job: 'Trabajo',

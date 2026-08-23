@@ -447,6 +447,7 @@ export const gl: Translated<Catalog> = {
       'Descargarase a imaxe de {{service}} sen tocar o contedor. Os cambios aplicaranse cando o recrees.',
   },
   updates: {
+    goToImage: 'Ver a imaxe',
     title: 'Actualizacions',
     history: 'Historial',
     job: 'Traballo',

@@ -9,6 +9,7 @@ import { useLive } from '@/hooks/LiveContext';
 import { Badge, Card, EmptyState, Modal, Skeleton, Button, useToast } from '@/components/ui';
 import { IconRefresh, IconRevert, IconUpdates } from '@/components/icons';
 import { RevertDialog } from '@/features/images/RevertDialog';
+import { CrossLink } from '@/components/Filters';
 import { displayImage, formatDateTime, formatDuration, formatRelative } from '@/lib/format';
 import { JOB_STATUS_LABEL, JOB_STATUS_TONE } from '@/lib/labels';
 import { ActiveJobCard } from './ActiveJobCard';
@@ -170,6 +171,27 @@ export function UpdatesPage(): ReactNode {
                     </div>
                   </button>
 
+                  {/*
+                    Salto a la imagen que se actualizo. Va fuera del boton de
+                    arriba porque un enlace dentro de un boton no se puede pulsar
+                    sin disparar tambien el boton.
+
+                    Solo cuando la referencia es de verdad una imagen: los
+                    trabajos sobre un proyecto entero guardan ahi el NOMBRE del
+                    proyecto, y los nombres de proyecto de Compose no admiten dos
+                    puntos, asi que eso los distingue sin ambiguedad.
+                  */}
+                  {job.imageRef.includes(':') ? (
+                    <div className="mt-1.5 text-[0.6875rem]">
+                      <CrossLink
+                        to={`/images?ref=${encodeURIComponent(job.imageRef)}`}
+                        title={t('updates.goToImage')}
+                      >
+                        {t('updates.goToImage')}
+                      </CrossLink>
+                    </div>
+                  ) : null}
+
                   {job.status === 'rolled-back' ? (
                     <p className="mt-2 rounded-[var(--radius-sm)] bg-[var(--warn-soft)] px-2.5 py-1.5 text-[0.6875rem] text-[var(--warn)]">
                       {t('updates.rolledBackNotice')}
@@ -270,10 +292,19 @@ export function UpdatesPage(): ReactNode {
           }
         >
           <div className="space-y-3">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge tone={JOB_STATUS_TONE[detail.status]}>{t(JOB_STATUS_LABEL[detail.status])}</Badge>
               <Badge>{detail.strategy}</Badge>
               <Badge>{detail.mode}</Badge>
+              {detail.imageRef.includes(':') ? (
+                <CrossLink
+                  to={`/images?ref=${encodeURIComponent(detail.imageRef)}`}
+                  title={t('updates.goToImage')}
+                  onNavigate={() => setDetail(null)}
+                >
+                  {t('updates.goToImage')}
+                </CrossLink>
+              ) : null}
             </div>
 
             {detail.error ? (

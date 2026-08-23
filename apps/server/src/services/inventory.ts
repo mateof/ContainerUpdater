@@ -246,7 +246,12 @@ export class InventoryService {
     // Se limpia lo que ya no existe. El margen de un segundo evita que una
     // fila escrita en este mismo ciclo se considere obsoleta.
     this.repos.inventory.pruneImagesNotSeenSince(startedAt - 1000);
-    this.repos.inventory.pruneProjectsNotVerifiedSince(startedAt - 1000);
+    // Los proyectos se recuerdan un mes desde la ultima vez que tuvieron
+    // contenedores, en vez de borrarse en cuanto dejan de tenerlos. Es lo que
+    // permite seguir viendo (y volver a levantar) uno que se ha bajado. Pasado
+    // ese plazo se olvida: un proyecto que lleva un mes sin existir ya no es
+    // algo que se te haya olvidado encender.
+    this.repos.inventory.pruneProjectsNotVerifiedSince(startedAt - PROJECT_MEMORY_MS);
 
     this.#snapshot = {
       containers: summaries,
@@ -450,52 +455,93 @@ export class InventoryService {
   }
 
   /**
-   * Proyectos creados aqui que todavia no tienen ningun contenedor.
+   * Proyectos sin ningun contenedor ahora mismo.
    *
-   * Los proyectos salen de las labels de los contenedores, asi que uno recien
-   * creado (o uno cuyo primer arranque ha fallado) no aparece por ningun lado.
-   * Sin esto quedaria invisible justo cuando hay que entrar a corregir el YAML,
-   * que es cuando mas falta hace verlo.
+   * Los proyectos se deducen de las labels de sus contenedores, asi que en
+   * cuanto no hay contenedores no hay de donde deducirlos. Eso deja fuera dos
+   * situaciones muy distintas y las dos importan:
+   *
+   * - Uno recien creado, o cuyo primer arranque fallo. Quedaria invisible justo
+   *   cuando hay que entrar a corregir el YAML.
+   * - **Uno que se ha bajado.** `down` borra los contenedores, asi que el
+   *   proyecto desaparecia entero de la pantalla y no habia forma de volver a
+   *   levantarlo desde aqui: habia que ir a la linea de comandos. Ojo con la
+   *   distincion, porque no es evidente: `stop` los para pero los conserva, y
+   *   esos proyectos siempre se han visto bien; el que se esfumaba era el que se
+   *   bajaba del todo.
+   *
+   * Se recuerdan mientras su fichero siga ahi. Si alguien borra la carpeta, el
+   * proyecto deja de mostrarse: enseñarlo solo llevaria a que todas sus acciones
+   * fallaran sin explicar por que.
    */
   async #pendingProjects(
     running: Map<string, { workingDir: string }>,
   ): Promise<ComposeProject[]> {
     const activeDirs = new Set([...running.values()].map((group) => group.workingDir));
-    const pending: ComposeProject[] = [];
+    const managedDirs = new Set(
+      this.repos.managedProjects.listCreatedHere().map((row) => row.dir),
+    );
+
+    /**
+     * Candidatos de las dos procedencias, sin repetir por carpeta.
+     *
+     * Los creados aqui viven en `managed_projects`; los demas se recuerdan en
+     * `compose_projects` desde la ultima vez que se les vio contenedores.
+     */
+    const candidatos = new Map<string, { name: string; dir: string; configFiles: string[] }>();
 
     for (const row of this.repos.managedProjects.list()) {
-      if (activeDirs.has(row.dir)) continue;
+      candidatos.set(row.dir, {
+        name: row.name,
+        dir: row.dir,
+        configFiles: [join(row.dir, COMPOSE_FILENAME)],
+      });
+    }
 
-      const composeFile = join(row.dir, COMPOSE_FILENAME);
+    for (const row of this.repos.inventory.listProjects()) {
+      if (candidatos.has(row.working_dir)) continue;
+      const files = parseJsonArray(row.config_files);
+      candidatos.set(row.working_dir, {
+        name: row.project_name,
+        dir: row.working_dir,
+        configFiles: files.length > 0 ? files : [join(row.working_dir, COMPOSE_FILENAME)],
+      });
+    }
+
+    const pending: ComposeProject[] = [];
+
+    for (const candidato of candidatos.values()) {
+      if (activeDirs.has(candidato.dir)) continue;
+
+      const primero = candidato.configFiles[0];
+      if (!primero) continue;
       try {
-        await access(composeFile, constants.R_OK);
+        await access(primero, constants.R_OK);
       } catch {
-        // Alguien ha borrado el fichero por fuera. Mostrar el proyecto solo
-        // llevaria a que todas sus acciones fallasen sin explicar por que.
         continue;
       }
 
       const check = await checkComposeAccessibility(
-        { workingDir: row.dir, configFiles: [composeFile] },
+        { workingDir: candidato.dir, configFiles: candidato.configFiles },
         this.composeRoots,
       );
 
       const edit = await editability({
-        workingDir: row.dir,
-        configFiles: [composeFile],
+        workingDir: candidato.dir,
+        configFiles: candidato.configFiles,
         yamlAccessible: check.accessible,
       });
 
       pending.push({
-        key: composeProjectKey(row.name, row.dir),
-        name: row.name,
-        workingDir: row.dir,
-        configFiles: [composeFile],
+        key: composeProjectKey(candidato.name, candidato.dir),
+        name: candidato.name,
+        workingDir: candidato.dir,
+        configFiles: candidato.configFiles,
         yamlAccessible: check.accessible,
         strategy: check.accessible ? 'compose' : 'recreate',
         containers: [],
         updatesAvailable: 0,
-        managed: true,
+        managed: managedDirs.has(candidato.dir),
         editable: edit.editable,
         editableReason: edit.reason as ComposeProject['editableReason'],
       });
@@ -687,6 +733,9 @@ export class InventoryService {
  * calcula en un solo sitio y se reutiliza en los dos caminos que construyen
  * `TrackedImage` (el que lee de Docker y el que lee de la base de datos).
  */
+/** Cuanto se recuerda un proyecto que ya no tiene contenedores. */
+const PROJECT_MEMORY_MS = 30 * 24 * 3600_000;
+
 export function usageOf(all: string[], running: string[]): ImageUsage {
   if (running.length > 0) return 'running';
   if (all.length > 0) return 'stopped';

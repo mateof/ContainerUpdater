@@ -197,15 +197,7 @@ export function registerCommands(
       return;
     }
 
-    // Tope de 50 lineas: un mensaje de Telegram admite 4096 caracteres y
-    // trocear un log largo en veinte mensajes no ayuda a nadie.
-    const tail = Math.min(Math.max(Number(args[1]) || 20, 1), 50);
-    const logs = await services.docker.containerLogs(container.id, tail);
-    const trimmed = logs.slice(-3500);
-    await ctx.reply(
-      `<b>${escapeHtml(container.name)}</b>\n<pre>${escapeHtml(trimmed || '(vacio)')}</pre>`,
-      { parse_mode: 'HTML' },
-    );
+    await sendLogs(ctx, name, Number(args[1]) || 20);
   });
 
   onCommands(bot, ['idioma', 'language'], async (ctx) => {
@@ -323,6 +315,12 @@ export function registerCommands(
         return;
       }
 
+      if (kind === 'logs') {
+        await ctx.answerCallbackQuery();
+        await sendLogs(ctx, ref, 20);
+        return;
+      }
+
       if (kind === 'upd' || kind === 'frc') {
         await ctx.answerCallbackQuery({ text: session.t('telegram.working') });
         await runUpdate(ctx, ref, kind === 'frc' ? 'force' : 'update');
@@ -339,6 +337,37 @@ export function registerCommands(
   });
 
   // -- Ayudantes ------------------------------------------------------------
+
+  /**
+   * Manda el log de un contenedor.
+   *
+   * Extraido del comando `/logs` porque ahora tambien lo usa el boton "Ver el
+   * log" de los avisos de caida. Ese boton se anadio sin manejador: al pulsarlo
+   * el bot confirmaba la pulsacion y no pasaba nada mas, que es la peor forma de
+   * fallar, porque no parece roto, parece que no hace nada.
+   */
+  async function sendLogs(ctx: Context, name: string, lineas: number): Promise<void> {
+    const t = ctx.session!.t;
+    const container = services.inventory.snapshot.containers.find(
+      (c) => c.name === name || c.name.includes(name) || c.id.startsWith(name),
+    );
+    if (!container) {
+      await ctx.reply(t('telegram.containerNotFound', { name: escapeHtml(name) }), {
+        parse_mode: 'HTML',
+      });
+      return;
+    }
+
+    // Tope de 50 lineas: un mensaje de Telegram admite 4096 caracteres y
+    // trocear un log largo en veinte mensajes no ayuda a nadie.
+    const tail = Math.min(Math.max(lineas, 1), 50);
+    const logs = await services.docker.containerLogs(container.id, tail);
+    const trimmed = logs.slice(-3500);
+    await ctx.reply(
+      `<b>${escapeHtml(container.name)}</b>\n<pre>${escapeHtml(trimmed || '(vacio)')}</pre>`,
+      { parse_mode: 'HTML' },
+    );
+  }
 
   async function confirmUpdate(ctx: Context, mode: 'update' | 'force'): Promise<void> {
     const t = ctx.session!.t;
