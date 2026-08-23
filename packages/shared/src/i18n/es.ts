@@ -364,6 +364,13 @@ export const es = {
     filterUnknown: 'Sin comprobar',
   },
   projects: {
+    createAndStart: 'Crear y arrancar',
+    notCreated: 'Sin crear',
+    notCreatedHelp: 'Tiene fichero pero ningun contenedor: o nunca se ha levantado, o se bajo. Al crearlo se levantan sus servicios.',
+    start: 'Arrancar los contenedores',
+    stop: 'Parar sin eliminar',
+    confirmStart: 'Se arrancaran los contenedores de {{name}} que esten parados, tal como estaban.',
+    confirmStop: 'Se pararan los contenedores de {{name}} pero NO se eliminan: siguen ahi con su configuracion y se pueden volver a arrancar.',
     updatesCount: '{{count}} con actualizacion',
     updatesInServices: 'Tienen version nueva: {{list}}',
     working: 'Trabajando en este proyecto',
@@ -414,7 +421,7 @@ export const es = {
       'Solo lo puede leer el propietario del fichero, y de cada guardado se conserva una copia cifrada por si hay que volver atras. Compose necesita leerlo en claro, asi que no se puede cifrar en disco.',
     reveal: 'Mostrar',
     projectActions: 'Acciones del proyecto',
-    down: 'Parar el proyecto',
+    down: 'Bajar y eliminar los contenedores',
     confirmUp: 'Se aplicara el fichero de {{name}} y se levantaran sus servicios.',
     confirmDown:
       'Se pararan y eliminaran los contenedores de {{name}}. Los volumenes con nombre y los ficheros no se tocan.',

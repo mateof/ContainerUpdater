@@ -6,7 +6,8 @@
  * contenedores que ya no existen.
  */
 import { hostname } from 'node:os';
-import { access, readFile } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
 import type {
@@ -474,6 +475,58 @@ export class InventoryService {
    * proyecto deja de mostrarse: enseñarlo solo llevaria a que todas sus acciones
    * fallaran sin explicar por que.
    */
+  /**
+   * Proyectos que estan en disco y nunca se han levantado.
+   *
+   * Hasta ahora un proyecto solo existia para la aplicacion si tenia
+   * contenedores (o los habia tenido, o se habia creado desde aqui). Un
+   * `docker-compose.yml` recien puesto en la carpeta era invisible, asi que
+   * habia que levantarlo por linea de comandos ANTES de poder gestionarlo desde
+   * el panel, que es justo al reves de lo util.
+   *
+   * El recorrido es deliberadamente superficial: las carpetas que cuelgan
+   * directamente de cada raiz, un nivel y nada mas. Es como se organizan estos
+   * proyectos (una carpeta por proyecto dentro de la carpeta de composes) y
+   * evita recorrer un arbol entero, que en un NAS con la carpeta de datos
+   * dentro seria carisimo.
+   *
+   * El nombre del proyecto es el de la carpeta, que es exactamente lo que hace
+   * Compose cuando no se le dice otra cosa.
+   */
+  async #discoverOnDisk(): Promise<Array<{ name: string; dir: string; configFiles: string[] }>> {
+    const encontrados: Array<{ name: string; dir: string; configFiles: string[] }> = [];
+
+    for (const root of this.composeRoots) {
+      let entradas: Dirent[];
+      try {
+        entradas = await readdir(root, { withFileTypes: true });
+      } catch {
+        // Una raiz que no existe o no se puede leer no es un error: puede estar
+        // configurada para otra maquina.
+        continue;
+      }
+
+      for (const entrada of entradas) {
+        if (!entrada.isDirectory() || entrada.name.startsWith('.')) continue;
+        const dir = join(root, entrada.name);
+
+        // Los nombres que Compose reconoce, en su orden de preferencia.
+        for (const nombre of ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']) {
+          const fichero = join(dir, nombre);
+          try {
+            await access(fichero, constants.R_OK);
+            encontrados.push({ name: entrada.name, dir, configFiles: [fichero] });
+            break;
+          } catch {
+            // Sigue con el siguiente nombre.
+          }
+        }
+      }
+    }
+
+    return encontrados;
+  }
+
   async #pendingProjects(
     running: Map<string, { workingDir: string }>,
   ): Promise<ComposeProject[]> {
@@ -496,6 +549,14 @@ export class InventoryService {
         dir: row.dir,
         configFiles: [join(row.dir, COMPOSE_FILENAME)],
       });
+    }
+
+    // Y los que estan en disco pero nunca se han levantado: solo existe su
+    // fichero, asi que no hay contenedores ni fila en la base de los que
+    // deducirlos. Ver `#discoverOnDisk`.
+    for (const encontrado of await this.#discoverOnDisk()) {
+      if (candidatos.has(encontrado.dir)) continue;
+      candidatos.set(encontrado.dir, encontrado);
     }
 
     for (const row of this.repos.inventory.listProjects()) {

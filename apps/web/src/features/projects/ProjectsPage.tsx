@@ -47,6 +47,8 @@ const ACTION_LABEL: Record<ServiceAction, string> = {
 const PROJECT_ACTION_LABEL: Record<ProjectAction, string> = {
   update: 'projects.updateProject',
   up: 'projects.up',
+  start: 'projects.start',
+  stop: 'projects.stop',
   restart: 'projects.restart',
   down: 'projects.down',
 };
@@ -54,6 +56,8 @@ const PROJECT_ACTION_LABEL: Record<ProjectAction, string> = {
 const PROJECT_ACTION_CONFIRM: Record<ProjectAction, string> = {
   update: 'projects.confirmUpdateAll',
   up: 'projects.confirmUp',
+  start: 'projects.confirmStart',
+  stop: 'projects.confirmStop',
   restart: 'projects.confirmRestart',
   down: 'projects.confirmDown',
 };
@@ -310,6 +314,9 @@ export function ProjectsPage(): ReactNode {
             // Nombres de los servicios con novedad, que es lo que se enseña en
             // la cabecera. Se prefiere el nombre de servicio al del contenedor:
             // es el que aparece en el fichero del proyecto.
+            // Cuantos estan en marcha: decide que acciones tienen sentido.
+            const vivos = project.containers.filter((c) => c.state === 'running').length;
+
             const pendientes = project.containers
               .filter((container) => container.updateAvailable)
               .map((container) => container.serviceName || container.name);
@@ -336,6 +343,13 @@ export function ProjectsPage(): ReactNode {
                       cuales; decir "uno, dos y tres" responde a la pregunta de
                       un vistazo. La lista de abajo los sigue marcando uno a uno.
                     */}
+                    {project.containers.length === 0 ? (
+                      <Tooltip content={t('projects.notCreatedHelp')}>
+                        <span>
+                          <Badge tone="warn">{t('projects.notCreated')}</Badge>
+                        </span>
+                      </Tooltip>
+                    ) : null}
                     {pendientes.length > 0 ? (
                       <Tooltip content={t('projects.updatesInServices', { list: pendientes.join(', ') })}>
                         <span>
@@ -403,17 +417,36 @@ export function ProjectsPage(): ReactNode {
                       <IconRestart size={16} />
                     </Button>
                   </Tooltip>
-                  <Tooltip content={t('projects.up')}>
+                  {/*
+                    Sin contenedores, la accion es la misma (`compose up`) pero
+                    la palabra no: en un proyecto que nunca se ha levantado,
+                    "aplicar cambios" no dice nada, y "crear y arrancar" dice
+                    exactamente lo que va a pasar. Ademas se enseña con texto y
+                    no como icono suelto, porque es LA accion de esa tarjeta.
+                  */}
+                  {project.containers.length === 0 ? (
                     <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label={t('projects.up')}
+                      size="sm"
+                      variant="primary"
+                      icon={<IconPlus size={15} />}
                       disabled={!project.yamlAccessible}
                       onClick={() => setConfirm({ project, action: 'up' })}
                     >
-                      <IconDeploy size={16} />
+                      {t('projects.createAndStart')}
                     </Button>
-                  </Tooltip>
+                  ) : (
+                    <Tooltip content={t('projects.up')}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label={t('projects.up')}
+                        disabled={!project.yamlAccessible}
+                        onClick={() => setConfirm({ project, action: 'up' })}
+                      >
+                        <IconDeploy size={16} />
+                      </Button>
+                    </Tooltip>
+                  )}
                   <Menu
                     trigger={
                       <Button size="icon" variant="ghost" aria-label={t('projects.projectActions')}>
@@ -432,12 +465,31 @@ export function ProjectsPage(): ReactNode {
                         onSelect: () =>
                           setEditor({ project: { key: project.key, name: project.name } }),
                       },
+                      { type: 'separator', key: 'sep-run' },
+                      {
+                        // Parar de verdad: los contenedores se quedan. Solo
+                        // tiene sentido si hay alguno en marcha.
+                        key: 'stop',
+                        label: t('projects.stop'),
+                        disabled: !project.yamlAccessible || vivos === 0,
+                        onSelect: () => setConfirm({ project, action: 'stop' }),
+                      },
+                      {
+                        // Y volver a arrancar los que estan parados.
+                        key: 'start',
+                        label: t('projects.start'),
+                        disabled:
+                          !project.yamlAccessible ||
+                          project.containers.length === 0 ||
+                          vivos === project.containers.length,
+                        onSelect: () => setConfirm({ project, action: 'start' }),
+                      },
                       { type: 'separator', key: 'sep' },
                       {
                         key: 'down',
                         label: t('projects.down'),
                         danger: true,
-                        disabled: !project.yamlAccessible,
+                        disabled: !project.yamlAccessible || project.containers.length === 0,
                         onSelect: () => setConfirm({ project, action: 'down' }),
                       },
                     ]}

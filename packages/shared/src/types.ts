@@ -363,7 +363,16 @@ export const SERVICE_ACTIONS = ['recreate', 'restart', 'stop', 'start', 'pull'] 
 export type ServiceAction = (typeof SERVICE_ACTIONS)[number];
 
 /** Operaciones sobre el proyecto entero. */
-export const PROJECT_ACTIONS = ['update', 'up', 'restart', 'down'] as const;
+/**
+ * Operaciones sobre el proyecto entero.
+ *
+ * `stop` y `down` NO son lo mismo y la diferencia importa: `stop` para los
+ * contenedores y los deja ahi, con su configuracion y sus volumenes anonimos,
+ * listos para arrancar otra vez; `down` los elimina. Durante mucho tiempo solo
+ * estaba `down` y se ofrecia como "Parar el proyecto", que describia la mitad
+ * de lo que hacia.
+ */
+export const PROJECT_ACTIONS = ['update', 'up', 'start', 'restart', 'stop', 'down'] as const;
 export type ProjectAction = (typeof PROJECT_ACTIONS)[number];
 
 export type JobTrigger = 'manual' | 'auto' | 'telegram';

@@ -366,6 +366,13 @@ export const gl: Translated<Catalog> = {
     filterUnknown: 'Sen comprobar',
   },
   projects: {
+    createAndStart: 'Crear e arrincar',
+    notCreated: 'Sen crear',
+    notCreatedHelp: 'Ten ficheiro pero ningun contedor: ou nunca se levantou, ou baixouse. Ao crealo levantanse os seus servizos.',
+    start: 'Arrincar os contedores',
+    stop: 'Parar sen eliminar',
+    confirmStart: 'Arrincaranse os contedores de {{name}} que esten parados, tal como estaban.',
+    confirmStop: 'Pararanse os contedores de {{name}} pero NON se eliminan: seguen ali coa sua configuracion e poden volver arrincarse.',
     updatesCount: '{{count}} con actualizacion',
     updatesInServices: 'Tenen version nova: {{list}}',
     working: 'Traballando neste proxecto',
@@ -416,7 +423,7 @@ export const gl: Translated<Catalog> = {
       'So o pode ler o propietario do ficheiro, e de cada gardado consevase unha copia cifrada por se hai que volver atras. Compose precisa lelo en claro, asi que non se pode cifrar en disco.',
     reveal: 'Amosar',
     projectActions: 'Accions do proxecto',
-    down: 'Parar o proxecto',
+    down: 'Baixar e eliminar os contedores',
     confirmUp: 'Aplicarase o ficheiro de {{name}} e levantaranse os seus servizos.',
     confirmDown:
       'Pararanse e eliminaranse os contedores de {{name}}. Os volumes con nome e os ficheiros non se tocan.',

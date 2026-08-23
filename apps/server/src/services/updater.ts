@@ -937,6 +937,21 @@ export class UpdaterService {
         progress('Levantando el proyecto');
         await this.compose.up(target, options);
         break;
+      /**
+       * Parar sin eliminar.
+       *
+       * `stopService` sin nombre de servicio actua sobre el proyecto entero, que
+       * es justo lo que hace falta. Los contenedores se quedan parados y con su
+       * configuracion, asi que `start` los devuelve tal cual estaban.
+       */
+      case 'stop':
+        progress('Parando el proyecto, sin eliminar los contenedores');
+        await this.compose.stopService(target, options);
+        break;
+      case 'start':
+        progress('Arrancando los contenedores parados del proyecto');
+        await this.compose.startService(target, options);
+        break;
       case 'restart':
         progress('Reiniciando el proyecto');
         await this.compose.restart(target, options);

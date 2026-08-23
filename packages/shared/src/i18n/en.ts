@@ -360,6 +360,13 @@ export const en: Translated<Catalog> = {
     filterUnknown: 'Not checked',
   },
   projects: {
+    createAndStart: 'Create and start',
+    notCreated: 'Not created',
+    notCreatedHelp: 'It has a compose file but no containers: either it was never brought up, or it was taken down. Creating it brings its services up.',
+    start: 'Start the containers',
+    stop: 'Stop without removing',
+    confirmStart: 'The stopped containers of {{name}} will be started again, exactly as they were.',
+    confirmStop: 'The containers of {{name}} will be stopped but NOT removed: they stay with their configuration and can be started again.',
     updatesCount: '{{count}} with updates',
     updatesInServices: 'These have a new version: {{list}}',
     working: 'Working on this project',
