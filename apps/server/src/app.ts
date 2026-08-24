@@ -312,6 +312,22 @@ export async function createApp(config: Config): Promise<AppContext> {
   // Se ignoran dos casos para no mandar el mismo aviso dos veces: las
   // automaticas las notifica el planificador con su propio resumen, y las
   // lanzadas desde Telegram ya reciben la respuesta del propio comando.
+  /**
+   * Tras cualquier trabajo, volver a averiguar que version hay instalada.
+   *
+   * Va en su propio oyente y ANTES del filtro de abajo porque esto interesa
+   * pase lo que pase: da igual que la actualizacion la lanzara el usuario, el
+   * planificador o el bot, y da igual que saliera bien o mal (un fallo con
+   * vuelta atras tambien cambia lo que hay instalado).
+   *
+   * `fillMissingVersions` solo trabaja sobre las imagenes cuyo digest ya no
+   * coincide con aquel para el que se resolvio la version, asi que despues de
+   * una actualizacion resuelve justo la que ha cambiado y nada mas.
+   */
+  updater.onJobFinished(() => {
+    void checker.fillMissingVersions().catch(() => undefined);
+  });
+
   updater.onJobFinished((job) => {
     if (job.trigger === 'auto' || job.trigger === 'telegram') return;
 

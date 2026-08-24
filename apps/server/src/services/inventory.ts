@@ -31,7 +31,7 @@ import { COMPOSE_FILENAME, editability } from './project-files.js';
 import { digestsForRepository, parseImageReference } from '../registry/reference.js';
 import { OCI_REVISION, OCI_SOURCE } from '../registry/manifest.js';
 import { defaultTrackMode } from '../registry/semver.js';
-import { DEFAULT_POLICY, type Repositories } from '../db/repositories/index.js';
+import { DEFAULT_POLICY, type ImageRow, type Repositories } from '../db/repositories/index.js';
 import type { Logger } from '../logger.js';
 
 export interface InventorySnapshot {
@@ -109,10 +109,12 @@ export class InventoryService {
         publishedAt: row.remote_created_at,
       });
 
+      const version = versionSiSigueValiendo(row, parseJsonArray(row.local_digests));
+
       return {
-      installedVersion: row.installed_version,
-      installedVersionMethod: row.installed_version_method as TrackedImage['installedVersionMethod'],
-      installedVersionAliases: parseJsonArray(row.installed_version_aliases ?? '[]'),
+      installedVersion: version.installedVersion,
+      installedVersionMethod: version.installedVersionMethod,
+      installedVersionAliases: version.installedVersionAliases,
       ref: row.normalized_ref,
       host: row.host,
       repository: row.repository,
@@ -753,9 +755,7 @@ export class InventoryService {
         source: row.source,
         sizeBytes: row.size_bytes,
         imageCreatedAt: row.image_created_at,
-        installedVersion: row.installed_version,
-        installedVersionMethod: row.installed_version_method as TrackedImage['installedVersionMethod'],
-        installedVersionAliases: parseJsonArray(row.installed_version_aliases ?? '[]'),
+        ...versionSiSigueValiendo(row, localDigests),
         release: buildReleaseInfo({
           sourceUrl: row.remote_source_url ?? row.local_source_url,
           localRevision: row.local_revision,
@@ -794,6 +794,40 @@ export class InventoryService {
  * calcula en un solo sitio y se reutiliza en los dos caminos que construyen
  * `TrackedImage` (el que lee de Docker y el que lee de la base de datos).
  */
+/**
+ * La version instalada, solo si se resolvio para el digest que hay AHORA.
+ *
+ * Una version guardada describe un contenido concreto, no una etiqueta. Al
+ * actualizar, la etiqueta pasa a apuntar a otro digest y lo guardado deja de
+ * ser cierto: seguir enseñandolo es peor que no enseñar nada, porque no parece
+ * un hueco, parece un dato. El caso que lo destapo: actualizar `latest` y ver
+ * durante minutos la version anterior como si fuera la recien instalada.
+ *
+ * En cuanto dejan de coincidir se devuelve vacio, y quien resuelve las versiones
+ * lo rellena en la siguiente pasada (que ademas se dispara al terminar cada
+ * trabajo, asi que el hueco dura un instante).
+ */
+export function versionSiSigueValiendo(
+  row: ImageRow,
+  localDigests: string[],
+): Pick<
+  TrackedImage,
+  'installedVersion' | 'installedVersionMethod' | 'installedVersionAliases'
+> {
+  const actual = localDigests[0] ?? null;
+  const vigente = actual !== null && row.installed_version_for === actual;
+
+  return {
+    installedVersion: vigente ? row.installed_version : null,
+    installedVersionMethod: vigente
+      ? (row.installed_version_method as TrackedImage['installedVersionMethod'])
+      : null,
+    installedVersionAliases: vigente
+      ? parseJsonArray(row.installed_version_aliases ?? '[]')
+      : [],
+  };
+}
+
 /** Cuanto se recuerda un proyecto que ya no tiene contenedores. */
 const PROJECT_MEMORY_MS = 30 * 24 * 3600_000;
 
