@@ -17,7 +17,14 @@ import {
   cx,
   useToast,
 } from '@/components/ui';
-import { IconCheck, IconDownload, IconImage, IconMore, IconRefresh } from '@/components/icons';
+import {
+  IconCheck,
+  IconDownload,
+  IconImage,
+  IconMore,
+  IconRefresh,
+  IconTrash,
+} from '@/components/icons';
 import { CrossLink, FilterPills, FocusBanner, SearchBox } from '@/components/Filters';
 import { displayImage, formatBytes, formatRelative, shortDigest } from '@/lib/format';
 import { IMAGE_USAGE_LABEL, IMAGE_USAGE_TONE, UPDATE_STATUS_LABEL, UPDATE_STATUS_TONE } from '@/lib/labels';
@@ -131,6 +138,7 @@ export function ImagesPage(): ReactNode {
    */
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   const toggleSelected = (ref: string): void =>
     setSelected((current) => {
@@ -183,6 +191,72 @@ export function ImagesPage(): ReactNode {
     () => bulkCandidates.filter((image) => selected.has(image.ref)).map((image) => image.ref),
     [bulkCandidates, selected],
   );
+
+  /**
+   * De lo seleccionado, que se puede borrar de verdad.
+   *
+   * Se aplican las mismas reglas que al borrar una sola, y por el mismo motivo:
+   * con algun contenedor EN MARCHA el daemon se niega, asi que colar una de esas
+   * en el lote solo produce un error a mitad. La propia aplicacion tampoco: se
+   * estaria borrando el suelo que pisa.
+   */
+  const selectedDeletable = useMemo(
+    () =>
+      images.filter(
+        (image) =>
+          selected.has(image.ref) && image.usage !== 'running' && image.ref !== selfImageRef,
+      ),
+    [images, selected, selfImageRef],
+  );
+
+  /** Las que se llevarian por delante contenedores parados, con sus nombres. */
+  const conParados = useMemo(
+    () => selectedDeletable.filter((image) => image.usage === 'stopped'),
+    [selectedDeletable],
+  );
+
+  /**
+   * Borra las seleccionadas, de una en una.
+   *
+   * En serie y no con `Promise.all` por lo mismo que en las actualizaciones: asi
+   * se sabe exactamente cuantas entraron y cual fallo, en vez de una promesa
+   * rechazada sin nombre.
+   */
+  const bulkDelete = useMutation({
+    mutationFn: async (targets: TrackedImage[]) => {
+      let ok = 0;
+      let lastError: string | null = null;
+      for (const image of targets) {
+        try {
+          // Se fuerza solo donde hace falta, que es justo lo que el usuario
+          // acaba de confirmar viendo los nombres de los contenedores.
+          await api.deleteImage(image.ref, image.usage === 'stopped');
+          ok += 1;
+        } catch (error) {
+          lastError = error instanceof ApiError ? error.code : String(error);
+        }
+      }
+      return { ok, total: targets.length, lastError };
+    },
+    onSuccess: (result) => {
+      if (result.ok === result.total) {
+        notify(t('images.bulkDeleted', { count: result.ok }), 'ok');
+      } else {
+        notify(
+          t('images.bulkPartial', {
+            ok: result.ok,
+            total: result.total,
+            reason: result.lastError ?? '',
+          }),
+          'info',
+        );
+      }
+      setSelected(new Set());
+      setConfirmBulkDelete(false);
+      invalidate();
+    },
+    onError: () => notify(t('common.error'), 'danger'),
+  });
 
   const bulkCheck = useMutation({
     mutationFn: (refs: string[]) => api.checkImages(refs),
@@ -404,6 +478,18 @@ export function ImagesPage(): ReactNode {
           >
             {t('images.checkSelected', { count: selectedRefs.length })}
           </Button>
+          {/* Borrar, solo si algo de lo marcado se puede borrar. Las que estan
+              en marcha no cuentan: el daemon se niega y con razon. */}
+          {selectedDeletable.length > 0 ? (
+            <Button
+              variant="ghost"
+              icon={<IconTrash size={15} />}
+              loading={bulkDelete.isPending}
+              onClick={() => setConfirmBulkDelete(true)}
+            >
+              {t('images.deleteSelected', { count: selectedDeletable.length })}
+            </Button>
+          ) : null}
           {/* Actualizar solo aparece si algo de lo marcado tiene novedad: un
               boton que no haria nada confunde mas que ayuda. */}
           {selectedUpdatable.length > 0 ? (
@@ -437,6 +523,51 @@ export function ImagesPage(): ReactNode {
               </li>
             ))}
           </ul>
+        </ConfirmDialog>
+      ) : null}
+
+      {confirmBulkDelete ? (
+        <ConfirmDialog
+          open
+          onOpenChange={(value) => !value && setConfirmBulkDelete(false)}
+          title={t('images.deleteSelected', { count: selectedDeletable.length })}
+          description={t('images.bulkDeleteConfirm', { count: selectedDeletable.length })}
+          confirmLabel={t('common.delete')}
+          cancelLabel={t('common.cancel')}
+          danger
+          loading={bulkDelete.isPending}
+          onConfirm={() => bulkDelete.mutate(selectedDeletable)}
+        >
+          <div className="space-y-3 text-[0.8125rem]">
+            <ul className="max-h-40 space-y-0.5 overflow-y-auto text-[0.75rem] text-[var(--text-muted)]">
+              {selectedDeletable.map((image) => (
+                <li key={image.ref} className="truncate font-mono">
+                  {displayImage(image.ref)}
+                </li>
+              ))}
+            </ul>
+
+            {/*
+              Lo importante del dialogo. Borrar una imagen que usan contenedores
+              parados los deja sin poder arrancar nunca mas, asi que se nombran
+              uno a uno: decir "se borraran 5 imagenes" y callarse esto seria una
+              trampa. Es la misma regla que ya seguia el borrado de una sola.
+            */}
+            {conParados.length > 0 ? (
+              <div className="rounded-[var(--radius-sm)] border border-[var(--danger)] px-3 py-2">
+                <p className="text-[0.75rem]">{t('images.bulkDeleteBreaks')}</p>
+                <ul className="mt-1 space-y-0.5">
+                  {conParados.map((image) => (
+                    <li key={image.ref} className="text-[0.6875rem] text-[var(--text-muted)]">
+                      <span className="font-mono">{displayImage(image.ref)}</span>
+                      {' -> '}
+                      {image.inUseBy.join(', ')}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
         </ConfirmDialog>
       ) : null}
 

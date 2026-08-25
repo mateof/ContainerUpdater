@@ -235,6 +235,10 @@ export const en: Translated<Catalog> = {
     none: 'No healthcheck',
   },
   images: {
+    deleteSelected: 'Delete {{count}}',
+    bulkDeleted: '{{count}} images deleted',
+    bulkDeleteConfirm: '{{count}} images will be removed from disk. Any still needed will be pulled again by themselves when their container starts.',
+    bulkDeleteBreaks: 'These are used by stopped containers, which will no longer be able to start:',
     checkSelected: 'Check {{count}}',
     bulkChecked: '{{count}} images checked',
     installedVersionLabel: 'Installed version',

@@ -237,6 +237,10 @@ export const es = {
     none: 'Sin control',
   },
   images: {
+    deleteSelected: 'Eliminar {{count}}',
+    bulkDeleted: '{{count}} imagenes eliminadas',
+    bulkDeleteConfirm: 'Se eliminaran {{count}} imagenes del disco. Las que sigan haciendo falta se volveran a descargar solas al arrancar su contenedor.',
+    bulkDeleteBreaks: 'Estas las usan contenedores parados, que dejaran de poder arrancar:',
     checkSelected: 'Comprobar {{count}}',
     bulkChecked: '{{count}} imagenes comprobadas',
     installedVersionLabel: 'Version instalada',

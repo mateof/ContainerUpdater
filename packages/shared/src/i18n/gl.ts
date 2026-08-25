@@ -239,6 +239,10 @@ export const gl: Translated<Catalog> = {
     none: 'Sen control',
   },
   images: {
+    deleteSelected: 'Eliminar {{count}}',
+    bulkDeleted: '{{count}} imaxes eliminadas',
+    bulkDeleteConfirm: 'Eliminaranse {{count}} imaxes do disco. As que sigan facendo falta descargaranse soas ao arrincar o seu contedor.',
+    bulkDeleteBreaks: 'Estas usanas contedores parados, que deixaran de poder arrincar:',
     checkSelected: 'Comprobar {{count}}',
     bulkChecked: '{{count}} imaxes comprobadas',
     installedVersionLabel: 'Version instalada',
