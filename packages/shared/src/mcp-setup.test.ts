@@ -23,8 +23,16 @@ describe('ordenes de conexion', () => {
     const s = buildSetup('claude-code', base);
     expect(s.kind).toBe('command');
     expect(s.content).toBe(
-      "claude mcp add --transport http containerupdater http://192.168.0.22:8210/api/mcp --header 'Authorization: Bearer cu_mcp_abc123'",
+      "claude mcp add --transport http --scope user containerupdater http://192.168.0.22:8210/api/mcp --header 'Authorization: Bearer cu_mcp_abc123'",
     );
+  });
+
+  it('Claude Code se registra para TODOS los proyectos, no solo el actual', () => {
+    // Sin `--scope user`, `claude mcp add` escribe en el alcance `local`, que es
+    // privado de la carpeta desde la que se lanza: comprobado en vivo, desde
+    // otra carpeta el servidor no aparece. Esto es un panel de la maquina, no
+    // una herramienta de un repositorio, asi que tiene que estar en todos.
+    expect(buildSetup('claude-code', base).content).toContain('--scope user');
   });
 
   it('los clientes de fichero reciben JSON y su ruta', () => {

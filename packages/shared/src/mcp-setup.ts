@@ -77,9 +77,22 @@ export function buildSetup(client: McpClient, input: McpSetupInput): SetupSnippe
     case 'claude-code':
       return {
         kind: 'command',
+        /**
+         * `--scope user` NO es opcional aqui.
+         *
+         * Sin el, `claude mcp add` registra el servidor en el alcance `local`,
+         * que es privado **de la carpeta desde la que lo lanzas**. Comprobado:
+         * sin la opcion queda escrito bajo el proyecto actual y desde cualquier
+         * otra carpeta el servidor no existe; con ella queda en la configuracion
+         * del usuario y responde desde todas.
+         *
+         * Y esto es un panel de la maquina, no una herramienta de un repositorio
+         * concreto: se pregunta por el NAS desde donde uno este trabajando.
+         */
         content: [
           'claude mcp add',
           '--transport http',
+          '--scope user',
           nombre,
           input.url,
           '--header',
