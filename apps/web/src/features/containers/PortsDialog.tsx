@@ -7,6 +7,7 @@ import { api } from '@/api/client';
 import { Badge, Button, Input, Modal, Tooltip, cx, useToast } from '@/components/ui';
 import { IconDownload, IconExternal, IconSearch } from '@/components/icons';
 import { CrossLink } from '@/components/Filters';
+import { useAutoHideOnScroll } from '@/hooks/useAutoHideOnScroll';
 
 /**
  * Resumen de los puertos publicados de la maquina.
@@ -66,10 +67,21 @@ export function PortsDialog({ onClose }: { onClose: () => void }): ReactNode {
 
   const viewerHost = typeof window === 'undefined' ? '' : window.location.hostname;
 
+  /**
+   * La barra de resumen y busqueda se aparta al bajar y vuelve al subir.
+   *
+   * Con cuarenta filas, dejarla fija se come una franja de pantalla todo el
+   * rato, y quitarla del todo obliga a volver arriba para filtrar. Asi cuando
+   * lees no estorba, y en cuanto haces el gesto de subir esta ahi.
+   */
+  const [cuerpo, setCuerpo] = useState<HTMLDivElement | null>(null);
+  const escondida = useAutoHideOnScroll(cuerpo);
+
   return (
     <Modal
       open
       onOpenChange={(abierto) => !abierto && onClose()}
+      bodyRef={setCuerpo}
       wider
       title={t('ports.title')}
       description={t('ports.subtitle')}
@@ -85,7 +97,21 @@ export function PortsDialog({ onClose }: { onClose: () => void }): ReactNode {
       }
     >
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
+        <div
+          className={cx(
+            // Pegada arriba del area que scrollea, con fondo propio para que las
+            // filas no se transparenten por debajo.
+            'sticky top-0 z-10 -mx-5 px-5 py-2 bg-[var(--bg-elevated)]',
+            'flex flex-wrap items-center gap-2',
+            // Solo `transform`: va al compositor y no rehace la maquetacion,
+            // que es lo que haria animar la altura.
+            'transition-transform duration-[var(--dur)] ease-[var(--ease-out)]',
+            escondida ? '-translate-y-[calc(100%+1px)]' : 'translate-y-0',
+            // La linea inferior solo cuando esta pegada y visible, para que se
+            // separe de las filas sin dibujar un borde suelto al principio.
+            !escondida && 'border-b border-[var(--border)]',
+          )}
+        >
           <Resumen valor={resumen.occupiedNow} etiqueta={t('ports.occupiedNow')} tono="ok" />
           {resumen.reserved > 0 ? (
             <Tooltip content={t('ports.reservedHelp')}>

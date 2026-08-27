@@ -25,6 +25,7 @@ import type {
   InputHTMLAttributes,
   MouseEvent,
   ReactNode,
+  Ref,
   SelectHTMLAttributes,
   TouchEvent,
 } from 'react';
@@ -360,6 +361,7 @@ export function Modal({
   footer,
   wide,
   wider,
+  bodyRef,
   resizable,
   storageKey,
 }: {
@@ -372,6 +374,14 @@ export function Modal({
   wide?: boolean;
   /** Mas ancho todavia, para tablas que no caben en `wide`. */
   wider?: boolean;
+  /**
+   * Referencia al cuerpo, que es el elemento con scroll.
+   *
+   * Acepta tambien una funcion, que es lo que hace falta para enterarse de
+   * CUANDO se monta: el contenido va en un portal y no esta disponible en el
+   * primer efecto de quien lo usa.
+   */
+  bodyRef?: Ref<HTMLDivElement>;
   /** Permite arrastrar la esquina para agrandarlo. Util con registros largos. */
   resizable?: boolean;
   /** Recuerda el tamano elegido entre aperturas. */
@@ -407,7 +417,16 @@ export function Modal({
               </Dialog.Description>
             ) : null}
           </div>
-          {children ? <div className="px-5 pb-4 overflow-y-auto flex-1">{children}</div> : null}
+          {children ? (
+            // `bodyRef` sale fuera porque este es el elemento que scrollea, y
+            // quien pinta el contenido puede necesitar reaccionar a ese scroll
+            // (una barra que se esconde al bajar, por ejemplo). Sin la
+            // referencia habria que adivinar el ancestro scrolleable desde
+            // dentro, que es fragil.
+            <div ref={bodyRef} className="px-5 pb-4 overflow-y-auto flex-1">
+              {children}
+            </div>
+          ) : null}
           {footer ? (
             <div className="flex justify-end gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-inset)]/50">
               {footer}
