@@ -27,9 +27,11 @@ import {
   IconPlay,
   IconRestart,
   IconStop,
+  IconPorts,
 } from '@/components/icons';
 import { CrossLink, FilterPills, FocusBanner, SearchBox } from '@/components/Filters';
 import { PortLinks } from '@/components/PortLinks';
+import { PortsDialog } from './PortsDialog';
 import { displayImage, formatBytes, formatPercent, formatRate, formatRelative } from '@/lib/format';
 import { CONTAINER_STATE_LABEL, CONTAINER_STATE_TONE, HEALTH_LABEL } from '@/lib/labels';
 import { JobIndicator } from '@/components/JobIndicator';
@@ -45,6 +47,7 @@ export function ContainersPage(): ReactNode {
   const live = useLive();
 
   const [search, setSearch] = useState('');
+  const [ports, setPorts] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
 
   /**
@@ -196,6 +199,12 @@ export function ContainersPage(): ReactNode {
     <div className="space-y-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight">{t('containers.title')}</h1>
+        {/* Los puertos estan repartidos por veinticuatro tarjetas, que es como
+            no tenerlos. Este boton los junta y responde de un vistazo a "que
+            tengo pillado y quien lo tiene". */}
+        <Button size="sm" variant="ghost" icon={<IconPorts size={15} />} onClick={() => setPorts(true)}>
+          {t('ports.button')}
+        </Button>
         <SearchBox value={search} onChange={setSearch} placeholder={t('containers.searchHint')} />
       </header>
 
@@ -407,6 +416,8 @@ export function ContainersPage(): ReactNode {
           })}
         </ul>
       )}
+
+      {ports ? <PortsDialog onClose={() => setPorts(false)} /> : null}
 
       {logsFor ? <LogsDialog container={logsFor} onClose={() => setLogsFor(null)} /> : null}
 

@@ -312,3 +312,12 @@ export const IconTrash = (p: IconProps) => (
     <path d="M10 11v6M14 11v6" />
   </Icon>
 );
+
+/** Puertos: dos conectores enfrentados. Para el resumen de puertos ocupados. */
+export const IconPorts = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 9h16M4 15h16" />
+    <path d="M8 9v6M12 9v6M16 9v6" />
+    <rect x="2" y="6" width="20" height="12" rx="2" />
+  </Icon>
+);

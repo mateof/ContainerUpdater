@@ -359,6 +359,7 @@ export function Modal({
   children,
   footer,
   wide,
+  wider,
   resizable,
   storageKey,
 }: {
@@ -369,6 +370,8 @@ export function Modal({
   children?: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Mas ancho todavia, para tablas que no caben en `wide`. */
+  wider?: boolean;
   /** Permite arrastrar la esquina para agrandarlo. Util con registros largos. */
   resizable?: boolean;
   /** Recuerda el tamano elegido entre aperturas. */
@@ -392,7 +395,7 @@ export function Modal({
             'rounded-[var(--radius)] border border-[var(--border)] shadow-[var(--shadow-lg)]',
             // Uno de los dos unicos sitios con backdrop-filter.
             'cu-glass',
-            wide ? 'max-w-3xl' : 'max-w-lg',
+            wider ? 'max-w-6xl' : wide ? 'max-w-3xl' : 'max-w-lg',
           )}
         >
           {resizable ? <ResizeHandle onResize={setSize} /> : null}
