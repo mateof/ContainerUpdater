@@ -13,6 +13,8 @@ import type {
   CurrentUser,
   ImagePolicy,
   Locale,
+  McpScope,
+  McpToken,
   MetricsSnapshot,
   PasskeySummary,
   PasskeySupport,
@@ -355,6 +357,11 @@ export const api = {
   deleteVolume: (name: string) =>
     del<{ ok: true }>(`/storage/volumes/${encodeURIComponent(name)}`),
   pruneBuildCache: () => post<{ freed: number }>('/storage/build-cache/prune'),
+
+  mcpTokens: () => get<{ tokens: McpToken[] }>('/mcp/tokens'),
+  createMcpToken: (body: { name: string; scopes: McpScope[]; expiresInDays?: number | null }) =>
+    post<{ token: McpToken; secret: string }>('/mcp/tokens', body),
+  revokeMcpToken: (id: number) => del<{ ok: true }>(`/mcp/tokens/${id}`),
 
   backup: () => get<BackupFile>('/backup'),
   restoreBackup: (body: { file: unknown; settings: boolean; policies: boolean }) =>

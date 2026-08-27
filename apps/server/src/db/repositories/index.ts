@@ -10,6 +10,7 @@ import { createManagedProjectRepository } from './projects.js';
 import { createPasskeyRepository } from './passkeys.js';
 import { createTotpRepository } from './totp.js';
 import { createWatchRepository } from './watch.js';
+import { createMcpRepository } from './mcp.js';
 
 export function createRepositories(db: Db, keyring: Keyring) {
   return {
@@ -28,6 +29,7 @@ export function createRepositories(db: Db, keyring: Keyring) {
     settings: createSettingsRepository(db),
     tagCache: createTagCacheRepository(db),
     watch: createWatchRepository(db),
+    mcp: createMcpRepository(db),
   };
 }
 

@@ -27,6 +27,7 @@ import { RuntimeSection } from './RuntimeSection';
 import { PasskeysSection } from './PasskeysSection';
 import { TotpSection } from './TotpSection';
 import { TelegramSection } from './TelegramSection';
+import { McpSection } from './McpSection';
 import { StorageSection } from './StorageSection';
 import { BackupSection } from './BackupSection';
 
@@ -399,6 +400,7 @@ export function SettingsPage(): ReactNode {
       <RuntimeSection />
       <RegistriesSection />
       <TelegramSection />
+      <McpSection />
       <StorageSection />
       <BackupSection />
 

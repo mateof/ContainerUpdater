@@ -25,6 +25,8 @@ import { registerTotpRoutes } from './routes/totp.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import { registerEventRoutes } from './routes/events.js';
 import { registerStorageRoutes } from './routes/storage.js';
+import { registerMcpTokenRoutes } from './routes/mcp-tokens.js';
+import { registerMcpRoutes } from '../mcp/server.js';
 
 export const SESSION_COOKIE = 'cu_session';
 
@@ -185,6 +187,8 @@ export async function buildServer(app: AppContext): Promise<FastifyInstance> {
   await registerSettingsRoutes(fastify, app);
   await registerEventRoutes(fastify, app);
   await registerStorageRoutes(fastify, app);
+  await registerMcpTokenRoutes(fastify, app);
+  await registerMcpRoutes(fastify, app);
 
   fastify.get('/api/health', async () => ({
     ok: true,
