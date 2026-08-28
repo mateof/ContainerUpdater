@@ -12,6 +12,7 @@ import type {
   ContainerSummary,
   CurrentUser,
   ImagePolicy,
+  LaunchOptions,
   Locale,
   McpScope,
   McpToken,
@@ -278,8 +279,12 @@ export const api = {
   ) => post<{ job: UpdateJob; queued: number }>(`/images/${encodeRef(ref)}/update`, body),
 
   /** Levantar, reiniciar o parar el proyecto entero. 202: corre en segundo plano. */
-  projectAction: (projectKey: string, action: ProjectAction) =>
-    post<{ job: UpdateJob; queued: number }>('/projects/action', { projectKey, action }),
+  projectAction: (projectKey: string, action: ProjectAction, launch?: LaunchOptions) =>
+    post<{ job: UpdateJob; queued: number }>('/projects/action', { projectKey, action, launch }),
+
+  /** Perfiles declarados en el compose. Se los pregunta a Compose, tarda un momento. */
+  projectProfiles: (projectKey: string) =>
+    post<{ profiles: string[] }>('/projects/profiles', { projectKey }),
 
   /** Si se pueden crear proyectos, y si no, por que no. */
   projectsDir: () => get<ProjectsDirInfo>('/projects/dir'),

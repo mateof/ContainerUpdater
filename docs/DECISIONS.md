@@ -460,3 +460,48 @@ It is registered with `updateViaCache: 'none'` and with the version in the URL,
 because the server serves static files as `immutable` for a year and the browser
 compares the script byte by byte: with a fixed URL and identical content, it
 would never update.
+
+## Launch options apply to one run and are never stored
+
+Profiles and extra environment variables are chosen when you press "start" or
+"update", and they are not remembered. It would be easy to keep them on the
+project, and it was tempting: you would set the `debug` profile once and forget.
+
+The reason not to is that automatic updates would then inherit them. Weeks
+later a nightly update would bring up a service nobody asked for, and the only
+place recording why would be a checkbox in a dialog nobody remembers ticking.
+What the project runs would stop matching what its compose file says, with no
+way to tell from the file itself. A one-off decision belongs to the run that
+made it.
+
+The dialog is only offered for `up` and `update`, which are the two actions
+where Compose creates containers. `start`, `stop`, `restart` and `down` work on
+what already exists, so a profile or a variable would change nothing there.
+
+**There is no free-form arguments field.** It was the obvious way to cover
+everything and it was asked for explicitly, but that text ends up on the
+`docker compose` command line, and there `--project-directory /etc` or
+`--file /anything` redirect what the whole operation points at. The service
+account behind that command reads and writes real stacks. So the flags are a
+closed list of the ones that are useful and cannot redirect anything, and the
+open space is the environment variables, which are data and not options.
+
+Variable names are validated (`[A-Za-z_][A-Za-z0-9_]*`) and a reserved list is
+rejected: `PATH`, `HOME`, `DOCKER_HOST`, `COMPOSE_FILE` and friends. Those are
+exactly the ones that would change which daemon is contacted or which file is
+read. As a second lock, the user's variables are spread **first** in the child
+process environment, so the fixed ones always win even if some day one slips
+through the filter.
+
+**What gets logged is what actually got applied**, not what arrived. The job log
+listed the raw names at first, so it claimed a `PATH` had been set that never
+left the server. A log that lies about what ran is worse than no log, so
+discarded profiles are not announced and rejected variables are reported as
+ignored, with the reason. Values are never written: the log is stored and shown
+on screen, and that is where somebody would put a password.
+
+A shell variable is not a container variable. It feeds `${VAR}` substitution in
+the compose file, which is what makes `TAG=3.19` work; it only reaches the
+process inside the container if the service declares it under `environment`.
+The dialog says so, because the alternative is people wondering why their
+`API_KEY` never arrived.

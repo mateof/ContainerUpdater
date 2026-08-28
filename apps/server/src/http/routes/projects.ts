@@ -7,6 +7,7 @@
  * interesa poder mirar despues.
  */
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import {
   envRevealSchema,
   projectActionSchema,
@@ -61,6 +62,30 @@ export async function registerProjectRoutes(
       },
     };
   }
+
+  /**
+   * Perfiles definidos en el fichero del proyecto.
+   *
+   * Por POST porque la clave lleva la ruta entera y en la URL desborda el limite
+   * del servidor, igual que el resto de operaciones sobre ficheros.
+   *
+   * Se le pregunta a Compose, que tarda un momento: la interfaz lo pide al abrir
+   * el dialogo de arranque, no al pintar la lista de proyectos.
+   */
+  fastify.post('/api/projects/profiles', { onRequest: [fastify.requireAuth] }, async (request, reply) => {
+    const { projectKey } = z.object({ projectKey: z.string().min(1).max(1024) }).parse(request.body);
+    const project = app.inventory.snapshot.projects.find((p) => p.key === projectKey);
+    if (!project) return reply.code(404).send({ error: 'not-found' });
+    if (!project.yamlAccessible) return { profiles: [] };
+
+    return {
+      profiles: await app.compose.profiles({
+        projectName: project.name,
+        workingDir: project.workingDir,
+        configFiles: project.configFiles,
+      }),
+    };
+  });
 
   /** Si se puede crear, y si no, por que no. La interfaz lo necesita antes de ofrecerlo. */
   fastify.get('/api/projects/dir', { onRequest: [fastify.requireAuth] }, async () =>
@@ -289,6 +314,7 @@ export async function registerProjectRoutes(
         projectKey: input.projectKey,
         action: input.action,
         actorUserId: request.currentUser!.id,
+        launch: input.launch,
       });
 
       app.repos.history.audit({

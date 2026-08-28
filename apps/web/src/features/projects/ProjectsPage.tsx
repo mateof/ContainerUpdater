@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ReactNode } from 'react';
-import type { ComposeProject, ProjectAction, ServiceAction } from '@cu/shared';
+import type { ComposeProject, LaunchOptions, ProjectAction, ServiceAction } from '@cu/shared';
 import { api, ApiError } from '@/api/client';
 import {
   Badge,
@@ -26,6 +26,7 @@ import {
   IconProject,
   IconRestart,
 } from '@/components/icons';
+import { LaunchDialog } from './LaunchDialog';
 import { ProjectEditor } from './ProjectEditor';
 import { CrossLink, FilterPills, FocusBanner, SearchBox } from '@/components/Filters';
 import { displayImage } from '@/lib/format';
@@ -214,8 +215,15 @@ export function ProjectsPage(): ReactNode {
   );
 
   const apply = useMutation({
-    mutationFn: ({ key, action }: { key: string; action: ProjectAction }) =>
-      api.projectAction(key, action),
+    mutationFn: ({
+      key,
+      action,
+      launch,
+    }: {
+      key: string;
+      action: ProjectAction;
+      launch?: LaunchOptions;
+    }) => api.projectAction(key, action, launch),
     onSuccess: () => {
       // Igual que el resto: se encola y el progreso se sigue en Actualizaciones.
       notify(t('updates.runsInBackground'), 'info');
@@ -625,7 +633,23 @@ export function ProjectsPage(): ReactNode {
         </div>
       )}
 
-      {confirm ? (
+      {/*
+        Arrancar y actualizar pasan por el dialogo de opciones: son las dos
+        acciones en las que Compose crea contenedores, o sea las unicas donde
+        un perfil o una variable cambian algo. Parar, bajar o reiniciar
+        trabajan sobre lo que ya existe y no admiten estas opciones.
+      */}
+      {confirm && (confirm.action === 'up' || confirm.action === 'update') ? (
+        <LaunchDialog
+          project={confirm.project}
+          action={confirm.action}
+          loading={apply.isPending}
+          onClose={() => setConfirm(null)}
+          onConfirm={(launch) =>
+            apply.mutate({ key: confirm.project.key, action: confirm.action, launch })
+          }
+        />
+      ) : confirm ? (
         <ConfirmDialog
           open
           onOpenChange={(open) => !open && setConfirm(null)}

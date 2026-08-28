@@ -207,9 +207,27 @@ export const projectFilesUpdateSchema = z.object({
   apply: z.boolean().default(false),
 });
 
+/**
+ * Opciones de una ejecucion concreta.
+ *
+ * No hay campo libre de argumentos a proposito: acabaria en la linea de ordenes
+ * de `docker compose`, donde `--project-directory` o `--file` cambian a que
+ * apunta todo. Se ofrecen los interruptores que de verdad se usan.
+ */
+export const launchOptionsSchema = z.object({
+  profiles: z.array(z.string().min(1).max(64)).max(20).optional(),
+  env: z.record(z.string().max(64), z.string().max(2048)).optional(),
+  build: z.boolean().optional(),
+  removeOrphans: z.boolean().optional(),
+  wait: z.boolean().optional(),
+  forceRecreate: z.boolean().optional(),
+  noPull: z.boolean().optional(),
+});
+
 export const projectActionSchema = z.object({
   projectKey: z.string().min(1).max(1024),
   action: z.enum(PROJECT_ACTIONS),
+  launch: launchOptionsSchema.optional(),
 });
 
 /** Ver en claro una sola variable, no el fichero entero. */

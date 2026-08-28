@@ -24,7 +24,7 @@ import { parseDigests } from './checker.js';
 import { MUTE_MS } from './watchdog.js';
 import { readComposeMembership } from '../docker/projects.js';
 import type { DockerApi } from '../docker/api.js';
-import { updateHold } from '@cu/shared';
+import { isValidProfile, updateHold, validateEnv, type LaunchOptions } from '@cu/shared';
 import type { Repositories } from '../db/repositories/index.js';
 import type { InventoryService } from './inventory.js';
 import type { Logger } from '../logger.js';
@@ -67,6 +67,8 @@ export interface UpdateRequest {
   serviceAction?: { projectKey: string; serviceName: string; action: ServiceAction };
   /** Presente solo cuando el trabajo actua sobre el proyecto entero. */
   projectAction?: { projectKey: string; action: ProjectAction };
+  /** Perfiles, interruptores y variables para esta ejecucion concreta. */
+  launch?: LaunchOptions;
 }
 
 export type JobListener = (job: UpdateJob) => void;
@@ -834,6 +836,15 @@ export class UpdaterService {
     action: ProjectAction;
     actorUserId?: number | null;
     actorChatId?: number | null;
+    /**
+     * Opciones de ESTA ejecucion, no del proyecto.
+     *
+     * No se guardan: un perfil activado hoy no debe reaparecer solo en la
+     * proxima actualizacion automatica, porque entonces el estado real dejaria
+     * de corresponderse con el fichero y nadie sabria por que hay un servicio de
+     * mas corriendo.
+     */
+    launch?: LaunchOptions;
   }): Promise<{ job: UpdateJob; done: Promise<UpdateJob> }> {
     const project = this.inventory.snapshot.projects.find((p) => p.key === input.projectKey);
     if (!project) throw new Error('No se encuentra el proyecto');
@@ -877,6 +888,7 @@ export class UpdaterService {
         mode: input.action,
         trigger: 'manual',
         projectAction: { projectKey: input.projectKey, action: input.action },
+        launch: input.launch,
       },
       plan: {
         strategy: 'compose',
@@ -912,7 +924,14 @@ export class UpdaterService {
       workingDir: project.workingDir,
       configFiles: project.configFiles,
     };
-    const options = { scope: 'project' as const, onOutput: progress, jobId };
+    const options = {
+      scope: 'project' as const,
+      onOutput: progress,
+      jobId,
+      launch: request.launch,
+    };
+
+    for (const linea of launchLogLines(request.launch)) progress(linea);
 
     progress('Validando el fichero del proyecto');
     await this.compose.validate(target);
@@ -1052,6 +1071,38 @@ function describeError(error: unknown): string {
  * El mensaje original se conserva: si alguien busca el texto exacto en internet
  * tiene que poder encontrarlo. Lo que se añade es qué hacer al respecto.
  */
+/**
+ * Que anotar en el log sobre las opciones de este arranque.
+ *
+ * Se registra lo que de verdad se aplica, no lo que llego. `launchArgs` y
+ * `validateEnv` descartan en silencio los perfiles con forma de opcion y las
+ * variables reservadas o mal nombradas; anunciar la lista cruda hacia que el
+ * log afirmara que se habia puesto un PATH que nunca salio de aqui, y un log
+ * que miente sobre lo que corrio es peor que no tenerlo.
+ *
+ * Se nombran las variables pero NUNCA sus valores: el log del trabajo se
+ * guarda y se ensena, y ahi es donde alguien pondria una contrasena.
+ */
+export function launchLogLines(launch: LaunchOptions | undefined): string[] {
+  const lineas: string[] = [];
+
+  const perfiles = (launch?.profiles ?? []).filter(isValidProfile);
+  if (perfiles.length > 0) lineas.push(`Perfiles activados: ${perfiles.join(', ')}`);
+
+  const { accepted, issues } = validateEnv(launch?.env ?? {});
+  const variables = Object.keys(accepted);
+  if (variables.length > 0) lineas.push(`Variables de esta ejecucion: ${variables.join(', ')}`);
+  for (const problema of issues) {
+    lineas.push(
+      problema.reason === 'reserved'
+        ? `Variable ignorada por estar reservada: ${problema.key}`
+        : `Variable ignorada por tener un nombre no valido: ${problema.key}`,
+    );
+  }
+
+  return lineas;
+}
+
 export function explainDockerError(message: string): string {
   // Ocurre en cuanto un NAS acumula una docena larga de proyectos: cada uno crea
   // su red y `compose down` no las borra, asi que se agotan los rangos.

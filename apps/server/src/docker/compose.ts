@@ -6,7 +6,13 @@
  * quien haya creado el contenedor, asi que se tratan como entrada no confiable.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import type { RecreateScope } from '@cu/shared';
+import {
+  isValidProfile,
+  launchArgs,
+  validateEnv,
+  type LaunchOptions,
+  type RecreateScope,
+} from '@cu/shared';
 import { checkComposeAccessibility } from './projects.js';
 import type { Logger } from '../logger.js';
 
@@ -50,6 +56,8 @@ export interface ComposeOptions {
   onOutput?: (line: string) => void;
   /** Identifica el trabajo para poder cancelar su proceso. */
   jobId?: number;
+  /** Perfiles, interruptores y variables para ESTA ejecucion. */
+  launch?: LaunchOptions;
 }
 
 export class ComposeRunner {
@@ -104,8 +112,43 @@ export class ComposeRunner {
     await this.#run(args, cwd, options.onOutput, options.jobId);
   }
 
+  /**
+   * Perfiles definidos en el fichero del proyecto.
+   *
+   * Se le pregunta a Compose en vez de interpretar el YAML aqui. Es lo unico
+   * que da la respuesta buena cuando hay `include`, `extends` o varios ficheros:
+   * un analisis propio tendria que reimplementar esas reglas y se equivocaria
+   * justo en los proyectos complicados, que son los que usan perfiles.
+   */
+  async profiles(target: ComposeTarget): Promise<string[]> {
+    const { files, cwd } = await this.#resolveTarget(target);
+    const args = [
+      '--project-name',
+      target.projectName,
+      '--project-directory',
+      cwd,
+      ...flagFiles(files),
+      'config',
+      '--profiles',
+    ];
+
+    try {
+      const salida = await this.#run(args, cwd);
+      return salida
+        .split('\n')
+        .map((linea) => linea.trim())
+        .filter((linea) => linea.length > 0 && isValidProfile(linea));
+    } catch {
+      // Un fichero que no valida no tiene perfiles que ofrecer, y el error ya
+      // saldra al intentar levantarlo, con mejor contexto que aqui.
+      return [];
+    }
+  }
+
   async up(target: ComposeTarget, options: ComposeOptions): Promise<void> {
     const { files, cwd } = await this.#resolveTarget(target);
+
+    const { before, after } = launchArgs(options.launch ?? {});
 
     const args = [
       '--project-name',
@@ -115,13 +158,22 @@ export class ComposeRunner {
       '--project-directory',
       cwd,
       ...flagFiles(files),
+      // Los perfiles van aqui, ANTES del subcomando: es donde los espera
+      // Compose. Detras de `up` no los reconoce.
+      ...before,
       'up',
       '--detach',
+      // Sin conexion, consultar el registry hace fallar un arranque que habria
+      // funcionado con lo que ya hay en disco.
       '--pull',
-      'always',
+      options.launch?.noPull ? 'never' : 'always',
+      ...after,
     ];
 
-    if (options.forceRecreate) args.push('--force-recreate');
+    if (options.forceRecreate && !options.launch?.forceRecreate) args.push('--force-recreate');
+
+    // Solo las que pasan el filtro llegan al proceso.
+    const { accepted } = validateEnv(options.launch?.env ?? {});
 
     if (options.scope === 'service' && options.serviceName) {
       assertSafeName(options.serviceName);
@@ -130,7 +182,7 @@ export class ComposeRunner {
       args.push('--no-deps', options.serviceName);
     }
 
-    await this.#run(args, cwd, options.onOutput, options.jobId);
+    await this.#run(args, cwd, options.onOutput, options.jobId, accepted);
   }
 
   /**
@@ -276,6 +328,7 @@ export class ComposeRunner {
     cwd: string,
     onOutput?: (line: string) => void,
     jobId?: number,
+    extraEnv?: Record<string, string>,
   ): Promise<string> {
     const full = ['compose', ...args];
     this.log.debug(`Ejecutando: ${this.dockerBin} ${full.join(' ')}`);
@@ -287,6 +340,10 @@ export class ComposeRunner {
         // CU_ENCRYPTION_KEY y el token de Telegram a un subproceso que
         // perfectamente puede volcar su entorno en un mensaje de error.
         env: {
+          // Las del usuario van PRIMERO para que las de abajo no se puedan
+          // pisar: `validateEnv` ya rechaza las peligrosas, y este orden es la
+          // segunda cerradura por si algun dia se le escapa una.
+          ...(extraEnv ?? {}),
           PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
           HOME: '/tmp',
           DOCKER_HOST: this.dockerHost,
