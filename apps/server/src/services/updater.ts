@@ -73,6 +73,11 @@ export interface UpdateRequest {
 
 export type JobListener = (job: UpdateJob) => void;
 
+export interface UsedImage {
+  imageId: string;
+  imageRef: string | null;
+}
+
 /**
  * Tope de trabajos en espera. Un NAS no va a actualizar cincuenta imagenes de
  * golpe, y sin tope un bucle de reintentos podria llenar la cola sin que nadie
@@ -659,6 +664,8 @@ export class UpdaterService {
     progress('Validando el fichero del proyecto');
     await this.compose.validate(target);
 
+    const before = await this.#imagesUsedBy(project.containers.map((c) => c.id));
+
     progress('Aplicando cambios con Docker Compose');
     await this.compose.up(target, {
       scope,
@@ -666,6 +673,44 @@ export class UpdaterService {
       forceRecreate: request.mode === 'force',
       onOutput: progress,
     });
+
+    await this.#removeReleasedImages(before, progress);
+  }
+
+  async #imagesUsedBy(containerIds: string[]): Promise<UsedImage[]> {
+    const ids = new Set(containerIds);
+    try {
+      const containers = await this.docker.listContainers(true);
+      return containers
+        .filter((container) => ids.has(container.Id))
+        .map((container) => ({ imageId: container.ImageID, imageRef: safeRef(container.Image) }));
+    } catch (error) {
+      this.log.warn('No se han podido leer las imagenes en uso antes de actualizar', error);
+      return [];
+    }
+  }
+
+  async #removeReleasedImages(before: UsedImage[], progress: (line: string) => void): Promise<void> {
+    if (before.length === 0) return;
+
+    let inUse: Set<string>;
+    try {
+      inUse = new Set((await this.docker.listContainers(true)).map((container) => container.ImageID));
+    } catch (error) {
+      progress(`No se ha podido comprobar que imagenes han quedado sin uso: ${(error as Error).message}`);
+      return;
+    }
+
+    for (const image of releasedImages(before, inUse)) {
+      if (image.imageRef && !this.repos.inventory.getPolicy(image.imageRef).cleanupOldImage) continue;
+      const label = `${image.imageRef ?? 'sin referencia'} (${image.imageId.replace(/^sha256:/, '').slice(0, 12)})`;
+      try {
+        await this.docker.removeImage(image.imageId, false);
+        progress(`Imagen antigua eliminada: ${label}`);
+      } catch (error) {
+        progress(`No se ha podido borrar la imagen antigua ${label}: ${(error as Error).message}`);
+      }
+    }
   }
 
   async #runRecreate(
@@ -946,12 +991,15 @@ export class UpdaterService {
        * sobre todo el proyecto es mas rapido y, sobre todo, deja el conjunto
        * coherente de una vez.
        */
-      case 'update':
+      case 'update': {
         progress('Descargando las imagenes nuevas del proyecto');
         await this.compose.pull(target, options);
+        const before = await this.#imagesUsedBy(project.containers.map((c) => c.id));
         progress('Aplicando el proyecto con las imagenes nuevas');
         await this.compose.up(target, options);
+        await this.#removeReleasedImages(before, progress);
         break;
+      }
       case 'up':
         progress('Levantando el proyecto');
         await this.compose.up(target, options);
@@ -1043,6 +1091,15 @@ export class UpdaterService {
 
     return applied;
   }
+}
+
+export function releasedImages(before: UsedImage[], stillInUse: Set<string>): UsedImage[] {
+  const released = new Map<string, UsedImage>();
+  for (const image of before) {
+    if (!image.imageId || stillInUse.has(image.imageId) || released.has(image.imageId)) continue;
+    released.set(image.imageId, image);
+  }
+  return [...released.values()];
 }
 
 function safeRef(image: string): string | null {

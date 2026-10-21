@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { explainDockerError, launchLogLines } from './updater.js';
+import { explainDockerError, launchLogLines, releasedImages } from './updater.js';
 
 describe('explainDockerError', () => {
   it('explica el agotamiento de rangos de red', () => {
@@ -67,5 +67,33 @@ describe('launchLogLines', () => {
   it('no dice nada cuando no hay opciones', () => {
     expect(launchLogLines(undefined)).toEqual([]);
     expect(launchLogLines({ profiles: [], env: {} })).toEqual([]);
+  });
+});
+
+describe('releasedImages', () => {
+  const NGINX_OLD = { imageId: 'sha256:old', imageRef: 'registry-1.docker.io/library/nginx:alpine' };
+  const REDIS = { imageId: 'sha256:redis', imageRef: 'registry-1.docker.io/library/redis:7' };
+
+  it('devuelve la imagen que ningun contenedor usa tras actualizar', () => {
+    expect(releasedImages([NGINX_OLD, REDIS], new Set(['sha256:new', 'sha256:redis']))).toEqual([
+      NGINX_OLD,
+    ]);
+  });
+
+  it('conserva la imagen vieja si otro contenedor la sigue usando', () => {
+    expect(releasedImages([NGINX_OLD], new Set(['sha256:new', 'sha256:old']))).toEqual([]);
+  });
+
+  it('no devuelve nada si compose no ha cambiado ninguna imagen', () => {
+    expect(releasedImages([NGINX_OLD, REDIS], new Set(['sha256:old', 'sha256:redis']))).toEqual([]);
+  });
+
+  it('propone borrar una sola vez la imagen que compartian varios servicios', () => {
+    const replica = { ...NGINX_OLD };
+    expect(releasedImages([NGINX_OLD, replica], new Set())).toEqual([NGINX_OLD]);
+  });
+
+  it('ignora contenedores sin id de imagen', () => {
+    expect(releasedImages([{ imageId: '', imageRef: null }], new Set())).toEqual([]);
   });
 });
