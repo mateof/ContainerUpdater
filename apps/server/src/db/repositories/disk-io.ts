@@ -1,5 +1,5 @@
 import type { Db } from '../index.js';
-import type { ContainerEvent, ContainerEventKind, DiskDeviceConfigInput } from '@cu/shared';
+import type { ContainerEvent, ContainerEventKind, DiskDeviceConfigInput, DiskEventSource } from '@cu/shared';
 import type {
   BucketBatch,
   ContainerDiskBucket,
@@ -60,6 +60,7 @@ interface ContainerEventRow {
   project: string | null;
   kind: ContainerEventKind;
   exit_code: number | null;
+  source: DiskEventSource;
 }
 
 function toDiskBucket(row: DiskRollupRow): DiskBucket {
@@ -150,8 +151,8 @@ export function createDiskIoRepository(db: Db) {
   );
 
   const insertEvent = db.prepare(
-    `INSERT OR IGNORE INTO container_events (at, container_name, project, kind, exit_code)
-     VALUES (@at, @container, @project, @kind, @exitCode)`,
+    `INSERT OR IGNORE INTO container_events (at, container_name, project, kind, exit_code, source)
+     VALUES (@at, @container, @project, @kind, @exitCode, @source)`,
   );
 
   const writeBatch = db.transaction((batch: BucketBatch) => {
@@ -180,6 +181,7 @@ export function createDiskIoRepository(db: Db) {
         project: row.project,
         kind: row.kind,
         exitCode: row.exit_code,
+        source: row.source,
       }));
     },
 

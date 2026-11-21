@@ -18,7 +18,8 @@ import type {
   UpdateStrategy,
 } from '@cu/shared';
 import { ComposeRunner, ComposeError, UnsafePathError } from '../docker/compose.js';
-import { ContainerRecreator, RecreateUnsupportedError } from '../docker/recreate.js';
+import { ContainerRecreator, RecreateUnsupportedError, type RecreateOptions } from '../docker/recreate.js';
+import { applyRuleToBody, effectiveRule, imageKeyOf } from './disk-health/model.js';
 import { parseImageReference } from '../registry/reference.js';
 import { parseDigests } from './checker.js';
 import { MUTE_MS } from './watchdog.js';
@@ -69,6 +70,7 @@ export interface UpdateRequest {
   projectAction?: { projectKey: string; action: ProjectAction };
   /** Perfiles, interruptores y variables para esta ejecucion concreta. */
   launch?: LaunchOptions;
+  containerTuning?: { containerId: string; start: boolean };
 }
 
 export type JobListener = (job: UpdateJob) => void;
@@ -467,6 +469,8 @@ export class UpdaterService {
         await this.#runProjectAction(request, progress, jobId);
       } else if (request.serviceAction) {
         await this.#runServiceAction(request, progress, jobId);
+      } else if (request.containerTuning) {
+        await this.#runContainerTuning(request, progress);
       } else if (plan.strategy === 'compose') {
         await this.#runCompose(request, plan, progress, targetTag, jobId);
       } else {
@@ -739,6 +743,101 @@ export class UpdaterService {
       // seguridad.
       removeImageFirst: request.mode === 'force' && (request.removeImageFirst ?? policy.removeImageOnForce),
       cleanupOldImage: policy.cleanupOldImage,
+      configure: this.#tuningConfigure(plan.containerName, request.imageRef, progress),
+      onProgress: progress,
+    });
+  }
+
+  #tuningConfigure(
+    containerName: string | null,
+    imageRef: string,
+    progress: (line: string) => void,
+  ): RecreateOptions['configure'] {
+    const rule = containerName ? effectiveRule(this.repos.diskHealth.rules(), containerName, imageKeyOf(imageRef)) : null;
+    if (!rule) return undefined;
+    return (body, container) => {
+      progress(`Aplicando la regla de salud del disco (${rule.scope === 'image' ? 'imagen' : 'contenedor'} ${rule.key})`);
+      return applyRuleToBody(body, rule, container.Config.Healthcheck);
+    };
+  }
+
+  async enqueueContainerTuning(input: {
+    containerId: string;
+    actorUserId?: number | null;
+  }): Promise<{ job: UpdateJob; done: Promise<UpdateJob> }> {
+    const target = this.inventory.snapshot.containers.find((container) => container.id === input.containerId);
+    if (!target) throw new Error('No se encuentra el contenedor');
+    if (target.isSelf) throw new SelfUpdateRejectedError();
+    if (this.#queue.length >= MAX_QUEUE) throw new UpdateInProgressError();
+
+    const jobId = this.repos.history.createJob({
+      imageRef: safeRef(target.image) ?? target.image,
+      containerId: target.id,
+      containerName: target.name,
+      projectKey: null,
+      mode: 'recreate',
+      strategy: 'recreate',
+      trigger: 'manual',
+      actorUserId: input.actorUserId ?? null,
+      actorChatId: null,
+      fromDigest: null,
+      fromTag: null,
+    });
+
+    let resolveDone!: (job: UpdateJob) => void;
+    let rejectDone!: (error: unknown) => void;
+    const done = new Promise<UpdateJob>((resolve, reject) => {
+      resolveDone = resolve;
+      rejectDone = reject;
+    });
+    done.catch(() => undefined);
+
+    this.#queue.push({
+      jobId,
+      request: {
+        imageRef: safeRef(target.image) ?? target.image,
+        mode: 'recreate',
+        trigger: 'manual',
+        containerTuning: { containerId: target.id, start: target.state === 'running' },
+      },
+      plan: {
+        strategy: 'recreate',
+        containerId: target.id,
+        containerName: target.name,
+        serviceName: null,
+        projectKey: null,
+        reason: null,
+      },
+      resolve: resolveDone,
+      reject: rejectDone,
+    });
+
+    this.#emit(jobId);
+    void this.#drainQueue();
+
+    const job = this.repos.history.getJob(jobId);
+    if (!job) throw new Error('No se ha podido crear el trabajo');
+    return { job, done };
+  }
+
+  async #runContainerTuning(request: UpdateRequest, progress: (line: string) => void): Promise<void> {
+    const spec = request.containerTuning!;
+    const inspect = await this.docker.inspectContainer(spec.containerId);
+    const name = inspect.Name.replace(/^\//, '');
+    const imageName = inspect.Config.Image ?? request.imageRef;
+    const configure = this.#tuningConfigure(name, safeRef(imageName) ?? imageName, progress);
+    if (!configure) throw new Error('El contenedor no tiene ninguna regla de salud del disco que aplicar');
+    progress(spec.start ? 'Recreando el contenedor con la nueva configuracion' : 'Recreando el contenedor parado sin arrancarlo');
+    await this.recreator.recreate({
+      containerId: spec.containerId,
+      ref: parseImageReference(imageName),
+      credentials: null,
+      removeImageFirst: false,
+      cleanupOldImage: false,
+      skipPull: true,
+      requireSameImage: true,
+      start: spec.start,
+      configure,
       onProgress: progress,
     });
   }

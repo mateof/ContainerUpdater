@@ -98,6 +98,7 @@ export class DiskIoReader {
       sustainMinutes: settings.diskAlertSustainMinutes,
       containerThresholdMbPerMin: settings.containerWriteThresholdMbPerMin,
       containerAlerts: containerAlertList(active),
+      swap: settings.diskWatchEnabled ? this.watch.swapStatus(now) : null,
       disks: settings.diskWatchEnabled
         ? buildDiskSummaries({
             watched: this.watch.watched(),

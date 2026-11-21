@@ -10,6 +10,14 @@ import type {
   DiskDeviceConfigInput,
   DiskIoSeriesResponse,
   DiskIoStatus,
+  ApplyResult,
+  DiskHealthOverview,
+  ImpactProbe,
+  LogRatesResponse,
+  MountReport,
+  RuleScope,
+  StoredRule,
+  TuningRule,
   BackupFile,
   CheckRun,
   ComposeProject,
@@ -373,6 +381,21 @@ export const api = {
   diskDevices: () => get<{ devices: BlockDevice[] }>('/disk-io/devices'),
   saveDiskDevice: (name: string, body: DiskDeviceConfigInput) =>
     put<{ device: BlockDevice }>(`/disk-io/devices/${encodeURIComponent(name)}`, body),
+  diskHealth: () => get<{ overview: DiskHealthOverview }>('/disk-health'),
+  saveTuningRule: (scope: RuleScope, key: string, rule: TuningRule) =>
+    put<{ rules: StoredRule[] }>('/disk-health/rules', { scope, key, rule }),
+  saveContainerRules: (containers: string[], rule: TuningRule) =>
+    post<{ rules: StoredRule[] }>('/disk-health/rules/containers', { containers, rule }),
+  deleteTuningRule: (scope: RuleScope, key: string) =>
+    post<{ rules: StoredRule[] }>('/disk-health/rules/delete', { scope, key }),
+  applyTuning: (containerIds: string[], recreate: boolean) =>
+    post<{ results: ApplyResult[] }>('/disk-health/apply', { containerIds, recreate }),
+  diskMounts: () => get<{ mounts: MountReport[] | null }>('/disk-health/mounts'),
+  logRates: (minutes: number) => post<{ logRates: LogRatesResponse }>('/disk-health/log-rates', { minutes }),
+  impactStatus: () => get<{ current: ImpactProbe | null; recent: ImpactProbe[] }>('/disk-health/impact'),
+  startImpact: (containerId: string, minutes: number) =>
+    post<{ probe: ImpactProbe }>('/disk-health/impact', { containerId, minutes }),
+  cancelImpact: () => post<{ probe: ImpactProbe | null }>('/disk-health/impact/cancel', {}),
 
   mcpTokens: () => get<{ tokens: McpToken[] }>('/mcp/tokens'),
   createMcpToken: (body: { name: string; scopes: McpScope[]; expiresInDays?: number | null }) =>

@@ -25,6 +25,9 @@ Several of them contradict the documentation or what gets repeated around.
 | Podman 5.4 reports `blkio` for `vda` (252:0) as `major: 0, minor: 252` | Device pairs that match nothing are tried swapped |
 | Podman 5.4 `system_cpu_usage` advances about 5% of wall time times CPUs, not the host CPU time Docker reports | An idle container came out at 98%: a system delta under a quarter of what is expected is discarded and wall time is used |
 | On DSM (kernel 4.4) the `blkio` controller exports no statistics at all | The per-container split is empty there; start and stop markers on the disk chart are what is left |
+| Podman 5.4's compat image inspect has no `Config.Healthcheck` | It is read from `/libpod/images/{id}/json`, which does carry it |
+| Podman 5.4 does not merge a partial healthcheck (only `interval`) with the image's: it keeps the image's whole | When the compose file has no `test`, the image's test and timings are written into it |
+| Podman 5.4's compat inspect returns `LogConfig.Config: null` although `max-size` is applied | Null options are treated as unknown: only the driver is compared |
 
 ## Cookie session, not JWT
 
@@ -654,3 +657,95 @@ modified. It also fits better among the sections that apply on change.
 on, what is measured is added on top. DSM cannot read the wear of every SSD
 (on the Lexar NS100 it reports `remain_life: -1`), so asking the user is the
 only reliable source.
+
+## Disk health: healthchecks and logging
+
+On the NAS the measured cost of a healthcheck probe was about 0.2 MB of disk,
+because dockerd rewrites the container state on every result. With 57 probes a
+minute that is about 12 MB/min, 7% of what the SSD was writing, and it is the only
+part a user can cut without touching the applications. The **Disk health** tab
+shows every container's effective healthcheck, where it comes from (compose,
+image, set on the container, disabled or none), what would be left if the
+compose file stopped declaring it, and the logging driver with its rotation.
+
+### Rules per image and per container, applied by writing the configuration
+
+A rule is a target (healthcheck interval or off, logging driver and options),
+stored per image (every tag of a repository) or per container. The container
+rule wins. The rule itself changes nothing until it is applied, and applying
+means writing it where it really lives:
+
+- **Compose projects**: into the service in the YAML, through the same project
+  file service that archives the previous version. Editing uses the `yaml`
+  library's document model, so comments, quoting, flow lists and blank lines
+  survive; indentation and whether lists are indented are detected from the
+  file. A service using `extends`, a merge key (`<<`) or an alias for those keys
+  is left alone and the reason is given, because the value could come from
+  elsewhere. The file is validated with `docker compose config` before and after;
+  if it no longer validates afterwards, the previous text is written back.
+- **Standalone containers**: by recreating them through the API with the same
+  image and without pulling. If the tag already points to a newer image, it
+  refuses, because recreating would also update; the rule is then applied by
+  the update itself, since updates of standalone containers now pass the
+  container's rule into the recreation. A stopped container is recreated without
+  being started.
+
+### Recreating, not restarting
+
+Docker cannot change the healthcheck or the log configuration of an existing
+container, and a restart keeps the old one. So after saving, the running
+containers affected are listed with a "Recreate now" button, which queues the
+same `rm -s` + `up -d` service recreation the panel already had, or the API
+recreation for standalone ones. "Later" leaves them marked as pending until the
+next recreation or update.
+
+### The image's test is copied into the compose file
+
+Setting only `interval` in the compose file would be enough on Docker, which
+merges a partial healthcheck field by field with the image's. Podman 5.4 does
+not: it takes the image's healthcheck whole and the interval is lost, verified.
+So when the service has no `test`, the image's test, timeout, retries and start
+period are written too. The cost: if a later image changes its command, the
+compose file keeps the old one, which is at least visible in the file.
+
+### Two recreation bugs found on the way
+
+- Recreating a standalone container dropped a healthcheck set on it and went
+  back to the image's. The healthcheck is now carried over when it differs from
+  the old image's, like `Cmd` and `Env`.
+- The health gate after recreating looked at the image's healthcheck and waited
+  at most 120 seconds. With the container's own interval of five minutes, the
+  first probe never arrived in time and a good update was rolled back. It now
+  reads the new container's healthcheck, and above 90 seconds it falls back to
+  "still running and not restarting".
+
+### Measuring a container's impact by pausing it
+
+What found the biggest writer on the NAS was stopping things and watching the
+disk. The panel can now do it: it pauses a container for 3 to 15 minutes and
+compares the disk rate during the pause with the same length of time before. It
+needs a 60 second sampling interval or less and enough data before, skips the
+first 30 seconds of the pause (btrfs commits every 30 seconds) and only calls a
+difference significant above twice the standard error of the baseline and above
+1 MB/min. The probe is stored in `impact_probes`; if the app restarts mid-pause,
+it resumes the container on start. It is only offered for containers, because
+DSM packages cannot be paused without root.
+
+### DSM packages on the chart
+
+Package starts and stops are read from `/proc/<pid>/cgroup`, readable without
+privileges: the top-level `*.slice` other than the system ones, or a
+`pkg-<Name>-*.service` unit. A package only counts as stopped after two
+consecutive readings without processes, so a package spawning short tasks does
+not flicker. The CPU time a process spends waiting for I/O
+(`delayacct_blkio_ticks`) was ruled out as a ranking: on the NAS almost all of it
+falls on kernel journal threads (`jbd2`, `btrfs-transacti`), not on whoever asks
+for the fsync.
+
+### Read-only reports
+
+Swap writes come from `/proc/vmstat`, volume mount options from
+`/proc/1/mountinfo` of the host and log volume from `docker logs --since`. None
+of them changes anything: atime and commit are set in DSM, and log bytes are
+text, not disk cost.
+

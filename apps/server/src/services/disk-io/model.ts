@@ -35,6 +35,7 @@ export interface Tick {
   disks: DiskTickSample[];
   containerDisks: ContainerDiskTickSample[];
   usage: UsageTickSample[];
+  swap?: { inBytes: number; outBytes: number } | null;
 }
 
 export interface DiskBucket {

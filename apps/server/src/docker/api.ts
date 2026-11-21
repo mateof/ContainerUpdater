@@ -8,6 +8,7 @@ import type {
   ContainerListItem,
   ContainerStats,
   CreateContainerBody,
+  HealthcheckConfig,
   ImageInspect,
   ImageListItem,
   NetworkAttachment,
@@ -49,6 +50,31 @@ export class DockerApi {
       // timeout de red debe ser mayor o cortariamos nosotros primero.
       timeoutMs: (timeoutSeconds + 30) * 1000,
     });
+  }
+
+  async pauseContainer(id: string): Promise<void> {
+    await this.client.request({ method: 'POST', path: `/containers/${id}/pause` });
+  }
+
+  async unpauseContainer(id: string): Promise<void> {
+    await this.client.request({ method: 'POST', path: `/containers/${id}/unpause` });
+  }
+
+  async daemonLogDriver(): Promise<string | null> {
+    const info = await this.client.request<{ LoggingDriver?: string }>({ path: '/info' });
+    return info?.LoggingDriver ?? null;
+  }
+
+  async logVolumeSince(id: string, sinceSeconds: number, tty: boolean): Promise<{ bytes: number; lines: number }> {
+    const { text, status } = await this.client.rawRequest({
+      path: `/containers/${id}/logs?stdout=1&stderr=1&since=${Math.floor(sinceSeconds)}&timestamps=0`,
+      headers: { Accept: 'application/octet-stream' },
+      timeoutMs: 20_000,
+    });
+    if (status >= 400) throw new DockerError(text.trim() || 'No se han podido leer los logs', status, text);
+    const body = tty ? text : demultiplexLogs(Buffer.from(text, 'binary'));
+    const lines = body.length === 0 ? 0 : body.split('\n').filter((line) => line.length > 0).length;
+    return { bytes: Buffer.byteLength(body, 'utf8'), lines };
   }
 
   async restartContainer(id: string, timeoutSeconds = 10): Promise<void> {
@@ -124,10 +150,19 @@ export class DockerApi {
     return this.client.request<ImageListItem[]>({ path: '/images/json?all=0' });
   }
 
-  inspectImage(ref: string): Promise<ImageInspect> {
-    return this.client.request<ImageInspect>({
+  async inspectImage(ref: string): Promise<ImageInspect> {
+    const image = await this.client.request<ImageInspect>({
       path: `/images/${encodeURIComponent(ref)}/json`,
     });
+    if (image.Config && image.Config.Healthcheck === undefined && this.client.versionInfo?.flavor === 'podman') {
+      const native = await this.client
+        .request<{ Healthcheck?: HealthcheckConfig }>({
+          path: `/libpod/images/${encodeURIComponent(ref)}/json`,
+        })
+        .catch(() => null);
+      if (native?.Healthcheck) image.Config.Healthcheck = native.Healthcheck;
+    }
+    return image;
   }
 
   /**

@@ -26,6 +26,9 @@ ahí.
 | Podman 5.4 da el `blkio` de `vda` (252:0) como `major: 0, minor: 252` | Los pares que no coinciden con ningún dispositivo se prueban invertidos |
 | El `system_cpu_usage` de Podman 5.4 avanza un 5 % del reloj por CPU, no el tiempo de CPU del host que da Docker | Un contenedor parado salía al 98 %: un delta de sistema por debajo de una cuarta parte de lo esperado se descarta y se usa el reloj |
 | En DSM (kernel 4.4) el controlador `blkio` no exporta ninguna estadística | Ahí el reparto por contenedor sale vacío; lo que queda son las marcas de arranque y parada en la gráfica de disco |
+| El inspect de imágenes de la API compatible de Podman 5.4 no trae `Config.Healthcheck` | Se lee de `/libpod/images/{id}/json`, que sí lo trae |
+| Podman 5.4 no combina un healthcheck parcial (solo `interval`) con el de la imagen: se queda con el de la imagen entero | Si el compose no tiene `test`, se escriben en él el test y los tiempos de la imagen |
+| El inspect compatible de Podman 5.4 devuelve `LogConfig.Config: null` aunque aplica `max-size` | Las opciones nulas se tratan como desconocidas: solo se compara el driver |
 
 ## Sesión con cookie, no JWT
 
@@ -612,3 +615,95 @@ modificado. Además encaja mejor entre las secciones que se aplican al momento.
 lo que se mide se suma encima. DSM no sabe leer el desgaste de todos los SSD
 (en los Lexar NS100 da `remain_life: -1`), así que preguntarlo es la única
 fuente fiable.
+
+## Salud del disco: healthchecks y logs
+
+En el NAS, cada sondeo de un healthcheck costaba unos 0,2 MB de disco, porque
+dockerd reescribe el estado del contenedor con cada resultado. Con 57 sondeos
+por minuto son unos 12 MB/min, un 7 % de lo que escribía el SSD, y es la única
+parte que el usuario puede recortar sin tocar las aplicaciones. La pestaña
+**Salud del disco** enseña el healthcheck efectivo de cada contenedor, de dónde
+sale (compose, imagen, puesto al contenedor, desactivado o ninguno), qué quedaría
+si el compose dejara de declararlo, y el driver de logs con su rotación.
+
+### Reglas por imagen y por contenedor, aplicadas escribiendo la configuración
+
+Una regla es un objetivo (intervalo del healthcheck o desactivarlo, driver de
+logs y sus opciones), guardado por imagen (todas las etiquetas de un
+repositorio) o por contenedor. Manda la del contenedor. La regla por sí sola no
+cambia nada hasta que se aplica, y aplicarla es escribirla donde vive de verdad:
+
+- **Proyectos Compose**: en el servicio del YAML, a través del mismo servicio de
+  ficheros de proyecto que archiva la versión anterior. Se edita con el modelo
+  de documento de la librería `yaml`, así que sobreviven los comentarios, las
+  comillas, las listas entre corchetes y las líneas en blanco; la sangría y si
+  las listas van sangradas se detectan del propio fichero. Un servicio con
+  `extends`, una clave de fusión (`<<`) o un alias en esas claves no se toca y se
+  dice por qué, porque el valor podría venir de otro sitio. El fichero se valida
+  con `docker compose config` antes y después; si después ya no valida, se
+  vuelve a escribir el texto anterior.
+- **Contenedores sueltos**: recreándolos por API con la misma imagen y sin
+  descargar. Si la etiqueta ya apunta a una imagen más nueva, se niega, porque
+  recrear también actualizaría; entonces la regla la aplica la propia
+  actualización, ya que las actualizaciones de contenedores sueltos pasan ahora
+  la regla del contenedor a la recreación. Un contenedor parado se recrea sin
+  arrancarlo.
+
+### Recrear, no reiniciar
+
+Docker no puede cambiar el healthcheck ni la configuración de logs de un
+contenedor que ya existe, y un reinicio conserva la vieja. Por eso, al guardar,
+se listan los contenedores en marcha afectados con un botón "Recrear ahora", que
+encola la misma recreación de servicio `rm -s` + `up -d` que ya tenía el panel, o
+la recreación por API en los sueltos. "Más tarde" los deja marcados como
+pendientes hasta la siguiente recreación o actualización.
+
+### El test de la imagen se copia al compose
+
+Poner solo `interval` en el compose bastaría con Docker, que combina campo a
+campo un healthcheck parcial con el de la imagen. Podman 5.4 no lo hace: toma el
+de la imagen entero y el intervalo se pierde, comprobado. Así que, cuando el
+servicio no tiene `test`, se escriben también el test, el timeout, los reintentos
+y el periodo de arranque de la imagen. El coste: si una imagen posterior cambia
+su comando, el compose conserva el viejo, que al menos se ve en el fichero.
+
+### Dos fallos de la recreación encontrados por el camino
+
+- Recrear un contenedor suelto perdía el healthcheck que se le hubiera puesto y
+  volvía al de la imagen. Ahora se arrastra cuando difiere del de la imagen
+  vieja, igual que `Cmd` y `Env`.
+- La espera de salud tras recrear miraba el healthcheck de la imagen y esperaba
+  como mucho 120 segundos. Con un intervalo propio de cinco minutos, el primer
+  sondeo nunca llegaba a tiempo y se deshacía una actualización buena. Ahora lee
+  el healthcheck del contenedor nuevo, y por encima de 90 segundos pasa a
+  comprobar "sigue en marcha y no reinicia".
+
+### Medir el impacto de un contenedor pausándolo
+
+Lo que encontró al que más escribía en el NAS fue parar cosas y mirar el disco.
+El panel ya lo hace: pausa un contenedor de 3 a 15 minutos y compara el ritmo del
+disco durante la pausa con el mismo tiempo de antes. Necesita un intervalo de
+muestreo de 60 segundos o menos y datos suficientes de antes, descarta los
+primeros 30 segundos de la pausa (btrfs confirma cada 30 segundos) y solo da una
+diferencia por significativa por encima de dos veces el error típico de la base
+y de 1 MB/min. La medición se guarda en `impact_probes`; si la app se reinicia a
+mitad de la pausa, reanuda el contenedor al arrancar. Solo se ofrece para
+contenedores, porque los paquetes de DSM no se pueden pausar sin root.
+
+### Los paquetes de DSM en la gráfica
+
+Los arranques y paradas de paquetes se leen de `/proc/<pid>/cgroup`, que se lee
+sin privilegios: el `*.slice` de primer nivel que no sea del sistema, o una
+unidad `pkg-<Nombre>-*.service`. Un paquete solo se da por parado tras dos
+lecturas seguidas sin procesos, para que no parpadee uno que lanza tareas cortas.
+Se descartó ordenar por el tiempo que cada proceso pasa esperando a la E/S
+(`delayacct_blkio_ticks`): en el NAS casi todo cae en hilos del kernel
+(`jbd2`, `btrfs-transacti`), no en quien pide el fsync.
+
+### Informes de solo lectura
+
+Lo que escribe la swap sale de `/proc/vmstat`, las opciones de montaje de los
+volúmenes de `/proc/1/mountinfo` del host y el volumen de logs de
+`docker logs --since`. Ninguno cambia nada: el atime y el commit se ajustan en
+DSM, y los bytes de log son texto, no coste en disco.
+

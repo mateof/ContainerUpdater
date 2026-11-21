@@ -8,7 +8,9 @@ export type DiskIoView = 'disks' | 'stacked';
 
 export type DiskIoSource = 'memory' | 'history' | 'mixed' | 'none';
 
-export type ContainerEventKind = 'start' | 'stop' | 'pause' | 'unpause';
+export type ContainerEventKind = 'start' | 'stop' | 'pause' | 'unpause' | 'pull';
+
+export type DiskEventSource = 'container' | 'package' | 'image';
 
 export interface ContainerEvent {
   at: number;
@@ -16,6 +18,7 @@ export interface ContainerEvent {
   project: string | null;
   kind: ContainerEventKind;
   exitCode: number | null;
+  source: DiskEventSource;
 }
 
 export const DISK_IO_RANGES: DiskIoRange[] = ['1h', '24h', '7d', '30d'];
@@ -118,6 +121,16 @@ export interface DiskIoStatus {
   containerThresholdMbPerMin: number;
   containerAlerts: Array<{ name: string; since: number }>;
   disks: DiskSummary[];
+  swap: SwapStatus | null;
+}
+
+export interface SwapStatus {
+  totalBytes: number;
+  usedBytes: number;
+  outBpsNow: number | null;
+  outBpsHour: number | null;
+  inBpsHour: number | null;
+  coveredSeconds: number;
 }
 
 export interface DiskSeries {

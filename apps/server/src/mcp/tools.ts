@@ -162,8 +162,9 @@ export const MCP_TOOLS: McpTool[] = [
       'aproximado por contenedor (de blkio), con lo no atribuido, alertas activas y la vida util ' +
       'estimada por TBW. Ritmos en MB/min. Para averiguar que desgasta un SSD o por que salto una ' +
       'alerta de escritura. Lo no atribuido incluye el sistema, paquetes del NAS y el propio Docker: ' +
-      'no lo repartas entre contenedores. Incluye los arranques y paradas de contenedores de la ventana, ' +
-      'para cruzar una subida o bajada del disco con lo que cambio. Si la vigilancia de disco esta ' +
+      'no lo repartas entre contenedores. Incluye los arranques y paradas de contenedores y paquetes del NAS ' +
+      'y las descargas de imagenes de la ventana, para cruzar una subida o bajada del disco con lo que cambio, ' +
+      'y lo que escribe la swap. Si la vigilancia de disco esta ' +
       'desactivada, lo dice y no hay datos.',
     inputSchema: {
       range: z.enum(['1h', '24h', '7d', '30d']).optional().describe('Ventana para los que mas escriben (por defecto 1h)'),
@@ -214,8 +215,16 @@ export const MCP_TOOLS: McpTool[] = [
             writeMbPerMin: toMbMin(c.writeBps),
           })),
         })),
+        swap: status.swap
+          ? {
+              usedMb: Math.round(status.swap.usedBytes / 1e6),
+              totalMb: Math.round(status.swap.totalBytes / 1e6),
+              writeMbPerMinLastHour: toMbMin(status.swap.outBpsHour),
+            }
+          : null,
         containerEvents: lifecycle.events.map((event) => ({
           at: new Date(event.at).toISOString(),
+          source: event.source,
           container: event.container,
           project: event.project,
           kind: event.kind,

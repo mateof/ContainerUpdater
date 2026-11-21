@@ -31,6 +31,8 @@ import { WatchdogService } from './services/watchdog.js';
 import { DiskWatchService } from './services/disk-io/collector.js';
 import { DiskIoReader } from './services/disk-io/reader.js';
 import { DockerEventsWatcher } from './services/events.js';
+import { DiskHealthService } from './services/disk-health/service.js';
+import { ImpactProbeService } from './services/disk-health/impact.js';
 import { StorageService } from './services/storage.js';
 import { BackupService } from './services/backup.js';
 import { Scheduler } from './scheduler/index.js';
@@ -58,6 +60,8 @@ export interface AppContext {
   watchdog: WatchdogService;
   diskWatch: DiskWatchService;
   diskIo: DiskIoReader;
+  diskHealth: DiskHealthService;
+  impact: ImpactProbeService;
   dockerEvents: DockerEventsWatcher;
   storage: StorageService;
   backup: BackupService;
@@ -262,6 +266,18 @@ export async function createApp(config: Config): Promise<AppContext> {
   const diskWatch = new DiskWatchService(docker, inventory, repos, config.hostProc, log.child('disk-io'));
   diskWatch.setSink(notifier);
   const diskIo = new DiskIoReader(diskWatch, repos, inventory);
+  const diskHealth = new DiskHealthService(
+    docker,
+    inventory,
+    repos,
+    projectFiles,
+    compose,
+    recreator,
+    updater,
+    config.hostProc,
+    log.child('disk-health'),
+  );
+  const impact = new ImpactProbeService(docker, diskWatch, repos, inventory, log.child('disk-impact'));
 
   /**
    * Escucha del daemon para reflejar los cambios al instante.
@@ -369,6 +385,7 @@ export async function createApp(config: Config): Promise<AppContext> {
   scheduler.start();
   dockerEvents.start();
   diskWatch.start();
+  void impact.recover();
 
   const shutdown = async (): Promise<void> => {
     log.info('Cerrando...');
@@ -377,6 +394,7 @@ export async function createApp(config: Config): Promise<AppContext> {
     dockerEvents.stop();
     scheduler.stop();
     metrics.stop();
+    await impact.stop().catch(() => undefined);
     diskWatch.stop();
     await telegram.stop();
     db.close();
@@ -404,6 +422,8 @@ export async function createApp(config: Config): Promise<AppContext> {
     watchdog,
     diskWatch,
     diskIo,
+    diskHealth,
+    impact,
     dockerEvents,
     storage,
     backup,

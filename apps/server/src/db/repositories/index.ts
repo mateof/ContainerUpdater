@@ -12,6 +12,7 @@ import { createTotpRepository } from './totp.js';
 import { createWatchRepository } from './watch.js';
 import { createMcpRepository } from './mcp.js';
 import { createDiskIoRepository } from './disk-io.js';
+import { createDiskHealthRepository } from './disk-health.js';
 
 export function createRepositories(db: Db, keyring: Keyring) {
   return {
@@ -32,6 +33,7 @@ export function createRepositories(db: Db, keyring: Keyring) {
     watch: createWatchRepository(db),
     mcp: createMcpRepository(db),
     diskIo: createDiskIoRepository(db),
+    diskHealth: createDiskHealthRepository(db),
   };
 }
 

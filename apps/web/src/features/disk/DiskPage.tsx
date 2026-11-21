@@ -13,13 +13,15 @@ import {
   type DiskIoSeriesResponse,
   type DiskIoView,
   type DiskSummary,
+  type SwapStatus,
 } from '@cu/shared';
 import { api } from '@/api/client';
 import { Chart, type ChartMarker, type MarkerShape, type Series } from '@/components/Chart';
 import { FilterPills } from '@/components/Filters';
 import { Badge, Banner, Button, Card, EmptyState, Select, Skeleton, cx } from '@/components/ui';
 import { IconAlert, IconDisk } from '@/components/icons';
-import { formatDateTime, formatDuration, formatEventTime } from '@/lib/format';
+import { DiskTabs } from './DiskTabs';
+import { formatBytes, formatDateTime, formatDuration, formatEventTime } from '@/lib/format';
 
 const CATEGORICAL = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5', '--series-6'];
 const OTHERS_COLOR = 'var(--series-other)';
@@ -28,7 +30,7 @@ const REFRESH_MS = 60_000;
 const EVENTS_PREVIEW = 8;
 const CURSOR_EVENTS = 3;
 
-const SHAPE: Record<ContainerEventKind, MarkerShape> = { start: 'up', unpause: 'up', stop: 'down', pause: 'down' };
+const SHAPE: Record<ContainerEventKind, MarkerShape> = { start: 'up', unpause: 'up', stop: 'down', pause: 'down', pull: 'square' };
 
 function useDataTheme(): string {
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? '');
@@ -124,9 +126,12 @@ export function DiskPage(): ReactNode {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">{t('disk.title')}</h1>
-        <p className="text-[0.8125rem] text-[var(--text-muted)] mt-0.5 max-w-prose">{t('disk.subtitle')}</p>
+      <div className="space-y-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">{t('disk.title')}</h1>
+          <p className="text-[0.8125rem] text-[var(--text-muted)] mt-0.5 max-w-prose">{t('disk.subtitle')}</p>
+        </div>
+        <DiskTabs />
       </div>
 
       {!status.enabled ? (
@@ -159,6 +164,7 @@ export function DiskPage(): ReactNode {
             {status.disks.map((disk) => (
               <DiskCard key={disk.name} disk={disk} color={colorFor(`disk:${disk.name}`)} />
             ))}
+            {status.swap ? <SwapCard swap={status.swap} /> : null}
           </div>
 
           <Card className="p-5 space-y-4">
@@ -572,7 +578,14 @@ function SeriesChart({
 }
 
 function MarkerGlyph({ shape }: { shape: MarkerShape | 'mixed' }): ReactNode {
-  const points = shape === 'up' ? '5,1 9,9 1,9' : shape === 'down' ? '1,1 9,1 5,9' : '5,1 9,5 5,9 1,5';
+  const points =
+    shape === 'up'
+      ? '5,1 9,9 1,9'
+      : shape === 'down'
+        ? '1,1 9,1 5,9'
+        : shape === 'square'
+          ? '2,2 8,2 8,8 2,8'
+          : '5,1 9,5 5,9 1,5';
   return (
     <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" className="shrink-0">
       <polygon points={points} fill="var(--text-muted)" />
@@ -593,6 +606,10 @@ function MarkerLegend(): ReactNode {
         {t('disk.legendDown')}
       </span>
       <span className="inline-flex items-center gap-1">
+        <MarkerGlyph shape="square" />
+        {t('disk.legendPull')}
+      </span>
+      <span className="inline-flex items-center gap-1">
         <MarkerGlyph shape="mixed" />
         {t('disk.legendMixed')}
       </span>
@@ -601,9 +618,11 @@ function MarkerLegend(): ReactNode {
 }
 
 function eventLabel(event: ContainerEvent, t: (key: string, options?: Record<string, unknown>) => string): string {
+  if (event.kind === 'pull') return t('disk.eventPull', { image: event.container });
   const action = t(`disk.eventKind_${event.kind}`);
   const exit = event.exitCode !== null && event.exitCode !== 0 ? ` (${t('disk.eventExit', { code: event.exitCode })})` : '';
-  return `${event.container} ${action}${exit}`;
+  const subject = event.source === 'package' ? t('disk.eventPackage', { name: event.container }) : event.container;
+  return `${subject} ${action}${exit}`;
 }
 
 function CursorEvents({ events }: { events: ContainerEvent[] }): ReactNode {
@@ -648,6 +667,25 @@ function EventList({ events, truncated }: { events: ContainerEvent[]; truncated:
       {truncated ? (
         <p className="text-[0.75rem] text-[var(--text-muted)]">{t('disk.eventsTruncated', { count: events.length })}</p>
       ) : null}
+    </Card>
+  );
+}
+
+function SwapCard({ swap }: { swap: SwapStatus }): ReactNode {
+  const { t } = useTranslation();
+  return (
+    <Card className="p-5 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-[0.9375rem] font-semibold">{t('disk.swapTitle')}</h2>
+        <span className="text-[0.75rem] text-[var(--text-muted)] tabular-nums">
+          {t('disk.swapUsed', { used: formatBytes(swap.usedBytes), total: formatBytes(swap.totalBytes) })}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Metric label={t('disk.swapNow')} value={`${mbMin(swap.outBpsNow)} MB/min`} />
+        <Metric label={t('disk.swapHour')} value={`${mbMin(swap.outBpsHour)} MB/min`} />
+      </div>
+      <p className="text-[0.75rem] text-[var(--text-muted)] leading-snug">{t('disk.swapHint')}</p>
     </Card>
   );
 }

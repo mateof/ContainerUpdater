@@ -32,7 +32,7 @@ interface ChartProps {
   markers?: ChartMarker[];
 }
 
-export type MarkerShape = 'up' | 'down';
+export type MarkerShape = 'up' | 'down' | 'square';
 
 export interface ChartMarker {
   at: number;
@@ -97,6 +97,8 @@ function drawMarkers(u: uPlot, markers: ChartMarker[], line: string, ink: string
       ctx.moveTo(x - size, y - size);
       ctx.lineTo(x + size, y - size);
       ctx.lineTo(x, y + size);
+    } else if (cluster.shape === 'square') {
+      ctx.rect(x - size * 0.8, y - size * 0.8, size * 1.6, size * 1.6);
     } else {
       ctx.moveTo(x, y - size);
       ctx.lineTo(x + size, y);

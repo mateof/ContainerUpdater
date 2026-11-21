@@ -19,6 +19,8 @@ import type { RegistryCredentials } from '../db/repositories/index.js';
 import { localImageName, type ImageReference } from '../registry/reference.js';
 import type { Logger } from '../logger.js';
 
+const MAX_WAITED_INTERVAL_SECONDS = 90;
+
 export class RecreateUnsupportedError extends Error {
   constructor(readonly reason: string) {
     super(`No se puede recrear este contenedor con garantias: ${reason}`);
@@ -43,6 +45,9 @@ export interface RecreateOptions {
    * que se queria salir, y sin ningun error que lo delatara.
    */
   skipPull?: boolean;
+  configure?: (body: CreateContainerBody, container: ContainerInspect) => CreateContainerBody;
+  start?: boolean;
+  requireSameImage?: boolean;
   onProgress: (line: string) => void;
 }
 
@@ -123,6 +128,14 @@ export class ContainerRecreator {
         // servicio sigue en pie.
         if (options.skipPull) {
           onProgress('La imagen ya esta en disco: no se descarga nada');
+          if (options.requireSameImage) {
+            const current = await this.docker.inspectImage(localName);
+            if (current.Id !== oldImageId) {
+              throw new RecreateUnsupportedError(
+                `${localName} ya apunta a otra version. Actualiza el contenedor y el cambio se aplicara en esa misma recreacion`,
+              );
+            }
+          }
         } else {
           onProgress(`Descargando ${options.ref.normalized}`);
           await this.docker.pullImage(options.ref, options.credentials, onProgress);
@@ -139,7 +152,8 @@ export class ContainerRecreator {
       }
 
       const newImage = await this.docker.inspectImage(localName);
-      const body = buildCreateBody(container, oldImage, localName);
+      const built = buildCreateBody(container, oldImage, localName);
+      const body = options.configure ? options.configure(built, container) : built;
 
       onProgress('Creando el contenedor nuevo');
       newContainerId = await this.docker.createContainer(originalName, body);
@@ -149,13 +163,17 @@ export class ContainerRecreator {
       // aplicaciones fallan en el arranque y no lo reintentan.
       await this.#attachExtraNetworks(container, newContainerId, onProgress);
 
-      onProgress('Arrancando el contenedor nuevo');
-      await this.docker.startContainer(newContainerId);
-      started = true;
+      if (options.start === false) {
+        onProgress('El contenedor estaba parado: se deja creado sin arrancar');
+      } else {
+        onProgress('Arrancando el contenedor nuevo');
+        await this.docker.startContainer(newContainerId);
+        started = true;
 
-      await this.#waitUntilHealthy(newContainerId, newImage, onProgress);
+        await this.#waitUntilHealthy(newContainerId, onProgress);
 
-      onProgress('El contenedor nuevo funciona correctamente');
+        onProgress('El contenedor nuevo funciona correctamente');
+      }
 
       if (renamed) {
         await this.docker.removeContainer(container.Id, true).catch((error: Error) => {
@@ -221,16 +239,18 @@ export class ContainerRecreator {
    * iteracion. Si la imagen declara healthcheck se espera a `healthy`; si no,
    * se da un margen y se comprueba que no haya reiniciado.
    */
-  async #waitUntilHealthy(
-    containerId: string,
-    image: ImageInspect,
-    onProgress: (line: string) => void,
-  ): Promise<void> {
-    const hasHealthcheck = Boolean(
-      image.Config?.Healthcheck?.Test && image.Config.Healthcheck.Test[0] !== 'NONE',
-    );
+  async #waitUntilHealthy(containerId: string, onProgress: (line: string) => void): Promise<void> {
+    const created = await this.docker.inspectContainer(containerId);
+    const healthcheck = created.Config.Healthcheck;
+    const hasHealthcheck = Boolean(healthcheck?.Test && healthcheck.Test.length > 0 && healthcheck.Test[0] !== 'NONE');
+    const intervalSeconds = (healthcheck?.Interval ?? 0) / 1e9 || 30;
 
-    if (hasHealthcheck) {
+    if (hasHealthcheck && intervalSeconds > MAX_WAITED_INTERVAL_SECONDS) {
+      onProgress(
+        `El healthcheck se comprueba cada ${Math.round(intervalSeconds)} s, mas de lo que se espera aqui: ` +
+          'se comprueba en su lugar que se mantiene en marcha',
+      );
+    } else if (hasHealthcheck) {
       onProgress('Esperando a que el healthcheck pase a saludable');
       const deadline = Date.now() + 120_000;
       while (Date.now() < deadline) {
@@ -248,7 +268,7 @@ export class ContainerRecreator {
       throw new Error('El healthcheck no ha pasado a saludable en 120 segundos');
     }
 
-    onProgress('La imagen no define healthcheck: comprobando que se mantiene en marcha');
+    if (!hasHealthcheck) onProgress('El contenedor no tiene healthcheck: comprobando que se mantiene en marcha');
     await sleep(15_000);
     const inspect = await this.docker.inspectContainer(containerId);
     if (!inspect.State.Running) {
@@ -327,6 +347,11 @@ export function buildCreateBody(
     ? undefined
     : container.Config.Entrypoint;
 
+  const healthcheck =
+    JSON.stringify(container.Config.Healthcheck ?? null) === JSON.stringify(imageConfig.Healthcheck ?? null)
+      ? undefined
+      : (container.Config.Healthcheck ?? undefined);
+
   const hostConfig = sanitizeHostConfig(container.HostConfig);
 
   // Los volumenes anonimos (nombre de 64 hex) no aparecen en Binds. Si no se
@@ -365,6 +390,7 @@ export function buildCreateBody(
     Labels: Object.keys(userLabels).length > 0 ? userLabels : undefined,
     WorkingDir: container.Config.WorkingDir || undefined,
     ExposedPorts: container.Config.ExposedPorts ?? undefined,
+    Healthcheck: healthcheck,
     StopSignal: container.Config.StopSignal,
     StopTimeout: container.Config.StopTimeout ?? undefined,
     Tty: container.Config.Tty,

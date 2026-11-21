@@ -27,6 +27,9 @@ const ProjectsPage = lazy(() =>
 const UpdatesPage = lazy(() =>
   import('@/features/updates/UpdatesPage').then((m) => ({ default: m.UpdatesPage })),
 );
+const DiskHealthPage = lazy(() =>
+  import('@/features/disk/DiskHealthPage').then((m) => ({ default: m.DiskHealthPage })),
+);
 const DiskPage = lazy(() =>
   import('@/features/disk/DiskPage').then((m) => ({ default: m.DiskPage })),
 );
@@ -63,6 +66,7 @@ export function App(): ReactNode {
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/updates" element={<UpdatesPage />} />
           <Route path="/disk" element={<DiskPage />} />
+          <Route path="/disk/health" element={<DiskHealthPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

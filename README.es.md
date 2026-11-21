@@ -341,9 +341,12 @@ tenga el panel abierto, así que necesita el montaje `/proc:/host/proc:ro`.
   Synology suele ser lo más grande: ahí caen los paquetes de DSM, el propio
   Docker guardando el estado de los healthchecks y la escritura diferida de
   btrfs. En DSM el kernel no da ningún contador de `blkio`, así que ahí es todo.
-- **Marcas de arranque y parada** en la gráfica, una por cada contenedor que
-  arranca, se para, se pausa o se reanuda, con la lista debajo. Cuando el disco
-  sube o baja de golpe, enseñan qué cambió justo antes.
+- **Marcas** en la gráfica por cada contenedor que arranca, se para, se pausa o
+  se reanuda, cada paquete de DSM que arranca o se para y cada imagen que se
+  descarga, con la lista debajo. Cuando el disco sube o baja de golpe, enseñan
+  qué cambió justo antes.
+- **Swap**: lo que el kernel escribe en la swap, que en DSM está en todos los
+  discos.
 - **Avisos** por Telegram cuando un disco se mantiene por encima de un umbral
   durante N minutos (120 MB/min durante 15 minutos por defecto), con los
   contenedores que más escriben y lo no atribuido, y otro mensaje cuando se
@@ -359,6 +362,29 @@ Con **Guardar histórico en disco** activado guarda tramos de 5 minutos (media y
 máximo por disco y por contenedor, y CPU y memoria por contenedor) en una sola
 escritura cada 5 minutos. Sin él, las últimas 24 horas viven en memoria. El
 porqué de cada decisión está en [docs/DECISIONS.es.md](docs/DECISIONS.es.md).
+
+### Salud del disco
+
+La pestaña **Salud del disco** va de lo que se puede recortar, no solo medir:
+
+- **Healthchecks** de cada contenedor: de dónde sale cada uno (compose, imagen,
+  el propio contenedor, desactivado o ninguno), cuántos sondeos hace por minuto
+  y qué quedaría si el compose dejara de declararlo. En un Synology cada sondeo
+  reescribe el estado del contenedor en disco.
+- **Logs**: driver y rotación, con aviso para `json-file` sin `max-size` y para
+  el driver `db` de Synology.
+- **Cambiarlos** por contenedor, para varios a la vez o con una **regla por
+  imagen**: healthcheck cada N segundos o minutos (o desactivado) y `json-file`
+  rotado (15m × 3 por defecto), `local` o sin logs. Los proyectos Compose se
+  editan en su YAML conservando comentarios y formato; los contenedores sueltos
+  se recrean por API sin descargar nada. Como Docker no puede cambiar eso en un
+  contenedor que ya existe, a los que están en marcha se les ofrece **Recrear
+  ahora**.
+- **Medir el impacto de un contenedor**: lo pausa unos minutos y compara lo que
+  escribe el disco antes y durante la pausa.
+- **Quién loguea más** en los últimos 10 minutos, y las **opciones de montaje**
+  de los volúmenes (hora de acceso, intervalo de commit de btrfs) con lo que hay
+  que cambiar en DSM.
 
 ## Ayuda dentro de la aplicación
 

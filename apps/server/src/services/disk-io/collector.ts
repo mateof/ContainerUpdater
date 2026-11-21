@@ -5,6 +5,7 @@ import {
   type AppSettings,
   type ContainerEvent,
   type ContainerSummary,
+  type SwapStatus,
 } from '@cu/shared';
 import { StatsCalculator } from '../../docker/stats.js';
 import { mapWithConcurrency } from '../checker.js';
@@ -33,6 +34,9 @@ import {
   type UsageTickSample,
 } from './model.js';
 import { lifecycleEventFrom } from './lifecycle.js';
+import { PackageTracker, scanPackages } from './packages.js';
+import { PAGE_BYTES, parseMeminfo, parseVmstat, type SwapCounters, type SwapSize } from './system.js';
+import { counterDelta } from './counters.js';
 import { alertSubject, evaluateAlerts, type AlertInput, type AlertTransition } from './alerts.js';
 
 export const RING_SPAN_MS = 24 * 3600_000;
@@ -100,6 +104,9 @@ export class DiskWatchService {
   #procAvailable = false;
   #attributionAvailable = false;
   #sink: DiskAlertSink | null = null;
+  readonly #packages = new PackageTracker();
+  #swapPrevious: SwapCounters | null = null;
+  #swapSize: SwapSize | null = null;
 
   constructor(
     private readonly docker: DockerApi,
@@ -128,12 +135,64 @@ export class DiskWatchService {
       return found ? { name: found.name, project: found.projectName } : undefined;
     });
     if (!lifecycle || !this.repos.settings.getAll().diskWatchEnabled) return null;
-    this.#events.push(lifecycle);
+    this.#addEvent(lifecycle);
+    return lifecycle;
+  }
+
+  #addEvent(event: ContainerEvent): void {
+    this.#events.push(event);
     this.#events.sort((a, b) => a.at - b.at);
     const cutoff = Date.now() - RING_SPAN_MS;
     while (this.#events.length > 0 && this.#events[0]!.at < cutoff) this.#events.shift();
-    this.#accumulator.addEvent(lifecycle);
-    return lifecycle;
+    this.#accumulator.addEvent(event);
+  }
+
+  swapStatus(now = Date.now()): SwapStatus | null {
+    const size = this.#swapSize;
+    if (!size || size.totalBytes <= 0) return null;
+    const hour = this.#ring.filter((tick) => tick.swap && tick.at >= now - 3600_000);
+    const seconds = hour.reduce((sum, tick) => sum + tick.seconds, 0);
+    const last = [...this.#ring].reverse().find((tick) => tick.swap);
+    return {
+      totalBytes: size.totalBytes,
+      usedBytes: Math.max(0, size.totalBytes - size.freeBytes),
+      outBpsNow: last?.swap && last.seconds > 0 ? last.swap.outBytes / last.seconds : null,
+      outBpsHour: seconds > 0 ? hour.reduce((sum, tick) => sum + tick.swap!.outBytes, 0) / seconds : null,
+      inBpsHour: seconds > 0 ? hour.reduce((sum, tick) => sum + tick.swap!.inBytes, 0) / seconds : null,
+      coveredSeconds: seconds,
+    };
+  }
+
+  async #observePackages(at: number): Promise<void> {
+    if (!this.procPath) return;
+    const names = await scanPackages(this.procPath).catch(() => null);
+    if (!names) return;
+    for (const transition of this.#packages.observe(names, at)) {
+      this.#addEvent({
+        at: transition.at,
+        container: transition.name,
+        project: null,
+        kind: transition.kind,
+        exitCode: null,
+        source: 'package',
+      });
+    }
+  }
+
+  async #readSwap(seconds: number | null): Promise<{ inBytes: number; outBytes: number } | null> {
+    if (!this.procPath) return null;
+    const [vmstat, meminfo] = await Promise.all([
+      readFile(join(this.procPath, 'vmstat'), 'utf8').then(parseVmstat, () => null),
+      readFile(join(this.procPath, 'meminfo'), 'utf8').then(parseMeminfo, () => null),
+    ]);
+    this.#swapSize = meminfo;
+    const previous = this.#swapPrevious;
+    this.#swapPrevious = vmstat;
+    if (!vmstat || !previous || seconds === null || seconds <= 0) return null;
+    return {
+      inBytes: counterDelta(previous.inPages, vmstat.inPages) * PAGE_BYTES,
+      outBytes: counterDelta(previous.outPages, vmstat.outPages) * PAGE_BYTES,
+    };
   }
 
   get running(): boolean {
@@ -227,6 +286,8 @@ export class DiskWatchService {
 
     const counters = settings.diskWatchEnabled ? await this.#readDiskstats() : [];
     if (counters.length > 0) await this.#ensureTopology(counters, false);
+    const swap = settings.diskWatchEnabled ? await this.#readSwap(seconds) : null;
+    if (settings.diskWatchEnabled) await this.#observePackages(at);
 
     const running = this.inventory.snapshot.containers.filter((c) => c.state === 'running');
     const collected = await this.#collectContainers(running);
@@ -240,6 +301,7 @@ export class DiskWatchService {
       settings,
     });
     if (!tick) return null;
+    tick.swap = swap;
 
     this.#ring.push({ ...tick, usage: [] });
     while (this.#ring.length > 0 && this.#ring[0]!.at < at - RING_SPAN_MS) this.#ring.shift();
@@ -502,6 +564,8 @@ export class DiskWatchService {
     this.#diskTracker.clear();
     this.#containerTracker.clear();
     this.#calculator = null;
+    this.#packages.reset();
+    this.#swapPrevious = null;
   }
 
   #clearTimer(): void {

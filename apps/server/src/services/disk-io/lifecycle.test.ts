@@ -15,7 +15,7 @@ function dockerEvent(action: string, attributes: Record<string, string> = {}, ex
 }
 
 function event(at: number, container: string, project: string | null = null): ContainerEvent {
-  return { at, container, project, kind: 'start', exitCode: null };
+  return { at, container, project, kind: 'start', exitCode: null, source: 'container' };
 }
 
 describe('lifecycleEventFrom', () => {
@@ -26,7 +26,22 @@ describe('lifecycleEventFrom', () => {
       project: null,
       kind: 'stop',
       exitCode: 137,
+      source: 'container',
     });
+  });
+
+  it('apunta cada descarga de imagen con su referencia, porque un pull escribe gigas de golpe', () => {
+    const pull = { Type: 'image', Action: 'pull', Actor: { ID: 'postgres:16', Attributes: { name: 'postgres' } }, time: 1_763_700_000 };
+    expect(lifecycleEventFrom(pull, NONE)).toMatchObject({ kind: 'pull', source: 'image', container: 'postgres:16' });
+  });
+
+  it('usa el nombre de la imagen cuando Podman da el id en vez de la referencia', () => {
+    const pull = { Type: 'image', Action: 'pull', Actor: { ID: 'a'.repeat(64), Attributes: { name: 'docker.io/library/redis:7' } } };
+    expect(lifecycleEventFrom(pull, NONE)?.container).toBe('docker.io/library/redis:7');
+  });
+
+  it('no apunta el resto de eventos de imagen', () => {
+    expect(lifecycleEventFrom({ Type: 'image', Action: 'tag', Actor: { ID: 'x:1' } }, NONE)).toBeNull();
   });
 
   it('entiende el died de Podman como una parada', () => {
@@ -39,7 +54,7 @@ describe('lifecycleEventFrom', () => {
     }
   });
 
-  it('ignora los eventos de imagenes, redes y volumenes', () => {
+  it('ignora los eventos de redes y volumenes', () => {
     expect(lifecycleEventFrom({ ...dockerEvent('start'), Type: 'network' }, NONE)).toBeNull();
   });
 
@@ -82,6 +97,12 @@ describe('selectEvents', () => {
     expect(selectEvents({ stored: [event(500, 'a'), event(1500, 'b')], memory: [], from: 1000, containers: [] }).events).toEqual([
       event(1500, 'b'),
     ]);
+  });
+
+  it('quita los paquetes y las imagenes al filtrar por contenedor o proyecto, pero los deja sin filtro', () => {
+    const pkg: ContainerEvent = { ...event(1, 'EmbyServer'), source: 'package' };
+    expect(selectEvents({ stored: [pkg], memory: [], from: 0, containers: [] }).events).toHaveLength(1);
+    expect(selectEvents({ stored: [pkg], memory: [], from: 0, containers: [], project: 'media' }).events).toHaveLength(0);
   });
 
   it('filtra por los contenedores elegidos y, si no hay, por el proyecto', () => {

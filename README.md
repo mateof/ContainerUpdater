@@ -345,9 +345,11 @@ panel, so it needs the `/proc:/host/proc:ro` mount.
   explains. On Synology it is usually the largest part: DSM packages, Docker
   itself saving healthcheck state and btrfs writeback all land there. On DSM
   the kernel provides no `blkio` counters at all, so there it is everything.
-- **Start and stop markers** on the chart, one for every container that starts,
-  stops, pauses or resumes, with the list underneath. When the disk jumps up
-  or down, it shows what changed just before.
+- **Markers** on the chart for every container that starts, stops, pauses or
+  resumes, every DSM package that starts or stops and every image pull, with
+  the list underneath. When the disk jumps up or down, it shows what changed
+  just before.
+- **Swap**: what the kernel writes to swap, which on DSM sits on every disk.
 - **Alerts** on Telegram when a disk stays above a threshold for N minutes (120
   MB/min for 15 minutes by default), with the containers writing the most and
   the unattributed part, and another message when it recovers. Optionally a
@@ -363,6 +365,27 @@ With **Keep history on disk** on, it stores 5 minute buckets (average and peak
 per disk and per container, and CPU and memory per container) in a single write
 every 5 minutes. Without it, the last 24 hours live in memory. The reasons
 behind each choice are in [docs/DECISIONS.md](docs/DECISIONS.md).
+
+### Disk health
+
+The **Disk health** tab is about what can be cut, not just measured:
+
+- **Healthchecks** of every container: where each one comes from (compose file,
+  image, the container itself, disabled or none), how many probes a minute it
+  makes and what would be left if the compose file stopped declaring it. On a
+  Synology every probe rewrites the container state on disk.
+- **Logging**: driver and rotation, with a warning for `json-file` without
+  `max-size` and for Synology's `db` driver.
+- **Change them** per container, for several at once or with a **rule per
+  image**: healthcheck every N seconds or minutes (or off) and rotated
+  `json-file` (15m × 3 by default), `local` or no logs. Compose projects are
+  edited in their YAML keeping comments and format; standalone containers are
+  recreated through the API without pulling. Since Docker cannot change that
+  on an existing container, running ones are offered a **Recreate now**.
+- **Measure a container's impact**: it pauses it for a few minutes and compares
+  what the disk writes before and during the pause.
+- **Who logs the most** over the last 10 minutes, and the **mount options** of
+  the volumes (access time, btrfs commit interval) with what to change in DSM.
 
 ## In-app help
 

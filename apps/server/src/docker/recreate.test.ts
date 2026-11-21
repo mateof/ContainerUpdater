@@ -52,6 +52,26 @@ function makeImage(overrides: Partial<ImageInspect> = {}): ImageInspect {
 }
 
 describe('buildCreateBody', () => {
+  it('conserva el healthcheck que se puso al contenedor y no vuelve al de la imagen', () => {
+    const custom = { Test: ['CMD-SHELL', 'curl -f localhost'], Interval: 300e9 };
+    const body = buildCreateBody(
+      makeContainer({ Config: { ...makeContainer().Config, Healthcheck: custom } }),
+      makeImage({ Config: { ...makeImage().Config, Healthcheck: { Test: ['CMD-SHELL', 'curl -f localhost'], Interval: 30e9 } } }),
+      'miapp:2.0',
+    );
+    expect(body.Healthcheck).toEqual(custom);
+  });
+
+  it('deja que la imagen nueva ponga su healthcheck si el contenedor usaba el de la vieja', () => {
+    const fromImage = { Test: ['CMD-SHELL', 'true'], Interval: 30e9 };
+    const body = buildCreateBody(
+      makeContainer({ Config: { ...makeContainer().Config, Healthcheck: fromImage } }),
+      makeImage({ Config: { ...makeImage().Config, Healthcheck: fromImage } }),
+      'miapp:2.0',
+    );
+    expect(body.Healthcheck).toBeUndefined();
+  });
+
   it('arrastra solo las variables que puso el usuario', () => {
     // Copiar Config.Env tal cual fija los valores por defecto de la imagen
     // VIEJA: si la nueva version cambia NODE_ENV o el PATH, el contenedor

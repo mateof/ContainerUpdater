@@ -11,6 +11,8 @@ const KINDS: Record<string, ContainerEventKind> = {
   unpause: 'unpause',
 };
 
+const IMAGE_ID = /^(sha256:)?[a-f0-9]{12,64}$/;
+
 export type KnownContainer = { name: string; project: string | null };
 
 export function lifecycleEventFrom(
@@ -18,8 +20,9 @@ export function lifecycleEventFrom(
   lookup: (id: string) => KnownContainer | undefined,
   now = Date.now(),
 ): ContainerEvent | null {
-  if (event.Type !== undefined && event.Type !== 'container') return null;
   const action = (event.Action ?? event.status ?? '').split(':')[0] ?? '';
+  if (event.Type === 'image') return imagePullFrom(event, action, now);
+  if (event.Type !== undefined && event.Type !== 'container') return null;
   const kind = KINDS[action];
   if (!kind) return null;
 
@@ -36,7 +39,17 @@ export function lifecycleEventFrom(
     project: known?.project ?? attributes['com.docker.compose.project'] ?? null,
     kind,
     exitCode: Number.isFinite(exitCode) ? exitCode : null,
+    source: 'container',
   };
+}
+
+function imagePullFrom(event: DockerEvent, action: string, now: number): ContainerEvent | null {
+  if (action !== 'pull') return null;
+  const id = event.Actor?.ID ?? event.id;
+  const named = event.Actor?.Attributes?.name;
+  const reference = id && !IMAGE_ID.test(id) ? id : (named ?? id);
+  if (!reference) return null;
+  return { at: eventTime(event, now), container: reference, project: null, kind: 'pull', exitCode: null, source: 'image' };
 }
 
 function eventTime(event: DockerEvent, now: number): number {
@@ -61,6 +74,8 @@ export function selectEvents(input: {
   const merged = new Map<string, ContainerEvent>();
   for (const event of [...input.stored, ...input.memory]) {
     if (event.at < input.from) continue;
+    const filtered = wanted !== null || Boolean(input.project);
+    if (filtered && event.source !== 'container') continue;
     if (wanted && !wanted.has(event.container)) continue;
     if (!wanted && input.project && event.project !== input.project) continue;
     merged.set(eventKey(event), event);
