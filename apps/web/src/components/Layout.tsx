@@ -28,6 +28,7 @@ import {
   IconGithub,
   IconStar,
   IconHelp,
+  IconDisk,
 } from './icons';
 
 interface NavEntry {
@@ -44,6 +45,7 @@ const NAV: NavEntry[] = [
   { to: '/images', key: 'nav.images', Icon: IconImage, end: false },
   { to: '/projects', key: 'nav.projects', Icon: IconProject, end: false },
   { to: '/updates', key: 'nav.updates', Icon: IconUpdates, end: false },
+  { to: '/disk', key: 'nav.disk', Icon: IconDisk, end: false },
   { to: '/settings', key: 'nav.settings', Icon: IconSettings, end: false },
 ];
 

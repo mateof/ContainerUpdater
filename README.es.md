@@ -45,6 +45,11 @@ reúne en un sitio lo que hasta ahora obligaba a entrar por SSH.
   bucle de reinicios o ha dejado de estar sano, y cuándo se recupera. Pararlo tú
   no avisa.
 - **Rendimiento** del NAS y de cada contenedor, en vivo.
+- **Vigilancia de escrituras en disco**: lo que escribe cada disco físico, medido
+  en segundo plano con los contadores del kernel, con un reparto aproximado por
+  contenedor, lo que no explica ningún contenedor, avisos por Telegram cuando un
+  disco escribe demasiado durante un rato y los años que le quedan a un SSD al
+  ritmo actual.
 - **Bot de Telegram** restringido a las cuentas que autorices, que notifica sin
   repetirse y acepta comandos.
 - **Crea proyectos** desde la web: pegas o subes un `docker-compose.yml` y su
@@ -121,7 +126,8 @@ segunda:
 
 El montaje de `/proc` es el que da las métricas reales del NAS. Sin él la
 aplicación funciona, pero muestra métricas aproximadas derivadas de Docker y lo
-indica en la interfaz.
+indica en la interfaz. La vigilancia de escrituras en disco también lo necesita,
+porque lee de ahí `diskstats`.
 
 Si tu volumen no es `volume1`, ajusta el montaje y `CU_COMPOSE_ROOTS`, que
 acepta una lista separada por comas.
@@ -317,6 +323,39 @@ esta aplicación podría arrancar el proyecto. Lo que sí se hace:
   el mismo sobre que las credenciales de registry, por si hay que volver atrás.
 - Leer el fichero para editarlo y mostrar un valor concreto quedan los dos
   registrados en la auditoría.
+
+## Escrituras en disco
+
+La pantalla **Disco** responde a la pregunta que acaba haciendo un SSD en un
+NAS: qué está escribiendo tanto. Se activa en **Ajustes → Vigilancia de disco**.
+Desde ese momento la aplicación lee `/proc/diskstats` cada minuto, aunque nadie
+tenga el panel abierto, así que necesita el montaje `/proc:/host/proc:ro`.
+
+- **Por disco** (la fuente de verdad): MB/min escritos y leídos, IOs y tamaño
+  medio de cada IO. Por defecto se vigilan los discos físicos (`sata1`,
+  `nvme0n1`, `sda`...); las particiones, `loop`, `ram` y `zram` no se ofrecen
+  nunca, y las capas de RAID o de mapeo se pueden marcar, pero no hay que
+  sumarlas a sus discos.
+- **Por contenedor** (aproximado): desde el `blkio` de Docker, más una serie
+  **no atribuido** con lo que escribe el disco y no explica ningún contenedor. En
+  Synology suele ser lo más grande: ahí caen los paquetes de DSM, el propio
+  Docker guardando el estado de los healthchecks y la escritura diferida de
+  btrfs.
+- **Avisos** por Telegram cuando un disco se mantiene por encima de un umbral
+  durante N minutos (120 MB/min durante 15 minutos por defecto), con los
+  contenedores que más escriben y lo no atribuido, y otro mensaje cuando se
+  recupera. Opcionalmente, un umbral por contenedor.
+- **Vida útil**: introduces el TBW de cada SSD y lo que lleva escrito, y estima
+  los años que le quedan al ritmo de la última hora, del último día y de la
+  última semana. Los miembros de un RAID 1 se cuentan uno a uno, sin sumarlos.
+- **Gráficas** con filtros por disco, contenedor, proyecto de Compose, rango
+  (1 h, 24 h, 7 d, 30 d) y lectura o escritura, con una vista apilada de los que
+  más escriben más "otros" y "no atribuido".
+
+Con **Guardar histórico en disco** activado guarda tramos de 5 minutos (media y
+máximo por disco y por contenedor, y CPU y memoria por contenedor) en una sola
+escritura cada 5 minutos. Sin él, las últimas 24 horas viven en memoria. El
+porqué de cada decisión está en [docs/DECISIONS.es.md](docs/DECISIONS.es.md).
 
 ## Ayuda dentro de la aplicación
 

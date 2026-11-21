@@ -130,6 +130,7 @@ export class Scheduler {
       new Cron('0 5 * * *', { timezone, protect: true, name: 'prune-history' }, () => {
         const settings = repos.settings.getAll();
         repos.history.prune(settings.historyRetentionDays);
+        repos.diskIo.prune(settings.metricsRetentionDays);
         log.debug('Historial purgado');
       }),
     );

@@ -606,3 +606,27 @@ body {
 .u-legend {
   display: none;
 }
+
+:root {
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #9085e9;
+  --series-other: #52514e;
+  --series-unattributed: #8a8983;
+}
+
+:root[data-theme='light'],
+:root[data-theme='papel'],
+:root[data-theme='trazo'] {
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #6250d6;
+  --series-other: #c3c2b7;
+  --series-unattributed: #7d7c76;
+}

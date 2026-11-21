@@ -311,7 +311,6 @@ export function createHistoryRepository(db: Db) {
       db.prepare('DELETE FROM check_runs WHERE started_at < ?').run(cutoff);
       db.prepare('DELETE FROM update_jobs WHERE created_at < ?').run(cutoff);
       db.prepare('DELETE FROM audit_log WHERE created_at < ?').run(cutoff);
-      db.prepare('DELETE FROM metrics_rollup WHERE bucket_ts < ?').run(cutoff);
       // Las notificaciones enviadas se conservan mas: son la memoria de "esto ya
       // lo avise" y purgarlas pronto haria repetir avisos viejos.
       db.prepare('DELETE FROM notifications_sent WHERE reserved_at < ?').run(

@@ -496,6 +496,36 @@ const es: HelpSection[] = [
     ],
   },
   {
+    id: 'disco',
+    title: 'Escrituras en disco',
+    blocks: [
+      { type: 'p', text: 'La pantalla Disco mide lo que escribe cada disco del NAS cada minuto, en segundo plano, aunque nadie tenga el panel abierto. Sirve para saber que esta desgastando un SSD y para que te avise por Telegram si un disco escribe demasiado durante un rato.' },
+      { type: 'h', text: 'De donde salen los numeros' },
+      {
+        type: 'ul',
+        items: [
+          'El total de cada disco sale de /proc/diskstats, los contadores del kernel. Es exacto y es la fuente de verdad: incluye todo lo que escribe el disco, venga de donde venga.',
+          'El reparto por contenedor sale de blkio, lo que Docker cuenta para cada contenedor. Es aproximado y casi siempre se queda corto.',
+          'No atribuido es la diferencia: lo que escribe el disco y no explica ningun contenedor. Ahi entran los paquetes del NAS (Emby, Synology Photos), el propio Docker al guardar el estado de los healthchecks, y los metadatos de btrfs.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Por que no atribuido suele ser lo mas grande',
+        text: 'En DSM, con cgroup v1, la escritura diferida de btrfs la hacen hilos del kernel y no cuenta para ningun contenedor. Ademas, en btrfs lo caro no son los bytes sino los fsync y los metadatos. Un contenedor que escribe poco pero sincroniza a menudo puede costar mucho mas de lo que dice su blkio.',
+      },
+      { type: 'h', text: 'Discos RAID' },
+      { type: 'p', text: 'En un RAID 1 cada disco escribe lo mismo. Por eso se cuenta por disco fisico y no se suman: si sata3 y sata4 escriben 120 MB/min cada uno, cada SSD se gasta a 120 MB/min, no a 240.' },
+      { type: 'h', text: 'Vida util' },
+      { type: 'p', text: 'Pon en Ajustes el TBW de cada disco (lo que el fabricante garantiza que se puede escribir) y, si lo sabes, lo que lleva escrito. Se estima cuantos años quedan al ritmo de la ultima hora, del ultimo dia y de la ultima semana. Para el dia y la semana hace falta el historico en disco.' },
+      { type: 'h', text: 'Historico y memoria' },
+      { type: 'p', text: 'Sin historico, las ultimas 24 horas se guardan solo en memoria y se pierden al reiniciar. Con "Guardar historico en disco", se guarda un tramo de 5 minutos con la media y el maximo por disco y por contenedor, en una sola escritura cada 5 minutos para no desgastar el disco que se esta vigilando.' },
+      { type: 'h', text: 'Avisos' },
+      { type: 'p', text: 'Se compara la media de los ultimos minutos con el umbral, no cada lectura suelta. Llega un aviso al pasarlo y otro al bajar del 90 % del umbral, nunca uno por minuto mientras siga alto.' },
+    ],
+  },
+  {
     id: 'problemas',
     title: 'Cuando algo va mal',
     blocks: [
@@ -981,6 +1011,36 @@ const en: HelpSection[] = [
     ],
   },
   {
+    id: 'disco',
+    title: 'Disk writes',
+    blocks: [
+      { type: 'p', text: 'The Disk screen measures what each NAS disk writes every minute, in the background, even with nobody looking at the panel. It tells you what is wearing an SSD down and alerts you on Telegram if a disk writes too much for a while.' },
+      { type: 'h', text: 'Where the numbers come from' },
+      {
+        type: 'ul',
+        items: [
+          'Each disk total comes from /proc/diskstats, the kernel counters. It is exact and it is the source of truth: it includes everything the disk writes, wherever it comes from.',
+          'The per-container split comes from blkio, what Docker counts for each container. It is approximate and nearly always falls short.',
+          'Unattributed is the difference: what the disk writes that no container explains. That covers NAS packages (Emby, Synology Photos), Docker itself saving healthcheck state, and btrfs metadata.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Why unattributed is usually the largest part',
+        text: 'On DSM, with cgroup v1, btrfs writeback is done by kernel threads and counts for no container. On top of that, on btrfs the cost is not the bytes but the fsyncs and the metadata. A container that writes little but syncs often can cost far more than its blkio says.',
+      },
+      { type: 'h', text: 'RAID disks' },
+      { type: 'p', text: 'In RAID 1 every disk writes the same. That is why it is counted per physical disk and never added up: if sata3 and sata4 write 120 MB/min each, each SSD wears at 120 MB/min, not 240.' },
+      { type: 'h', text: 'Lifetime' },
+      { type: 'p', text: 'Enter each disk TBW in Settings (what the manufacturer guarantees can be written) and, if you know it, how much it has written so far. The years left are estimated at the last hour, last day and last week rates. The day and week need history on disk.' },
+      { type: 'h', text: 'History and memory' },
+      { type: 'p', text: 'Without history, the last 24 hours live in memory only and are lost on restart. With "Keep history on disk", a 5 minute bucket with the average and the peak per disk and per container is stored, in a single write every 5 minutes so as not to wear the disk being watched.' },
+      { type: 'h', text: 'Alerts' },
+      { type: 'p', text: 'The average over the last minutes is compared with the threshold, not each single reading. One alert arrives when crossing it and another when dropping below 90% of it, never one a minute while it stays high.' },
+    ],
+  },
+  {
     id: 'problemas',
     title: 'When something goes wrong',
     blocks: [
@@ -1445,6 +1505,36 @@ const gl: HelpSection[] = [
         title: 'A ruta ten que coincidir aos dous lados',
         text: 'Montar o cartafol de proxectos noutro sitio dentro do contedor fai que se perda a estratexia boa. As rutas que gardan os contedores son as do sistema anfitrion, e so resolven aqui se o punto de montaxe e identico. E dicir, /srv/stacks:/srv/stacks e non /srv/stacks:/proxectos.',
       },
+    ],
+  },
+  {
+    id: 'disco',
+    title: 'Escrituras en disco',
+    blocks: [
+      { type: 'p', text: 'A pantalla Disco mide o que escribe cada disco do NAS cada minuto, en segundo plano, ainda que ninguen tena o panel aberto. Serve para saber que esta a desgastar un SSD e para que te avise por Telegram se un disco escribe de mais durante un tempo.' },
+      { type: 'h', text: 'De onde saen os numeros' },
+      {
+        type: 'ul',
+        items: [
+          'O total de cada disco sae de /proc/diskstats, os contadores do kernel. E exacto e e a fonte de verdade: inclue todo o que escribe o disco, vena de onde vena.',
+          'O reparto por contedor sae de blkio, o que Docker conta para cada contedor. E aproximado e case sempre se queda curto.',
+          'Non atribuido e a diferenza: o que escribe o disco e non explica ningun contedor. Ai entran os paquetes do NAS (Emby, Synology Photos), o propio Docker ao gardar o estado dos healthchecks e os metadatos de btrfs.',
+        ],
+      },
+      {
+        type: 'note',
+        tone: 'warn',
+        title: 'Por que non atribuido adoita ser o mais grande',
+        text: 'En DSM, con cgroup v1, a escritura diferida de btrfs fana fios do kernel e non conta para ningun contedor. Ademais, en btrfs o caro non son os bytes senon os fsync e os metadatos. Un contedor que escribe pouco pero sincroniza a miudo pode custar moito mais do que di o seu blkio.',
+      },
+      { type: 'h', text: 'Discos RAID' },
+      { type: 'p', text: 'Nun RAID 1 cada disco escribe o mesmo. Por iso contase por disco fisico e non se suman: se sata3 e sata4 escriben 120 MB/min cada un, cada SSD gastase a 120 MB/min, non a 240.' },
+      { type: 'h', text: 'Vida util' },
+      { type: 'p', text: 'Pon en Axustes o TBW de cada disco (o que o fabricante garante que se pode escribir) e, se o sabes, o que leva escrito. Estimase cantos anos quedan ao ritmo da ultima hora, do ultimo dia e da ultima semana. Para o dia e a semana fai falta o historico en disco.' },
+      { type: 'h', text: 'Historico e memoria' },
+      { type: 'p', text: 'Sen historico, as ultimas 24 horas gardanse so en memoria e perdense ao reiniciar. Con "Gardar historico en disco", gardase un tramo de 5 minutos coa media e o maximo por disco e por contedor, nunha soa escritura cada 5 minutos para non desgastar o disco que se esta a vixiar.' },
+      { type: 'h', text: 'Avisos' },
+      { type: 'p', text: 'Comparase a media dos ultimos minutos co limiar, non cada lectura solta. Chega un aviso ao pasalo e outro ao baixar do 90 % do limiar, nunca un por minuto mentres siga alto.' },
     ],
   },
   {

@@ -22,6 +22,8 @@ Several of them contradict the documentation or what gets repeated around.
 | Three different Compose projects **all** called `docker` | The project key is `(name, directory)` |
 | Podman assigns `RepoDigests` to locally built images | The "no digest means local" heuristic does not work |
 | Docker Hub answers 401 the same for private and non-existent | Its public API is used instead, which does distinguish 404 |
+| Podman 5.4 reports `blkio` for `vda` (252:0) as `major: 0, minor: 252` | Device pairs that match nothing are tried swapped |
+| Podman 5.4 `system_cpu_usage` advances about 5% of wall time times CPUs, not the host CPU time Docker reports | An idle container came out at 98%: a system delta under a quarter of what is expected is discarded and wall time is used |
 
 ## Cookie session, not JWT
 
@@ -505,3 +507,123 @@ the compose file, which is what makes `TAG=3.19` work; it only reaches the
 process inside the container if the service declares it under `environment`.
 The dialog says so, because the alternative is people wondering why their
 `API_KEY` never arrived.
+
+## Disk writes: `/proc/diskstats` is the source of truth
+
+The disk watch comes from a real diagnosis on a Synology whose RAID 1 of two
+SSDs was writing about 170 MB/min per disk. Three findings from that diagnosis
+shaped the design:
+
+- **The biggest culprit was not a container.** Emby, a DSM package, accounted for
+  about 80 MB/min. The second one, about 12 MB/min, was healthchecks: dockerd
+  rewrites `config.v2.json` and `hostconfig.json` with an fsync on every probe,
+  and that is attributed to no container. A view built only per container would
+  have missed both.
+- **Bytes written per process do not rank culprits.** dockerd showed 48 MB/min
+  in `/proc/<pid>/io` both with the disk at 170 and at 91. On btrfs the cost is
+  fsyncs and metadata (average IO of about 16 KB, the metadata node size), not
+  the bytes a process hands over.
+- **So the alarm comes from each physical disk**, read from `/proc/diskstats`,
+  and the per-container split is secondary, with an explicit "unattributed"
+  series: the disk total minus what containers explain.
+
+`diskstats` is read from the host `/proc` that is already mounted for the
+system metrics. It is kernel memory: reading it never wakes a disk. The format
+varies (14 fields on the DSM 4.4 kernel, 18 with discards, 20 with flushes) and
+sectors are always 512 bytes there, whatever the device's real sector size.
+Flushes are kept when the kernel provides them and are null on DSM.
+
+Partitions, `md`, `dm-*`, `cachedev_*`, `loop`, `ram` and `zram` are told
+apart with the container's own `/sys/class/block`, which shows the host
+devices read-only without any extra mount (verified on Podman and on DSM).
+When it cannot be read, the kernel naming rule is used (`sata3p5` and
+`nvme0n1p1` carry a `p` because the disk name ends in a digit, `sda1` does not)
+plus `/proc/mdstat`. Physical disks are watched by default.
+
+### Per-container attribution is approximate, by design
+
+Verified on the NAS: kernel 4.4.302+, cgroup v1, `blkio` organised as systemd
+slices and no `blkio/docker` directory. btrfs writeback runs in kernel threads
+that are charged to the root cgroup, not to the container that dirtied the
+pages. So `blkio` will very likely fall short, and the view has to stay useful
+when containers add up to almost nothing: the disk totals are exact on their
+own, "unattributed" is drawn as a series in its own right, and the interface
+says the split is approximate.
+
+Two traps in the split:
+
+- **The same bytes appear at several layers.** A write to `cachedev_5` goes
+  through LVM (`dm-8`), `md3` and the disk. Adding the layers would count it
+  three times. When `blkio` has an entry for the disk itself, that one is used;
+  otherwise the largest of the layers that land on that disk. This falls short
+  for a container writing to two separate volumes on the same disk with no
+  disk-level entry, which is an accepted cost.
+- **Podman reports devices wrong.** For `vda` (252:0) the compat API returns
+  `major: 0, minor: 252`. If a pair does not match any device, the swapped pair
+  is tried.
+
+The split is stored **per disk**, not as one total per container: on a RAID 1
+each member really does receive the full write, and a single per-container
+figure would have to choose between halving it and doubling it.
+
+### RAID 1 members are not added up
+
+Each member writes the same bytes, so each disk is measured and estimated on
+its own counters. Lifetime is per physical disk: two SSDs at 120 MB/min each
+wear at 120, not at 240.
+
+### A background collector, against "only while somebody is watching"
+
+An alert that only works with a tab open is not an alert. The collector is a
+deliberate exception to the rule above: it only runs if the user turns on disk
+watch (or history), it samples every 60 seconds and not every 5, it reads
+cumulative counters, and it asks Docker for `stats` with `one-shot`, because it
+only needs counters and not two samples. The 5 second live sampler for the
+panel stays as it was.
+
+Rates are deltas over the time actually measured with a monotonic clock, never
+over the configured interval, so a late tick neither inflates nor deflates
+anything. A counter that goes down (a restarted container, a counter back at
+zero) counts what it has accumulated since zero. A container created during the
+interval, which is what every update produces, counts from zero instead of
+losing its first minute. A disk that disappears is forgotten, and if it comes
+back it starts a new baseline.
+
+### Five minute buckets, at most one transaction every five minutes
+
+The previous "Keep history on disk" setting stored nothing: the accumulator
+cleared itself every five minutes without a single `INSERT`. Its table was also
+keyed by container id, which changes on every update. Migration 011 recreates it
+keyed by container name, the same reason as `container_watch`, and since it
+never received a row, dropping it loses nothing.
+
+Every bucket is written in a single transaction when the next one starts, plus
+the partial bucket on shutdown, merged with an upsert if it comes back within
+the same five minutes. Writing more often would wear the very SSD being watched
+and wake the NAS disks. Totals and covered seconds are stored rather than
+averages, so the mean of any range stays exact across gaps; the peak is the
+highest sample within the bucket.
+
+Without history, the last 24 hours live in memory and the interface says that
+is where they come from.
+
+### Alerts on a sustained average, with a margin to recover
+
+Like the watchdog: one alert when crossing the threshold and one on recovery,
+with the state kept in `disk_alert_state` so a restart neither repeats nor
+loses it. What is compared is the average over the last N minutes, not each
+reading: the NAS has a 30 second cycle that a per-reading threshold would turn
+into noise. Recovery needs to drop below 90% of the threshold, so a rate
+hovering at the threshold does not alternate between alert and recovery.
+
+### Per-disk configuration in its own table
+
+TBW, terabytes already written, the per-disk threshold and the watched flag
+live in `disk_devices`, not in the settings. The settings screen detects unsaved
+changes by comparing primitive values, and a per-disk object would always look
+modified. It also fits better among the sections that apply on change.
+
+"Already written" carries the date it was entered: from then on, if history is
+on, what is measured is added on top. DSM cannot read the wear of every SSD
+(on the Lexar NS100 it reports `remain_life: -1`), so asking the user is the
+only reliable source.

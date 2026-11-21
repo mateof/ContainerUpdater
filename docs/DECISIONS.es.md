@@ -23,6 +23,8 @@ ahí.
 | Tres proyectos de Compose distintos llamados **todos** `docker` | La clave del proyecto es `(nombre, directorio)` |
 | Podman asigna `RepoDigests` a imágenes construidas en local | La heurística "sin digest es local" no sirve |
 | Docker Hub responde 401 igual para privado que para inexistente | Se usa su API pública, que sí distingue 404 |
+| Podman 5.4 da el `blkio` de `vda` (252:0) como `major: 0, minor: 252` | Los pares que no coinciden con ningún dispositivo se prueban invertidos |
+| El `system_cpu_usage` de Podman 5.4 avanza un 5 % del reloj por CPU, no el tiempo de CPU del host que da Docker | Un contenedor parado salía al 98 %: un delta de sistema por debajo de una cuarta parte de lo esperado se descarta y se usa el reloj |
 
 ## Sesión con cookie, no JWT
 
@@ -462,3 +464,123 @@ Se registra con `updateViaCache: 'none'` y con la versión en la URL, porque el
 servidor sirve los estáticos con `immutable` a un año y el navegador compara el
 script byte a byte: con la URL fija y el contenido idéntico, no llegaría a
 actualizarse nunca.
+
+## Escrituras en disco: la fuente de verdad es `/proc/diskstats`
+
+La vigilancia de disco sale de un diagnóstico real en un Synology cuyo RAID 1 de
+dos SSD escribía unos 170 MB/min por disco. Tres hallazgos de ese diagnóstico
+marcan el diseño:
+
+- **El mayor culpable no era un contenedor.** Emby, un paquete de DSM, suponía
+  unos 80 MB/min. El segundo, unos 12 MB/min, eran los healthchecks: dockerd
+  reescribe `config.v2.json` y `hostconfig.json` con fsync en cada sondeo, y eso
+  no se atribuye a ningún contenedor. Una vista solo por contenedor no habría
+  visto a ninguno de los dos.
+- **Los bytes que escribe cada proceso no sirven para ordenar culpables.**
+  dockerd marcaba 48 MB/min en `/proc/<pid>/io` tanto con el disco a 170 como a
+  91. En btrfs lo caro son los fsync y los metadatos (IO media de unos 16 KB, el
+  tamaño del nodo de metadatos), no los bytes que entrega un proceso.
+- **Por eso la alarma sale de cada disco físico**, leído de `/proc/diskstats`, y
+  el reparto por contenedor es secundario, con una serie explícita de "no
+  atribuido": el total del disco menos lo que explican los contenedores.
+
+`diskstats` se lee del `/proc` del host que ya se monta para las métricas del
+sistema. Es memoria del kernel: leerlo no despierta ningún disco. El formato
+cambia (14 campos en el kernel 4.4 de DSM, 18 con discards, 20 con flushes) y
+los sectores ahí son siempre de 512 bytes, sea cual sea el tamaño real del
+sector. Los flushes se guardan si el kernel los da y quedan a null en DSM.
+
+Particiones, `md`, `dm-*`, `cachedev_*`, `loop`, `ram` y `zram` se distinguen
+con el `/sys/class/block` del propio contenedor, que muestra los dispositivos
+del host en solo lectura sin montar nada más (comprobado en Podman y en DSM).
+Si no se puede leer, se usa la regla de nombres del kernel (`sata3p5` y
+`nvme0n1p1` llevan `p` porque el nombre del disco acaba en cifra, `sda1` no) más
+`/proc/mdstat`. Por defecto se vigilan los discos físicos.
+
+### El reparto por contenedor es aproximado, a propósito
+
+Comprobado en el NAS: kernel 4.4.302+, cgroup v1, `blkio` organizado en slices
+de systemd y sin directorio `blkio/docker`. La escritura diferida de btrfs la
+hacen hilos del kernel que cuentan para el cgroup raíz, no para el contenedor
+que ensució las páginas. Así que `blkio` muy probablemente se queda corto, y la
+vista tiene que seguir siendo útil aunque los contenedores sumen casi nada: los
+totales por disco son exactos por sí solos, "no atribuido" se pinta como una
+serie más y la interfaz dice que el reparto es aproximado.
+
+Dos trampas en el reparto:
+
+- **Los mismos bytes aparecen en varias capas.** Una escritura a `cachedev_5`
+  pasa por LVM (`dm-8`), por `md3` y por el disco. Sumar las capas la contaría
+  tres veces. Si `blkio` trae una entrada del propio disco, se usa esa; si no, la
+  mayor de las capas que caen en ese disco. Se queda corto con un contenedor que
+  escribe en dos volúmenes distintos del mismo disco sin entrada del disco, y es
+  un coste aceptado.
+- **Podman da mal los dispositivos.** Para `vda` (252:0) la API compatible
+  devuelve `major: 0, minor: 252`. Si un par no coincide con ningún dispositivo,
+  se prueba el par invertido.
+
+El reparto se guarda **por disco** y no como un total por contenedor: en un
+RAID 1 cada miembro recibe de verdad la escritura entera, y una cifra única por
+contenedor obligaría a elegir entre partirla por la mitad o duplicarla.
+
+### Los miembros de un RAID 1 no se suman
+
+Cada miembro escribe los mismos bytes, así que cada disco se mide y se estima con
+sus propios contadores. La vida útil es por disco físico: dos SSD a 120 MB/min
+cada uno se gastan a 120, no a 240.
+
+### Un recolector en segundo plano, contra "solo si alguien mira"
+
+Una alerta que solo funciona con una pestaña abierta no es una alerta. El
+recolector es una excepción deliberada a la regla de arriba: solo corre si el
+usuario activa la vigilancia de disco (o el histórico), muestrea cada 60
+segundos y no cada 5, lee contadores acumulados y pide a Docker las `stats` con
+`one-shot`, porque solo necesita contadores y no dos muestras. El muestreo de 5
+segundos del panel en vivo sigue como estaba.
+
+Los ritmos son deltas sobre el tiempo medido de verdad con un reloj monotónico,
+nunca sobre el intervalo configurado, así que un tick que llega tarde no infla
+ni desinfla nada. Un contador que baja (un contenedor reiniciado, un contador
+que vuelve a cero) cuenta lo acumulado desde cero. Un contenedor creado dentro
+del intervalo, que es lo que produce cada actualización, cuenta desde cero en vez
+de perder su primer minuto. Un disco que desaparece se olvida, y si vuelve
+empieza una línea base nueva.
+
+### Tramos de cinco minutos, como mucho una transacción cada cinco minutos
+
+La casilla "Guardar histórico en disco" no guardaba nada: el acumulador se
+vaciaba cada cinco minutos sin un solo `INSERT`. Además su tabla usaba como
+clave el id del contenedor, que cambia en cada actualización. La migración 011
+la vuelve a crear con el nombre del contenedor como clave, por lo mismo que
+`container_watch`, y como nunca recibió una fila, borrarla no pierde nada.
+
+Cada tramo se escribe en una sola transacción al empezar el siguiente, más el
+tramo a medias al cerrar, que se fusiona con un upsert si vuelve dentro de los
+mismos cinco minutos. Escribir más a menudo desgastaría justo el SSD que se
+vigila y despertaría los discos del NAS. Se guardan totales y segundos cubiertos
+en vez de medias, para que la media de cualquier rango siga siendo exacta aunque
+haya huecos; el máximo es la muestra más alta del tramo.
+
+Sin histórico, las últimas 24 horas viven en memoria y la interfaz dice que los
+datos salen de ahí.
+
+### Avisos sobre una media sostenida, con margen para recuperarse
+
+Como el vigilante: un aviso al pasar el umbral y otro al recuperarse, con el
+estado en `disk_alert_state` para que un reinicio ni lo repita ni lo pierda. Se
+compara la media de los últimos N minutos, no cada lectura: el NAS tiene un
+ciclo de 30 segundos que un umbral por lectura convertiría en ruido. Para
+recuperarse hay que bajar del 90 % del umbral, así que un ritmo que ronda el
+umbral no alterna entre aviso y recuperación.
+
+### La configuración de cada disco va en su propia tabla
+
+El TBW, los terabytes ya escritos, el umbral propio y si se vigila viven en
+`disk_devices`, no en los ajustes. La pantalla de Ajustes detecta cambios sin
+guardar comparando valores primitivos, y un objeto por disco parecería siempre
+modificado. Además encaja mejor entre las secciones que se aplican al momento.
+
+"Ya escritos" lleva la fecha en que se introdujo: desde ahí, si hay histórico,
+lo que se mide se suma encima. DSM no sabe leer el desgaste de todos los SSD
+(en los Lexar NS100 da `remain_life: -1`), así que preguntarlo es la única
+fuente fiable.

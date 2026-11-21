@@ -347,11 +347,12 @@ services:
       - "8099:8080"
     environment:
       CU_ENCRYPTION_KEY: ${CU_ENCRYPTION_KEY}
-      CU_HOST_PROC: ""
+      CU_HOST_PROC: /host/proc
       CU_PROJECTS_DIR: /Users/ana/docker/compose
     volumes:
       - /run/podman/podman.sock:/var/run/docker.sock
       - /Users/ana/docker/data/container-updater:/data
+      - /proc:/host/proc:ro
       # Con la misma ruta a ambos lados, igual que en todas partes.
       - /Users/ana/proyectos:/Users/ana/proyectos
       - /Users/ana/docker/compose:/Users/ana/docker/compose

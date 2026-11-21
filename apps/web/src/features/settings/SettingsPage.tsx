@@ -30,6 +30,7 @@ import { TelegramSection } from './TelegramSection';
 import { McpSection } from './McpSection';
 import { StorageSection } from './StorageSection';
 import { BackupSection } from './BackupSection';
+import { DiskDevicesSection } from './DiskDevicesSection';
 
 /** Horas del dia para los selectores de la ventana de mantenimiento. */
 const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
@@ -339,6 +340,22 @@ export function SettingsPage(): ReactNode {
             />
           </Field>
 
+          <Field
+            label={t('settings.metricsRetention')}
+            hint={t('settings.metricsRetentionHelp')}
+            htmlFor="metrics-retention"
+          >
+            <Input
+              id="metrics-retention"
+              type="number"
+              min={1}
+              max={365}
+              value={draft.metricsRetentionDays}
+              onChange={(event) => patch({ metricsRetentionDays: Number(event.target.value) })}
+              className="w-24"
+            />
+          </Field>
+
           <Field label={t('nav.language')} htmlFor="locale">
             <Select
               id="locale"
@@ -354,6 +371,90 @@ export function SettingsPage(): ReactNode {
               ))}
             </Select>
           </Field>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle title={t('settings.diskWatch')} description={t('settings.diskWatchDescription')} />
+        <div className="space-y-4">
+          <Switch
+            checked={draft.diskWatchEnabled}
+            onCheckedChange={(value) => patch({ diskWatchEnabled: value })}
+            label={t('settings.diskWatchEnabled')}
+            hint={t('settings.diskWatchEnabledHelp')}
+          />
+          <Field label={t('settings.diskWatchInterval')} htmlFor="disk-interval">
+            <Input
+              id="disk-interval"
+              type="number"
+              min={10}
+              max={600}
+              value={draft.diskWatchIntervalSeconds}
+              onChange={(event) => patch({ diskWatchIntervalSeconds: Number(event.target.value) })}
+              className="w-24"
+              disabled={!draft.diskWatchEnabled}
+            />
+          </Field>
+          <Switch
+            checked={draft.diskAlertEnabled}
+            onCheckedChange={(value) => patch({ diskAlertEnabled: value })}
+            label={t('settings.diskAlertEnabled')}
+            disabled={!draft.diskWatchEnabled}
+          />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field
+              label={t('settings.diskAlertThreshold')}
+              hint={t('settings.diskAlertThresholdHelp')}
+              htmlFor="disk-threshold"
+            >
+              <Input
+                id="disk-threshold"
+                type="number"
+                min={1}
+                value={draft.diskAlertThresholdMbPerMin}
+                onChange={(event) => patch({ diskAlertThresholdMbPerMin: Number(event.target.value) })}
+                className="w-28"
+                disabled={!draft.diskWatchEnabled || !draft.diskAlertEnabled}
+              />
+            </Field>
+            <Field
+              label={t('settings.diskAlertSustain')}
+              hint={t('settings.diskAlertSustainHelp')}
+              htmlFor="disk-sustain"
+            >
+              <Input
+                id="disk-sustain"
+                type="number"
+                min={1}
+                max={1440}
+                value={draft.diskAlertSustainMinutes}
+                onChange={(event) => patch({ diskAlertSustainMinutes: Number(event.target.value) })}
+                className="w-28"
+                disabled={!draft.diskWatchEnabled || !draft.diskAlertEnabled}
+              />
+            </Field>
+            <Field
+              label={t('settings.containerWriteThreshold')}
+              hint={t('settings.containerWriteThresholdHelp')}
+              htmlFor="container-threshold"
+            >
+              <Input
+                id="container-threshold"
+                type="number"
+                min={0}
+                value={draft.containerWriteThresholdMbPerMin}
+                onChange={(event) => patch({ containerWriteThresholdMbPerMin: Number(event.target.value) })}
+                className="w-28"
+                disabled={!draft.diskWatchEnabled || !draft.diskAlertEnabled}
+              />
+            </Field>
+          </div>
+          <Switch
+            checked={draft.notifyOnDiskWrites}
+            onCheckedChange={(value) => patch({ notifyOnDiskWrites: value })}
+            label={t('settings.notifyOnDiskWrites')}
+            disabled={!draft.diskWatchEnabled || !draft.diskAlertEnabled}
+          />
         </div>
       </Card>
 
@@ -401,6 +502,7 @@ export function SettingsPage(): ReactNode {
       <RegistriesSection />
       <TelegramSection />
       <McpSection />
+      <DiskDevicesSection enabled={saved?.diskWatchEnabled ?? false} />
       <StorageSection />
       <BackupSection />
 

@@ -120,7 +120,9 @@ export class StatsCalculator {
 
     if (current.systemCpu !== null && previous.systemCpu !== null) {
       const systemDelta = current.systemCpu - previous.systemCpu;
-      if (systemDelta > 0) {
+      const wallMs = current.ts - previous.ts;
+      const plausible = wallMs < 1000 || systemDelta >= wallMs * 1e6 * ncpu * 0.25;
+      if (systemDelta > 0 && plausible) {
         return clampPercent((cpuDelta / systemDelta) * ncpu * 100);
       }
     }

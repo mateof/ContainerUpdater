@@ -617,6 +617,14 @@ export interface AppSettings {
   metricsIntervalSeconds: number;
   metricsHistoryEnabled: boolean;
   historyRetentionDays: number;
+  metricsRetentionDays: number;
+  diskWatchEnabled: boolean;
+  diskWatchIntervalSeconds: number;
+  diskAlertEnabled: boolean;
+  diskAlertThresholdMbPerMin: number;
+  diskAlertSustainMinutes: number;
+  containerWriteThresholdMbPerMin: number;
+  notifyOnDiskWrites: boolean;
   registryConcurrency: number;
   defaultLocale: Locale;
   allowTelegramGroups: boolean;

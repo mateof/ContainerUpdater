@@ -26,6 +26,29 @@ interface ChartProps {
   /** Fija el maximo del eje Y. Util en porcentajes para que 0-100 sea estable. */
   maxY?: number;
   formatValue?: (value: number) => string;
+  stacked?: boolean;
+  structureKey?: string;
+  onCursor?: (index: number | null) => void;
+}
+
+export function toPlotData(
+  timestamps: number[],
+  series: Series[],
+  stacked: boolean,
+): uPlot.AlignedData {
+  const xs = timestamps.map((ts) => ts / 1000);
+  if (!stacked) return [xs, ...series.map((entry) => entry.values)] as uPlot.AlignedData;
+  const cumulative: Array<Array<number | null>> = [];
+  series.forEach((entry, index) => {
+    cumulative.push(
+      entry.values.map((value, i) => {
+        if (value === null) return null;
+        const below = index === 0 ? 0 : cumulative[index - 1]![i];
+        return below === null || below === undefined ? null : below + value;
+      }),
+    );
+  });
+  return [xs, ...cumulative.reverse()] as uPlot.AlignedData;
 }
 
 export function Chart({
@@ -34,11 +57,16 @@ export function Chart({
   height = 160,
   maxY,
   formatValue,
+  stacked = false,
+  structureKey = '',
+  onCursor,
 }: ChartProps): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
   const formatRef = useRef(formatValue);
   formatRef.current = formatValue;
+  const cursorRef = useRef(onCursor);
+  cursorRef.current = onCursor;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -46,6 +74,8 @@ export function Chart({
 
     const readVar = (name: string): string =>
       getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const resolve = (color: string): string =>
+      color.replace(/var\((--[\w-]+)\)/g, (_match, name: string) => readVar(name) || 'currentColor');
 
     const options: uPlot.Options = {
       width: container.clientWidth,
@@ -76,13 +106,20 @@ export function Chart({
             splits.map((value) => (formatRef.current ? formatRef.current(value) : String(value))),
         },
       ],
+      hooks: {
+        setCursor: [(u) => cursorRef.current?.(u.cursor.idx ?? null)],
+      },
       series: [
         {},
-        ...series.map((entry) => ({
+        ...(stacked ? [...series].reverse() : series).map((entry) => ({
           label: entry.label,
-          stroke: entry.color,
+          stroke: stacked ? readVar('--bg-elevated') : resolve(entry.color),
           width: 2,
-          fill: entry.fill ? `color-mix(in oklab, ${entry.color} 18%, transparent)` : undefined,
+          fill: stacked
+            ? resolve(entry.color)
+            : entry.fill
+              ? resolve(`color-mix(in oklab, ${entry.color} 18%, transparent)`)
+              : undefined,
           points: { show: false },
           // Las muestras pueden faltar (primera lectura sin delta). spanGaps
           // en false deja el hueco visible en vez de inventar una linea recta.
@@ -92,10 +129,7 @@ export function Chart({
       padding: [8, 8, 0, 0],
     };
 
-    const data: uPlot.AlignedData = [
-      timestamps.map((ts) => ts / 1000),
-      ...series.map((entry) => entry.values),
-    ] as uPlot.AlignedData;
+    const data = toPlotData(timestamps, series, stacked);
 
     const plot = new uPlot(options, data, container);
     plotRef.current = plot;
@@ -115,16 +149,13 @@ export function Chart({
     // Solo se recrea si cambia la estructura (numero de series o altura), no en
     // cada llegada de datos.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [height, maxY, series.length]);
+  }, [height, maxY, series.length, stacked, structureKey]);
 
   useEffect(() => {
     const plot = plotRef.current;
     if (!plot) return;
-    plot.setData([
-      timestamps.map((ts) => ts / 1000),
-      ...series.map((entry) => entry.values),
-    ] as uPlot.AlignedData);
-  }, [timestamps, series]);
+    plot.setData(toPlotData(timestamps, series, stacked));
+  }, [timestamps, series, stacked]);
 
   return <div ref={containerRef} className="w-full" style={{ height }} />;
 }

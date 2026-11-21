@@ -288,6 +288,14 @@ export const settingsSchema = z.object({
   metricsIntervalSeconds: z.number().int().min(2).max(60).optional(),
   metricsHistoryEnabled: z.boolean().optional(),
   historyRetentionDays: z.number().int().min(1).max(365).optional(),
+  metricsRetentionDays: z.number().int().min(1).max(365).optional(),
+  diskWatchEnabled: z.boolean().optional(),
+  diskWatchIntervalSeconds: z.number().int().min(10).max(600).optional(),
+  diskAlertEnabled: z.boolean().optional(),
+  diskAlertThresholdMbPerMin: z.number().min(1).max(100_000).optional(),
+  diskAlertSustainMinutes: z.number().int().min(1).max(1440).optional(),
+  containerWriteThresholdMbPerMin: z.number().min(0).max(100_000).optional(),
+  notifyOnDiskWrites: z.boolean().optional(),
   registryConcurrency: z.number().int().min(1).max(10).optional(),
   defaultLocale: localeSchema.optional(),
   allowTelegramGroups: z.boolean().optional(),
@@ -342,3 +350,31 @@ export type RegistryInput = z.infer<typeof registrySchema>;
 export type SettingsInput = z.infer<typeof settingsSchema>;
 export type RestoreInput = z.infer<typeof restoreSchema>;
 export type BulkCheckInput = z.infer<typeof bulkCheckSchema>;
+
+const tbSchema = z.number().min(0).max(1_000_000).nullable().optional();
+
+export const diskDeviceConfigSchema = z.object({
+  watched: z.boolean().nullable().optional(),
+  tbwTb: tbSchema,
+  writtenTb: tbSchema,
+  thresholdMbPerMin: z.number().min(1).max(100_000).nullable().optional(),
+});
+
+export const diskDeviceNameSchema = z.string().regex(/^[A-Za-z0-9_.:-]{1,64}$/);
+
+const csvList = z
+  .string()
+  .max(4000)
+  .optional()
+  .transform((value) => (value ? value.split(',').map((item) => item.trim()).filter(Boolean) : []));
+
+export const diskIoSeriesQuerySchema = z.object({
+  range: z.enum(['1h', '24h', '7d', '30d']).default('1h'),
+  op: z.enum(['read', 'write']).default('write'),
+  view: z.enum(['disks', 'stacked']).default('disks'),
+  disks: csvList,
+  disk: diskDeviceNameSchema.optional(),
+  containers: csvList,
+  project: z.string().max(255).optional(),
+  top: z.coerce.number().int().min(1).max(20).default(5),
+});

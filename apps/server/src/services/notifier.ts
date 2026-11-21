@@ -7,11 +7,12 @@
  * cambia y no se reenvia; en cuanto apunta a otra, la clave es distinta y el
  * aviso sale solo.
  */
-import { buildReleaseInfo, translate, type Locale } from '@cu/shared';
+import { buildReleaseInfo, bytesPerSecondToMbPerMinute, translate, type Locale } from '@cu/shared';
 import { dedupeKey } from '../db/repositories/index.js';
 import type { Repositories } from '../db/repositories/index.js';
 import type { CheckOutcome } from './checker.js';
 import type { ContainerAlert } from './watchdog.js';
+import type { DiskAlertContext } from './disk-io/collector.js';
 import type { Logger } from '../logger.js';
 
 export interface OutboundMessage {
@@ -195,6 +196,15 @@ export class NotifierService {
     }
   }
 
+  async notifyDiskAlert(context: DiskAlertContext): Promise<void> {
+    const settings = this.repos.settings.getAll();
+    if (!this.ready || !settings.notifyOnDiskWrites) return;
+    for (const recipient of this.repos.telegram.listNotifiable()) {
+      const locale = recipient.locale ?? settings.defaultLocale;
+      await this.#send({ chatId: recipient.chatId, text: buildDiskAlertMessage(context, locale) });
+    }
+  }
+
   #buildUpdateMessage(outcome: CheckOutcome, locale: Locale): string {
     const ref = escapeHtml(outcome.ref);
     const header = translate(locale, 'telegram.updateAvailable', { ref });
@@ -291,4 +301,43 @@ export class NotifierService {
  */
 export function escapeHtml(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+export function formatMbPerMinute(bytesPerSecond: number): string {
+  const value = bytesPerSecondToMbPerMinute(bytesPerSecond);
+  return value >= 100 ? value.toFixed(0) : value.toFixed(1);
+}
+
+export function buildDiskAlertMessage(context: DiskAlertContext, locale: Locale): string {
+  const { transition } = context;
+  const vars = {
+    name: escapeHtml(transition.name),
+    disk: escapeHtml(context.disk ?? '?'),
+    rate: formatMbPerMinute(transition.rateBps),
+    threshold: formatMbPerMinute(transition.thresholdBps),
+    minutes: String(context.sustainMinutes),
+  };
+
+  if (transition.type === 'recovered') {
+    return translate(
+      locale,
+      transition.kind === 'disk' ? 'telegram.diskWriteRecovered' : 'telegram.containerWriteRecovered',
+      vars,
+    );
+  }
+
+  const lines = [
+    translate(locale, transition.kind === 'disk' ? 'telegram.diskWriteHigh' : 'telegram.containerWriteHigh', vars),
+  ];
+  if (context.topContainers.length > 0) {
+    lines.push('', translate(locale, 'telegram.diskWriteTop'));
+    for (const writer of context.topContainers) {
+      lines.push(`• ${escapeHtml(writer.name)}: ${formatMbPerMinute(writer.writeBps)} MB/min`);
+    }
+  }
+  if (context.unattributedBps !== null) {
+    lines.push(translate(locale, 'telegram.diskWriteUnattributed', { rate: formatMbPerMinute(context.unattributedBps) }));
+  }
+  lines.push('', translate(locale, 'telegram.diskWriteApprox'));
+  return lines.join('\n');
 }

@@ -38,8 +38,6 @@ export class MetricsService {
   #sampling = false;
   #lastSystemCpu: number | null = null;
   #lastSampleAt = 0;
-  #rollupBuffer = new Map<string, { cpu: number[]; mem: number[] }>();
-  #lastRollupAt = Date.now();
 
   constructor(
     private readonly docker: DockerApi,
@@ -162,35 +160,11 @@ export class MetricsService {
       this.#ring.push(snapshot);
       if (this.#ring.length > RING_SIZE) this.#ring.shift();
 
-      this.#accumulateRollup(containers);
       this.broadcast({ type: 'metrics', payload: snapshot });
     } catch (error) {
       this.log.debug('Fallo en el ciclo de muestreo', error);
     } finally {
       this.#sampling = false;
     }
-  }
-
-  /**
-   * Agrega a disco en tramos de cinco minutos, y solo si el usuario activa el
-   * historico. Escribir cada muestra despertaria los discos del NAS
-   * continuamente para guardar datos que casi nadie mira.
-   */
-  #accumulateRollup(containers: ContainerMetrics[]): void {
-    if (!this.repos.settings.getAll().metricsHistoryEnabled) {
-      if (this.#rollupBuffer.size > 0) this.#rollupBuffer.clear();
-      return;
-    }
-
-    for (const metric of containers) {
-      const entry = this.#rollupBuffer.get(metric.id) ?? { cpu: [], mem: [] };
-      if (metric.cpuPercent !== null) entry.cpu.push(metric.cpuPercent);
-      entry.mem.push(metric.memoryPercent);
-      this.#rollupBuffer.set(metric.id, entry);
-    }
-
-    if (Date.now() - this.#lastRollupAt < 5 * 60_000) return;
-    this.#lastRollupAt = Date.now();
-    this.#rollupBuffer.clear();
   }
 }

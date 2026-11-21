@@ -28,6 +28,8 @@ import { HostMetricsService } from './services/host.js';
 import { MetricsService } from './services/metrics.js';
 import { NotifierService } from './services/notifier.js';
 import { WatchdogService } from './services/watchdog.js';
+import { DiskWatchService } from './services/disk-io/collector.js';
+import { DiskIoReader } from './services/disk-io/reader.js';
 import { DockerEventsWatcher } from './services/events.js';
 import { StorageService } from './services/storage.js';
 import { BackupService } from './services/backup.js';
@@ -54,6 +56,8 @@ export interface AppContext {
   host: HostMetricsService;
   notifier: NotifierService;
   watchdog: WatchdogService;
+  diskWatch: DiskWatchService;
+  diskIo: DiskIoReader;
   dockerEvents: DockerEventsWatcher;
   storage: StorageService;
   backup: BackupService;
@@ -255,6 +259,9 @@ export async function createApp(config: Config): Promise<AppContext> {
 
   const notifier = new NotifierService(repos, log.child('notifier'));
   const watchdog = new WatchdogService(repos, log.child('watchdog'));
+  const diskWatch = new DiskWatchService(docker, inventory, repos, config.hostProc, log.child('disk-io'));
+  diskWatch.setSink(notifier);
+  const diskIo = new DiskIoReader(diskWatch, repos, inventory);
 
   /**
    * Escucha del daemon para reflejar los cambios al instante.
@@ -360,6 +367,7 @@ export async function createApp(config: Config): Promise<AppContext> {
   await telegram.start();
   scheduler.start();
   dockerEvents.start();
+  diskWatch.start();
 
   const shutdown = async (): Promise<void> => {
     log.info('Cerrando...');
@@ -368,6 +376,7 @@ export async function createApp(config: Config): Promise<AppContext> {
     dockerEvents.stop();
     scheduler.stop();
     metrics.stop();
+    diskWatch.stop();
     await telegram.stop();
     db.close();
   };
@@ -392,6 +401,8 @@ export async function createApp(config: Config): Promise<AppContext> {
     host,
     notifier,
     watchdog,
+    diskWatch,
+    diskIo,
     dockerEvents,
     storage,
     backup,

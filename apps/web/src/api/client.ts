@@ -6,6 +6,10 @@
  */
 import type {
   AppSettings,
+  BlockDevice,
+  DiskDeviceConfigInput,
+  DiskIoSeriesResponse,
+  DiskIoStatus,
   BackupFile,
   CheckRun,
   ComposeProject,
@@ -362,6 +366,13 @@ export const api = {
   deleteVolume: (name: string) =>
     del<{ ok: true }>(`/storage/volumes/${encodeURIComponent(name)}`),
   pruneBuildCache: () => post<{ freed: number }>('/storage/build-cache/prune'),
+
+  diskStatus: () => get<{ status: DiskIoStatus }>('/disk-io/status'),
+  diskSeries: (params: Record<string, string>) =>
+    get<{ series: DiskIoSeriesResponse }>(`/disk-io/series?${new URLSearchParams(params).toString()}`),
+  diskDevices: () => get<{ devices: BlockDevice[] }>('/disk-io/devices'),
+  saveDiskDevice: (name: string, body: DiskDeviceConfigInput) =>
+    put<{ device: BlockDevice }>(`/disk-io/devices/${encodeURIComponent(name)}`, body),
 
   mcpTokens: () => get<{ tokens: McpToken[] }>('/mcp/tokens'),
   createMcpToken: (body: { name: string; scopes: McpScope[]; expiresInDays?: number | null }) =>

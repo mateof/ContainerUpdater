@@ -11,7 +11,7 @@
  * llamadas inutiles.
  */
 import { z } from 'zod';
-import { buildPortsTable, type McpScope } from '@cu/shared';
+import { buildPortsTable, bytesPerSecondToMbPerMinute, type DiskIoRange, type McpScope } from '@cu/shared';
 import type { AppContext } from '../app.js';
 import type { ProjectTarget } from '../services/project-files.js';
 
@@ -151,6 +151,66 @@ export const MCP_TOOLS: McpTool[] = [
         containers: app.inventory.listContainers().length,
         images: images.length,
         projects: app.inventory.listProjects().length,
+      };
+    },
+  },
+  {
+    name: 'get_disk_writes',
+    scope: 'read',
+    description:
+      'Escrituras en disco del host por disco fisico (de /proc/diskstats, la fuente fiable) y reparto ' +
+      'aproximado por contenedor (de blkio), con lo no atribuido, alertas activas y la vida util ' +
+      'estimada por TBW. Ritmos en MB/min. Para averiguar que desgasta un SSD o por que salto una ' +
+      'alerta de escritura. Lo no atribuido incluye el sistema, paquetes del NAS y el propio Docker: ' +
+      'no lo repartas entre contenedores. Si la vigilancia de disco esta desactivada, lo dice y no hay datos.',
+    inputSchema: {
+      range: z.enum(['1h', '24h', '7d', '30d']).optional().describe('Ventana para los que mas escriben (por defecto 1h)'),
+      top: z.number().int().min(1).max(20).optional().describe('Cuantos contenedores por disco (por defecto 5)'),
+    },
+    run: async (app, args) => {
+      const status = app.diskIo.status();
+      const toMbMin = (bps: number | null): number | null =>
+        bps === null ? null : Math.round(bytesPerSecondToMbPerMinute(bps) * 10) / 10;
+      const range = (args.range as DiskIoRange | undefined) ?? '1h';
+      return {
+        enabled: status.enabled,
+        intervalSeconds: status.intervalSeconds,
+        procAvailable: status.procAvailable,
+        attributionAvailable: status.attributionAvailable,
+        historySince: status.historySince ? new Date(status.historySince).toISOString() : null,
+        memorySince: status.memorySince ? new Date(status.memorySince).toISOString() : null,
+        alerts: {
+          enabled: status.alertsEnabled,
+          sustainMinutes: status.sustainMinutes,
+          containerThresholdMbPerMin: status.containerThresholdMbPerMin || null,
+          activeContainers: status.containerAlerts.map((a) => a.name),
+        },
+        disks: status.disks.map((disk) => ({
+          name: disk.name,
+          label: disk.label,
+          nowMbPerMin: toMbMin(disk.current?.writeBps ?? null),
+          avgWriteIoKb: disk.current?.avgWriteIoBytes ? Math.round(disk.current.avgWriteIoBytes / 1024) : null,
+          thresholdMbPerMin: disk.thresholdMbPerMin,
+          alertActive: disk.alert.active,
+          tbwTb: disk.tbwTb,
+          remainingTb: disk.remainingTb === null ? null : Math.round(disk.remainingTb * 10) / 10,
+          yearsLeft: Object.fromEntries(
+            disk.lifetime.map((l) => [l.window, l.years === null ? null : Math.round(l.years * 10) / 10]),
+          ),
+        })),
+        range,
+        writers: app.diskIo.writersOverRange(range, (args.top as number | undefined) ?? 5).map((entry) => ({
+          disk: entry.disk,
+          coveredMinutes: Math.round(entry.coveredSeconds / 60),
+          writeMbPerMin: toMbMin(entry.writeBps),
+          readMbPerMin: toMbMin(entry.readBps),
+          unattributedMbPerMin: toMbMin(entry.unattributedBps),
+          topContainers: entry.topContainers.map((c) => ({
+            name: c.name,
+            project: c.project,
+            writeMbPerMin: toMbMin(c.writeBps),
+          })),
+        })),
       };
     },
   },

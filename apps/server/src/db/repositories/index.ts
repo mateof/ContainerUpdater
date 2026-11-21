@@ -11,6 +11,7 @@ import { createPasskeyRepository } from './passkeys.js';
 import { createTotpRepository } from './totp.js';
 import { createWatchRepository } from './watch.js';
 import { createMcpRepository } from './mcp.js';
+import { createDiskIoRepository } from './disk-io.js';
 
 export function createRepositories(db: Db, keyring: Keyring) {
   return {
@@ -30,6 +31,7 @@ export function createRepositories(db: Db, keyring: Keyring) {
     tagCache: createTagCacheRepository(db),
     watch: createWatchRepository(db),
     mcp: createMcpRepository(db),
+    diskIo: createDiskIoRepository(db),
   };
 }
 
@@ -44,3 +46,4 @@ export type { PasskeyRow } from './passkeys.js';
 export type { TotpRow } from './totp.js';
 export type { RegistryCredentials } from './registries.js';
 export type { AlertKind, WatchRow } from './watch.js';
+export type { DiskDeviceRow, DiskIoRepository } from './disk-io.js';

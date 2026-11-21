@@ -111,6 +111,13 @@ export class DockerApi {
     });
   }
 
+  statsOnce(id: string): Promise<ContainerStats> {
+    return this.client.request<ContainerStats>({
+      path: `/containers/${id}/stats?stream=false&one-shot=true`,
+      timeoutMs: 15_000,
+    });
+  }
+
   // -- Imagenes -------------------------------------------------------------
 
   listImages(): Promise<ImageListItem[]> {

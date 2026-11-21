@@ -55,6 +55,10 @@ it gathers in one place the things that used to mean opening an SSH session.
   in a loop, or has stopped being healthy, and when it recovers. Stopping it
   yourself does not alert.
 - **Performance** of the NAS and of each container, live.
+- **Disk write watch**: what each physical disk writes, measured in the
+  background from the kernel counters, with an approximate split per container,
+  the part no container explains, Telegram alerts when a disk writes too much for
+  a while, and the years an SSD has left at the current rate.
 - **Telegram bot** restricted to the accounts you authorise, which notifies
   without repeating itself and takes commands.
 - **Creates projects** from the web: you paste or upload a `docker-compose.yml`
@@ -126,7 +130,8 @@ projects, mount both and point `CU_PROJECTS_DIR` at the second:
 
 The `/proc` mount is the one that gives you the real NAS metrics. Without it the
 app still works, but shows approximate figures derived from Docker and says so in
-the interface.
+the interface. Disk write watch needs it too, because it reads `diskstats` from
+there.
 
 If your volume is not `volume1`, adjust the mount and `CU_COMPOSE_ROOTS`, which
 takes a comma-separated list.
@@ -323,6 +328,37 @@ start the project. What is done instead:
   the same envelope as the registry credentials, in case you need to go back.
 - Reading the file to edit it and showing a particular value both go into the
   audit log.
+
+## Disk writes
+
+The **Disk** screen answers the question an SSD in a NAS eventually raises:
+what is writing so much. Turn it on in **Settings → Disk watch**. From then on
+the app reads `/proc/diskstats` every minute, even with nobody looking at the
+panel, so it needs the `/proc:/host/proc:ro` mount.
+
+- **Per disk** (the source of truth): MB/min written and read, IOs and the
+  average IO size. Physical disks are watched by default (`sata1`, `nvme0n1`,
+  `sda`...); partitions, `loop`, `ram` and `zram` are never offered, and RAID or
+  mapping layers can be ticked but should not be added to their disks.
+- **Per container** (approximate): from Docker's `blkio`, plus an
+  **unattributed** series with whatever the disk writes and no container
+  explains. On Synology it is usually the largest part: DSM packages, Docker
+  itself saving healthcheck state and btrfs writeback all land there.
+- **Alerts** on Telegram when a disk stays above a threshold for N minutes (120
+  MB/min for 15 minutes by default), with the containers writing the most and
+  the unattributed part, and another message when it recovers. Optionally a
+  threshold per container.
+- **Lifetime**: enter each SSD's TBW and what it has already written, and it
+  estimates the years left at the last hour, day and week rates. RAID 1 members
+  are counted one by one, never added up.
+- **Charts** filtered by disk, container, Compose project, range (1 h, 24 h,
+  7 d, 30 d) and read or write, with a stacked view of the top writers plus
+  "others" and "unattributed".
+
+With **Keep history on disk** on, it stores 5 minute buckets (average and peak
+per disk and per container, and CPU and memory per container) in a single write
+every 5 minutes. Without it, the last 24 hours live in memory. The reasons
+behind each choice are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## In-app help
 

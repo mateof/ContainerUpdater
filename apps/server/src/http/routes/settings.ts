@@ -23,6 +23,7 @@ export async function registerSettingsRoutes(
     if (patch.checkCron && patch.checkCron !== previous.checkCron) {
       app.scheduler.reschedule();
     }
+    app.diskWatch.reconfigure();
 
     app.repos.history.audit({
       actorType: 'user',

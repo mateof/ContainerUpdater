@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { StatsCalculator } from './stats.js';
 import type { ContainerStats } from './types.js';
 
@@ -48,6 +48,24 @@ describe('StatsCalculator', () => {
     // = 40%.
     const result = calc.compute('a', dockerSample(2_000_000, 20_000_000));
     expect(result.cpuPercent).toBeCloseTo(40, 1);
+  });
+
+  it('ignora el system_cpu_usage de Podman 5.4, que avanza mucho menos que el reloj por CPU', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(0);
+      const calc = new StatsCalculator(6, 8_000_000_000);
+      const sample = (cpu: number, system: number): ContainerStats => ({
+        cpu_stats: { cpu_usage: { total_usage: cpu }, system_cpu_usage: system, online_cpus: 6 },
+        memory_stats: { usage: 1, limit: 2 },
+      });
+      calc.compute('redis', sample(2_399_710_741_000, 7_500_546_338_000));
+      vi.setSystemTime(10_076);
+      const result = calc.compute('redis', sample(2_399_785_916_000, 7_501_005_134_000));
+      expect(result.cpuPercent).toBeCloseTo(0.75, 1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('calcula el CPU aunque precpu_stats venga vacio, como en Podman', async () => {
