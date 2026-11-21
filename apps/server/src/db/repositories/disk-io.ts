@@ -1,5 +1,5 @@
 import type { Db } from '../index.js';
-import type { DiskDeviceConfigInput } from '@cu/shared';
+import type { ContainerEvent, ContainerEventKind, DiskDeviceConfigInput } from '@cu/shared';
 import type {
   BucketBatch,
   ContainerDiskBucket,
@@ -52,6 +52,14 @@ interface UsageRow {
   cpu_max: number | null;
   mem_avg: number;
   mem_max: number;
+}
+
+interface ContainerEventRow {
+  at: number;
+  container_name: string;
+  project: string | null;
+  kind: ContainerEventKind;
+  exit_code: number | null;
 }
 
 function toDiskBucket(row: DiskRollupRow): DiskBucket {
@@ -141,17 +149,38 @@ export function createDiskIoRepository(db: Db) {
        samples = samples + excluded.samples`,
   );
 
+  const insertEvent = db.prepare(
+    `INSERT OR IGNORE INTO container_events (at, container_name, project, kind, exit_code)
+     VALUES (@at, @container, @project, @kind, @exitCode)`,
+  );
+
   const writeBatch = db.transaction((batch: BucketBatch) => {
     for (const disk of batch.disks) upsertDisk.run(disk);
     for (const entry of batch.containerDisks) upsertContainerDisk.run(entry);
     for (const usage of batch.usage) upsertUsage.run(usage);
+    for (const event of batch.events) insertEvent.run(event);
   });
 
   return {
     writeBatch(batch: BucketBatch): boolean {
-      if (batch.disks.length + batch.containerDisks.length + batch.usage.length === 0) return false;
+      if (batch.disks.length + batch.containerDisks.length + batch.usage.length + batch.events.length === 0) {
+        return false;
+      }
       writeBatch(batch);
       return true;
+    },
+
+    eventsSince(from: number, to: number): ContainerEvent[] {
+      const rows = db
+        .prepare('SELECT * FROM container_events WHERE at >= ? AND at < ? ORDER BY at')
+        .all(from, to) as ContainerEventRow[];
+      return rows.map((row) => ({
+        at: row.at,
+        container: row.container_name,
+        project: row.project,
+        kind: row.kind,
+        exitCode: row.exit_code,
+      }));
     },
 
     diskBuckets(from: number, to: number, disks?: string[]): DiskBucket[] {
@@ -222,6 +251,7 @@ export function createDiskIoRepository(db: Db) {
       db.prepare('DELETE FROM disk_rollup WHERE bucket_ts < ?').run(cutoff);
       db.prepare('DELETE FROM disk_container_rollup WHERE bucket_ts < ?').run(cutoff);
       db.prepare('DELETE FROM metrics_rollup WHERE bucket_ts < ?').run(cutoff);
+      db.prepare('DELETE FROM container_events WHERE at < ?').run(cutoff);
     },
 
     devices(): DiskDeviceRow[] {

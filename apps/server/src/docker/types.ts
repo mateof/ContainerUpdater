@@ -235,4 +235,5 @@ export interface DockerEvent {
   id?: string;
   Actor?: { ID?: string; Attributes?: Record<string, string> };
   time?: number;
+  timeNano?: number;
 }

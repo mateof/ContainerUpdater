@@ -167,7 +167,7 @@ export function buildSeries(input: {
   now: number;
   intervalSeconds: number;
   knownContainers: Array<{ name: string; project: string | null }>;
-}): DiskIoSeriesResponse {
+}): Omit<DiskIoSeriesResponse, 'events' | 'eventsTruncated'> {
   const stepSeconds = Math.max(STEP_SECONDS[input.range], input.intervalSeconds);
   const stepMs = stepSeconds * 1000;
   const from = input.now - DISK_IO_RANGE_MS[input.range];

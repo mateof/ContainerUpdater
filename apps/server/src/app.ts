@@ -275,6 +275,7 @@ export async function createApp(config: Config): Promise<AppContext> {
     inventory,
     () => metrics.broadcast({ type: 'inventory-changed', payload: {} }),
     log.child('docker-events'),
+    (event) => diskWatch.recordDockerEvent(event),
   );
   const storage = new StorageService(docker, log.child('storage'));
   const backup = new BackupService(repos, config.version, log.child('backup'));

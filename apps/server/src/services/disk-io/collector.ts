@@ -1,10 +1,15 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { mbPerMinuteToBytesPerSecond, type AppSettings, type ContainerSummary } from '@cu/shared';
+import {
+  mbPerMinuteToBytesPerSecond,
+  type AppSettings,
+  type ContainerEvent,
+  type ContainerSummary,
+} from '@cu/shared';
 import { StatsCalculator } from '../../docker/stats.js';
 import { mapWithConcurrency } from '../checker.js';
 import type { DockerApi } from '../../docker/api.js';
-import type { ContainerStats } from '../../docker/types.js';
+import type { ContainerStats, DockerEvent } from '../../docker/types.js';
 import type { InventoryService } from '../inventory.js';
 import type { Repositories } from '../../db/repositories/index.js';
 import type { DiskDeviceRow } from '../../db/repositories/disk-io.js';
@@ -27,6 +32,7 @@ import {
   type Tick,
   type UsageTickSample,
 } from './model.js';
+import { lifecycleEventFrom } from './lifecycle.js';
 import { alertSubject, evaluateAlerts, type AlertInput, type AlertTransition } from './alerts.js';
 
 export const RING_SPAN_MS = 24 * 3600_000;
@@ -78,6 +84,7 @@ export function shouldCollect(settings: AppSettings): boolean {
 
 export class DiskWatchService {
   readonly #ring: Tick[] = [];
+  readonly #events: ContainerEvent[] = [];
   readonly #accumulator = new RollupAccumulator();
   readonly #diskTracker = new CounterTracker<DiskValues>();
   readonly #containerTracker = new CounterTracker<Record<string, number>>();
@@ -109,6 +116,24 @@ export class DiskWatchService {
 
   get ring(): Tick[] {
     return this.#ring;
+  }
+
+  get events(): ContainerEvent[] {
+    return this.#events;
+  }
+
+  recordDockerEvent(event: DockerEvent): ContainerEvent | null {
+    const lifecycle = lifecycleEventFrom(event, (id) => {
+      const found = this.inventory.snapshot.containers.find((container) => container.id === id);
+      return found ? { name: found.name, project: found.projectName } : undefined;
+    });
+    if (!lifecycle || !this.repos.settings.getAll().diskWatchEnabled) return null;
+    this.#events.push(lifecycle);
+    this.#events.sort((a, b) => a.at - b.at);
+    const cutoff = Date.now() - RING_SPAN_MS;
+    while (this.#events.length > 0 && this.#events[0]!.at < cutoff) this.#events.shift();
+    this.#accumulator.addEvent(lifecycle);
+    return lifecycle;
   }
 
   get running(): boolean {
@@ -329,7 +354,7 @@ export class DiskWatchService {
   }
 
   #persist(batch: ReturnType<RollupAccumulator['drain']>): void {
-    if (batch.disks.length + batch.containerDisks.length + batch.usage.length === 0) return;
+    if (batch.disks.length + batch.containerDisks.length + batch.usage.length + batch.events.length === 0) return;
     if (!this.repos.settings.getAll().metricsHistoryEnabled) return;
     try {
       this.repos.diskIo.writeBatch(batch);

@@ -8,6 +8,16 @@ export type DiskIoView = 'disks' | 'stacked';
 
 export type DiskIoSource = 'memory' | 'history' | 'mixed' | 'none';
 
+export type ContainerEventKind = 'start' | 'stop' | 'pause' | 'unpause';
+
+export interface ContainerEvent {
+  at: number;
+  container: string;
+  project: string | null;
+  kind: ContainerEventKind;
+  exitCode: number | null;
+}
+
 export const DISK_IO_RANGES: DiskIoRange[] = ['1h', '24h', '7d', '30d'];
 
 export const DISK_IO_RANGE_MS: Record<DiskIoRange, number> = {
@@ -139,4 +149,6 @@ export interface DiskIoSeriesResponse {
   stack: DiskStack | null;
   projects: string[];
   containers: Array<{ name: string; project: string | null }>;
+  events: ContainerEvent[];
+  eventsTruncated: boolean;
 }

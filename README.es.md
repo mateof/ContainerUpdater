@@ -340,7 +340,10 @@ tenga el panel abierto, así que necesita el montaje `/proc:/host/proc:ro`.
   **no atribuido** con lo que escribe el disco y no explica ningún contenedor. En
   Synology suele ser lo más grande: ahí caen los paquetes de DSM, el propio
   Docker guardando el estado de los healthchecks y la escritura diferida de
-  btrfs.
+  btrfs. En DSM el kernel no da ningún contador de `blkio`, así que ahí es todo.
+- **Marcas de arranque y parada** en la gráfica, una por cada contenedor que
+  arranca, se para, se pausa o se reanuda, con la lista debajo. Cuando el disco
+  sube o baja de golpe, enseñan qué cambió justo antes.
 - **Avisos** por Telegram cuando un disco se mantiene por encima de un umbral
   durante N minutos (120 MB/min durante 15 minutos por defecto), con los
   contenedores que más escriben y lo no atribuido, y otro mensaje cuando se

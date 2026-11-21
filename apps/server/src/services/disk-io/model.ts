@@ -1,3 +1,6 @@
+import type { ContainerEvent } from '@cu/shared';
+import { eventKey } from './lifecycle.js';
+
 export const BUCKET_MS = 5 * 60_000;
 
 export interface DiskTickSample {
@@ -74,6 +77,7 @@ export interface BucketBatch {
   disks: DiskBucket[];
   containerDisks: ContainerDiskBucket[];
   usage: UsageBucket[];
+  events: ContainerEvent[];
 }
 
 export function bucketOf(ts: number, size = BUCKET_MS): number {
@@ -81,7 +85,7 @@ export function bucketOf(ts: number, size = BUCKET_MS): number {
 }
 
 export function emptyBatch(): BucketBatch {
-  return { disks: [], containerDisks: [], usage: [] };
+  return { disks: [], containerDisks: [], usage: [], events: [] };
 }
 
 export function mergeDiskBucket(target: DiskBucket, other: DiskBucket): DiskBucket {
@@ -152,6 +156,7 @@ export function tickToBatch(tick: Tick): BucketBatch {
       memAvg: u.memoryPercent,
       memMax: u.memoryPercent,
     })),
+    events: [],
   };
 }
 
@@ -159,6 +164,11 @@ export class RollupAccumulator {
   readonly #disks = new Map<string, DiskBucket>();
   readonly #containerDisks = new Map<string, ContainerDiskBucket>();
   readonly #usage = new Map<string, UsageBucket>();
+  readonly #events = new Map<string, ContainerEvent>();
+
+  addEvent(event: ContainerEvent): void {
+    this.#events.set(eventKey(event), event);
+  }
 
   add(tick: Tick): BucketBatch {
     const current = bucketOf(tick.at);
@@ -199,7 +209,7 @@ export class RollupAccumulator {
   }
 
   get pending(): boolean {
-    return this.#disks.size + this.#containerDisks.size + this.#usage.size > 0;
+    return this.#disks.size + this.#containerDisks.size + this.#usage.size + this.#events.size > 0;
   }
 
   #take(predicate: (bucket: number) => boolean): BucketBatch {
@@ -218,6 +228,11 @@ export class RollupAccumulator {
       if (!predicate(value.bucket)) continue;
       batch.usage.push(value);
       this.#usage.delete(key);
+    }
+    for (const [key, value] of this.#events) {
+      if (!predicate(bucketOf(value.at))) continue;
+      batch.events.push(value);
+      this.#events.delete(key);
     }
     return batch;
   }

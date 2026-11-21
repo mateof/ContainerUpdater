@@ -343,7 +343,11 @@ panel, so it needs the `/proc:/host/proc:ro` mount.
 - **Per container** (approximate): from Docker's `blkio`, plus an
   **unattributed** series with whatever the disk writes and no container
   explains. On Synology it is usually the largest part: DSM packages, Docker
-  itself saving healthcheck state and btrfs writeback all land there.
+  itself saving healthcheck state and btrfs writeback all land there. On DSM
+  the kernel provides no `blkio` counters at all, so there it is everything.
+- **Start and stop markers** on the chart, one for every container that starts,
+  stops, pauses or resumes, with the list underneath. When the disk jumps up
+  or down, it shows what changed just before.
 - **Alerts** on Telegram when a disk stays above a threshold for N minutes (120
   MB/min for 15 minutes by default), with the containers writing the most and
   the unattributed part, and another message when it recovers. Optionally a

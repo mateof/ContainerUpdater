@@ -32,6 +32,16 @@ export function formatDateTime(ts: number | null | undefined): string {
   }).format(new Date(ts));
 }
 
+export function formatEventTime(ts: number): string {
+  return new Intl.DateTimeFormat(localeTag(), {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(new Date(ts));
+}
+
 /**
  * Tiempo relativo ("hace 3 horas"). Se usa Intl.RelativeTimeFormat en vez de
  * una tabla propia para que los plurales y el genero salgan bien en los dos

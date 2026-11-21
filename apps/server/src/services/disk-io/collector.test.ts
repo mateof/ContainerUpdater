@@ -209,6 +209,35 @@ describe('DiskWatchService.sample', () => {
     expect(batches.every((batch) => new Set(batch.disks.map((d) => d.bucket)).size === 1)).toBe(true);
   });
 
+  it('guarda los arranques y paradas en el lote de su tramo en vez de abrir una transaccion por evento', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'performance'] });
+    vi.setSystemTime(new Date('2026-11-21T10:00:30Z'));
+    const proc = procWith(line(0));
+    const { service, batches } = makeService(() => settings(), proc);
+    const at = Date.parse('2026-11-21T10:02:00Z') / 1000;
+
+    for (let minute = 0; minute <= 10; minute += 1) {
+      if (minute === 2) {
+        service.recordDockerEvent({ Type: 'container', Action: 'die', time: at, Actor: { ID: 'a', Attributes: { name: 'emby', exitCode: '0' } } });
+        service.recordDockerEvent({ Type: 'container', Action: 'start', time: at + 5, Actor: { ID: 'a', Attributes: { name: 'emby' } } });
+      }
+      writeFileSync(join(proc, 'diskstats'), line(minute * 120_000));
+      await service.sample();
+      vi.advanceTimersByTime(60_000);
+    }
+
+    expect(batches).toHaveLength(2);
+    expect(batches[0]?.events.map((e) => e.kind)).toEqual(['stop', 'start']);
+    expect(batches[1]?.events).toEqual([]);
+    expect(service.events).toHaveLength(2);
+  });
+
+  it('no apunta eventos mientras la vigilancia de disco esta apagada', () => {
+    const { service } = makeService(() => settings({ diskWatchEnabled: false }));
+    expect(service.recordDockerEvent({ Type: 'container', Action: 'start', Actor: { Attributes: { name: 'emby' } } })).toBeNull();
+    expect(service.events).toEqual([]);
+  });
+
   it('lo guarda todo en memoria y no escribe nada mientras el historico esta desactivado', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'performance'] });
     vi.setSystemTime(new Date('2026-11-21T10:00:30Z'));

@@ -29,6 +29,96 @@ interface ChartProps {
   stacked?: boolean;
   structureKey?: string;
   onCursor?: (index: number | null) => void;
+  markers?: ChartMarker[];
+}
+
+export type MarkerShape = 'up' | 'down';
+
+export interface ChartMarker {
+  at: number;
+  shape: MarkerShape;
+}
+
+export interface MarkerCluster {
+  x: number;
+  count: number;
+  shape: MarkerShape | 'mixed';
+}
+
+export function clusterMarkers(positions: Array<{ x: number; shape: MarkerShape }>, gap: number): MarkerCluster[] {
+  const sorted = [...positions].sort((a, b) => a.x - b.x);
+  const clusters: MarkerCluster[] = [];
+  let anchor = Number.NEGATIVE_INFINITY;
+  for (const position of sorted) {
+    const last = clusters.at(-1);
+    if (last && position.x - anchor <= gap) {
+      last.count += 1;
+      if (last.shape !== position.shape) last.shape = 'mixed';
+      continue;
+    }
+    anchor = position.x;
+    clusters.push({ x: position.x, count: 1, shape: position.shape });
+  }
+  return clusters;
+}
+
+function drawMarkers(u: uPlot, markers: ChartMarker[], line: string, ink: string): void {
+  if (markers.length === 0) return;
+  const ratio = uPlot.pxRatio;
+  const { left, top, width, height } = u.bbox;
+  const positions = markers
+    .map((marker) => ({ x: u.valToPos(marker.at / 1000, 'x', true), shape: marker.shape }))
+    .filter((position) => position.x >= left && position.x <= left + width);
+  const clusters = clusterMarkers(positions, 24 * ratio);
+  const size = 4 * ratio;
+  const ctx = u.ctx;
+  ctx.save();
+  ctx.lineWidth = ratio;
+  ctx.strokeStyle = line;
+  for (const cluster of clusters) {
+    const x = Math.round(cluster.x) + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x, top + size * 2);
+    ctx.lineTo(x, top + height);
+    ctx.stroke();
+  }
+  ctx.fillStyle = ink;
+  ctx.font = `${10 * ratio}px ui-sans-serif, system-ui, sans-serif`;
+  ctx.textBaseline = 'middle';
+  for (const cluster of clusters) {
+    const x = Math.round(cluster.x) + 0.5;
+    const y = top + size;
+    ctx.beginPath();
+    if (cluster.shape === 'up') {
+      ctx.moveTo(x, y - size);
+      ctx.lineTo(x + size, y + size);
+      ctx.lineTo(x - size, y + size);
+    } else if (cluster.shape === 'down') {
+      ctx.moveTo(x - size, y - size);
+      ctx.lineTo(x + size, y - size);
+      ctx.lineTo(x, y + size);
+    } else {
+      ctx.moveTo(x, y - size);
+      ctx.lineTo(x + size, y);
+      ctx.lineTo(x, y + size);
+      ctx.lineTo(x - size, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    if (cluster.count > 1) ctx.fillText(String(cluster.count), x + size + 2 * ratio, y);
+  }
+  ctx.restore();
+}
+
+const NO_MARKERS: ChartMarker[] = [];
+
+export function isolatedIndices(values: ReadonlyArray<number | null | undefined>): number[] {
+  const present = (index: number) => values[index] !== null && values[index] !== undefined;
+  return values.flatMap((_, index) => (present(index) && !present(index - 1) && !present(index + 1) ? [index] : []));
+}
+
+function isolatedPoints(u: uPlot, seriesIdx: number): number[] {
+  return isolatedIndices(u.data[seriesIdx] as Array<number | null>);
 }
 
 export function toPlotData(
@@ -60,6 +150,7 @@ export function Chart({
   stacked = false,
   structureKey = '',
   onCursor,
+  markers = NO_MARKERS,
 }: ChartProps): ReactNode {
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -67,6 +158,8 @@ export function Chart({
   formatRef.current = formatValue;
   const cursorRef = useRef(onCursor);
   cursorRef.current = onCursor;
+  const markersRef = useRef(markers);
+  markersRef.current = markers;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -108,6 +201,7 @@ export function Chart({
       ],
       hooks: {
         setCursor: [(u) => cursorRef.current?.(u.cursor.idx ?? null)],
+        draw: [(u) => drawMarkers(u, markersRef.current, readVar('--text-faint'), readVar('--text-muted'))],
       },
       series: [
         {},
@@ -120,7 +214,7 @@ export function Chart({
             : entry.fill
               ? resolve(`color-mix(in oklab, ${entry.color} 18%, transparent)`)
               : undefined,
-          points: { show: false },
+          points: { show: true, size: 5, filter: isolatedPoints, fill: resolve(entry.color), stroke: resolve(entry.color) },
           // Las muestras pueden faltar (primera lectura sin delta). spanGaps
           // en false deja el hueco visible en vez de inventar una linea recta.
           spanGaps: false,
@@ -156,6 +250,10 @@ export function Chart({
     if (!plot) return;
     plot.setData(toPlotData(timestamps, series, stacked));
   }, [timestamps, series, stacked]);
+
+  useEffect(() => {
+    plotRef.current?.redraw(false, false);
+  }, [markers]);
 
   return <div ref={containerRef} className="w-full" style={{ height }} />;
 }

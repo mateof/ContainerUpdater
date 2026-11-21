@@ -162,7 +162,9 @@ export const MCP_TOOLS: McpTool[] = [
       'aproximado por contenedor (de blkio), con lo no atribuido, alertas activas y la vida util ' +
       'estimada por TBW. Ritmos en MB/min. Para averiguar que desgasta un SSD o por que salto una ' +
       'alerta de escritura. Lo no atribuido incluye el sistema, paquetes del NAS y el propio Docker: ' +
-      'no lo repartas entre contenedores. Si la vigilancia de disco esta desactivada, lo dice y no hay datos.',
+      'no lo repartas entre contenedores. Incluye los arranques y paradas de contenedores de la ventana, ' +
+      'para cruzar una subida o bajada del disco con lo que cambio. Si la vigilancia de disco esta ' +
+      'desactivada, lo dice y no hay datos.',
     inputSchema: {
       range: z.enum(['1h', '24h', '7d', '30d']).optional().describe('Ventana para los que mas escriben (por defecto 1h)'),
       top: z.number().int().min(1).max(20).optional().describe('Cuantos contenedores por disco (por defecto 5)'),
@@ -172,6 +174,7 @@ export const MCP_TOOLS: McpTool[] = [
       const toMbMin = (bps: number | null): number | null =>
         bps === null ? null : Math.round(bytesPerSecondToMbPerMinute(bps) * 10) / 10;
       const range = (args.range as DiskIoRange | undefined) ?? '1h';
+      const lifecycle = app.diskIo.eventsOverRange(range, 50);
       return {
         enabled: status.enabled,
         intervalSeconds: status.intervalSeconds,
@@ -211,6 +214,14 @@ export const MCP_TOOLS: McpTool[] = [
             writeMbPerMin: toMbMin(c.writeBps),
           })),
         })),
+        containerEvents: lifecycle.events.map((event) => ({
+          at: new Date(event.at).toISOString(),
+          container: event.container,
+          project: event.project,
+          kind: event.kind,
+          exitCode: event.exitCode,
+        })),
+        containerEventsTruncated: lifecycle.truncated,
       };
     },
   },

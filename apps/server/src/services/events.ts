@@ -63,6 +63,7 @@ export class DockerEventsWatcher {
     private readonly inventory: InventoryService,
     private readonly onRefreshed: () => void,
     private readonly log: Logger,
+    private readonly onEvent: (event: DockerEvent) => void = () => {},
   ) {}
 
   start(): void {
@@ -111,6 +112,11 @@ export class DockerEventsWatcher {
    * comprobar una decision que es puro control de tiempos.
    */
   handleEvent(event: DockerEvent): void {
+    try {
+      this.onEvent(event);
+    } catch (error) {
+      this.log.debug('Fallo al procesar un evento del daemon', error);
+    }
     const accion = (event.Action ?? event.status ?? '').split(':')[0] ?? '';
     if (!RELEVANTES.has(accion)) return;
     this.#scheduleRefresh();

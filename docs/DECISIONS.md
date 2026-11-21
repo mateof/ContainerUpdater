@@ -24,6 +24,7 @@ Several of them contradict the documentation or what gets repeated around.
 | Docker Hub answers 401 the same for private and non-existent | Its public API is used instead, which does distinguish 404 |
 | Podman 5.4 reports `blkio` for `vda` (252:0) as `major: 0, minor: 252` | Device pairs that match nothing are tried swapped |
 | Podman 5.4 `system_cpu_usage` advances about 5% of wall time times CPUs, not the host CPU time Docker reports | An idle container came out at 98%: a system delta under a quarter of what is expected is discarded and wall time is used |
+| On DSM (kernel 4.4) the `blkio` controller exports no statistics at all | The per-container split is empty there; start and stop markers on the disk chart are what is left |
 
 ## Cookie session, not JWT
 
@@ -543,12 +544,21 @@ plus `/proc/mdstat`. Physical disks are watched by default.
 ### Per-container attribution is approximate, by design
 
 Verified on the NAS: kernel 4.4.302+, cgroup v1, `blkio` organised as systemd
-slices and no `blkio/docker` directory. btrfs writeback runs in kernel threads
-that are charged to the root cgroup, not to the container that dirtied the
-pages. So `blkio` will very likely fall short, and the view has to stay useful
-when containers add up to almost nothing: the disk totals are exact on their
-own, "unattributed" is drawn as a series in its own right, and the interface
-says the split is approximate.
+slices. btrfs writeback runs in kernel threads that are charged to the root
+cgroup, not to the container that dirtied the pages. So `blkio` will very likely
+fall short, and the view has to stay useful when containers add up to almost
+nothing: the disk totals are exact on their own, "unattributed" is drawn as a
+series in its own right, and the interface says the split is approximate.
+
+On DSM it turned out worse than short: it is empty. The root of
+`/sys/fs/cgroup/blkio` holds `blkio.reset_stats` and nothing else from the
+controller, neither the CFQ statistics nor the throttling ones, and the SSDs run
+`deadline` anyway. The controller has no policy registered, so Docker has nothing
+to read and every container reports zero. Two workarounds were ruled out:
+attributing by DSM slice (the slices have the same files as the root) and
+`write_bytes` from `/proc/<pid>/io`, which measures dirtied pages, not disk cost
+(dockerd showed 48 MB/min and the disk did not move when that changed). The
+banner says so, and the start and stop markers below are the fallback.
 
 Two traps in the split:
 
@@ -606,6 +616,23 @@ highest sample within the bucket.
 
 Without history, the last 24 hours live in memory and the interface says that
 is where they come from.
+
+### Start and stop markers on the disk chart
+
+What found the biggest writer on the NAS was not a per-container figure but
+stopping things and watching the disk drop. The chart now draws a marker every
+time a container starts, stops, pauses or resumes, so a step in the line can be
+matched with what changed just before without running the experiment by hand.
+
+The events come from the daemon stream the panel already listens to, so no new
+connection or polling. Only `start`, `die` (`died` on Podman), `pause` and
+`unpause` are kept: healthchecks fire `exec_*` and `health_status` events
+several times a minute and would bury everything. They are stored in the same
+five minute batch as the buckets, never in a transaction of their own, because
+a restart loop must not start writing to the SSD being watched. Markers closer
+than a few pixels are drawn as one with a count, since a NAS boot starts dozens
+of containers in the same second, and the response is capped at the 500 most
+recent.
 
 ### Alerts on a sustained average, with a margin to recover
 

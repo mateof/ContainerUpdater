@@ -10,6 +10,7 @@ import type { Repositories } from '../../db/repositories/index.js';
 import type { InventoryService } from '../inventory.js';
 import { isWatched, type DiskWatchService } from './collector.js';
 import { selectableDevices } from './topology.js';
+import { selectEvents } from './lifecycle.js';
 import {
   buildDiskSummaries,
   buildSeries,
@@ -117,7 +118,15 @@ export class DiskIoReader {
     const from = now - DISK_IO_RANGE_MS[query.range];
     const settings = this.repos.settings.getAll();
     const watched = this.watch.watched();
-    return buildSeries({
+    const stacked = query.view === 'stacked';
+    const { events, truncated } = selectEvents({
+      stored: this.repos.diskIo.eventsSince(from, now + 1),
+      memory: this.watch.events,
+      from,
+      containers: stacked ? query.containers : [],
+      project: stacked ? query.project : undefined,
+    });
+    const response = buildSeries({
       chunks: this.chunksSince(from, now),
       range: query.range,
       op: query.op,
@@ -130,6 +139,18 @@ export class DiskIoReader {
       now,
       intervalSeconds: settings.diskWatchIntervalSeconds,
       knownContainers: this.inventory.snapshot.containers.map((c) => ({ name: c.name, project: c.projectName })),
+    });
+    return { ...response, events, eventsTruncated: truncated };
+  }
+
+  eventsOverRange(range: DiskIoRange, limit: number, now = Date.now()) {
+    const from = now - DISK_IO_RANGE_MS[range];
+    return selectEvents({
+      stored: this.repos.diskIo.eventsSince(from, now + 1),
+      memory: this.watch.events,
+      from,
+      containers: [],
+      limit,
     });
   }
 

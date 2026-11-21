@@ -25,6 +25,7 @@ ahí.
 | Docker Hub responde 401 igual para privado que para inexistente | Se usa su API pública, que sí distingue 404 |
 | Podman 5.4 da el `blkio` de `vda` (252:0) como `major: 0, minor: 252` | Los pares que no coinciden con ningún dispositivo se prueban invertidos |
 | El `system_cpu_usage` de Podman 5.4 avanza un 5 % del reloj por CPU, no el tiempo de CPU del host que da Docker | Un contenedor parado salía al 98 %: un delta de sistema por debajo de una cuarta parte de lo esperado se descarta y se usa el reloj |
+| En DSM (kernel 4.4) el controlador `blkio` no exporta ninguna estadística | Ahí el reparto por contenedor sale vacío; lo que queda son las marcas de arranque y parada en la gráfica de disco |
 
 ## Sesión con cookie, no JWT
 
@@ -500,12 +501,22 @@ Si no se puede leer, se usa la regla de nombres del kernel (`sata3p5` y
 ### El reparto por contenedor es aproximado, a propósito
 
 Comprobado en el NAS: kernel 4.4.302+, cgroup v1, `blkio` organizado en slices
-de systemd y sin directorio `blkio/docker`. La escritura diferida de btrfs la
-hacen hilos del kernel que cuentan para el cgroup raíz, no para el contenedor
-que ensució las páginas. Así que `blkio` muy probablemente se queda corto, y la
-vista tiene que seguir siendo útil aunque los contenedores sumen casi nada: los
-totales por disco son exactos por sí solos, "no atribuido" se pinta como una
-serie más y la interfaz dice que el reparto es aproximado.
+de systemd. La escritura diferida de btrfs la hacen hilos del kernel que cuentan
+para el cgroup raíz, no para el contenedor que ensució las páginas. Así que
+`blkio` muy probablemente se queda corto, y la vista tiene que seguir siendo
+útil aunque los contenedores sumen casi nada: los totales por disco son exactos
+por sí solos, "no atribuido" se pinta como una serie más y la interfaz dice que
+el reparto es aproximado.
+
+En DSM resultó peor que corto: está vacío. La raíz de `/sys/fs/cgroup/blkio`
+tiene `blkio.reset_stats` y nada más del controlador, ni las estadísticas de CFQ
+ni las de throttling, y además los SSD van con `deadline`. El controlador no
+tiene ninguna política registrada, así que Docker no tiene nada que leer y todos
+los contenedores dan cero. Se descartaron dos alternativas: atribuir por slice de
+DSM (los slices tienen los mismos ficheros que la raíz) y el `write_bytes` de
+`/proc/<pid>/io`, que mide páginas ensuciadas y no coste en disco (dockerd daba
+48 MB/min y el disco no se movió cuando eso cambió). El aviso de la interfaz lo
+dice, y las marcas de arranque y parada de abajo son el recurso que queda.
 
 Dos trampas en el reparto:
 
@@ -563,6 +574,23 @@ haya huecos; el máximo es la muestra más alta del tramo.
 
 Sin histórico, las últimas 24 horas viven en memoria y la interfaz dice que los
 datos salen de ahí.
+
+### Marcas de arranque y parada en la gráfica de disco
+
+Lo que encontró al que más escribía en el NAS no fue una cifra por contenedor,
+sino parar cosas y ver bajar el disco. La gráfica dibuja ahora una marca cada vez
+que un contenedor arranca, se para, se pausa o se reanuda, para cruzar un escalón
+de la línea con lo que cambió justo antes sin hacer el experimento a mano.
+
+Los eventos salen del flujo del daemon que el panel ya escucha: ni conexión nueva
+ni sondeo. Solo se guardan `start`, `die` (`died` en Podman), `pause` y
+`unpause`: los healthchecks disparan eventos `exec_*` y `health_status` varias
+veces por minuto y lo taparían todo. Se guardan en el mismo lote de cinco minutos
+que los tramos, nunca en una transacción propia, porque un contenedor en bucle de
+reinicios no puede ponerse a escribir en el SSD que se vigila. Las marcas a menos
+de unos píxeles se dibujan como una sola con el número, porque un arranque del NAS
+levanta decenas de contenedores en el mismo segundo, y la respuesta se limita a
+las 500 más recientes.
 
 ### Avisos sobre una media sostenida, con margen para recuperarse
 

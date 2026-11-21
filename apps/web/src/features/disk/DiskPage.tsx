@@ -6,6 +6,8 @@ import type { ReactNode } from 'react';
 import {
   bytesPerSecondToMbPerMinute,
   DISK_IO_RANGES,
+  type ContainerEvent,
+  type ContainerEventKind,
   type DiskIoOp,
   type DiskIoRange,
   type DiskIoSeriesResponse,
@@ -13,16 +15,20 @@ import {
   type DiskSummary,
 } from '@cu/shared';
 import { api } from '@/api/client';
-import { Chart, type Series } from '@/components/Chart';
+import { Chart, type ChartMarker, type MarkerShape, type Series } from '@/components/Chart';
 import { FilterPills } from '@/components/Filters';
 import { Badge, Banner, Button, Card, EmptyState, Select, Skeleton, cx } from '@/components/ui';
 import { IconAlert, IconDisk } from '@/components/icons';
-import { formatDateTime, formatDuration } from '@/lib/format';
+import { formatDateTime, formatDuration, formatEventTime } from '@/lib/format';
 
 const CATEGORICAL = ['--series-1', '--series-2', '--series-3', '--series-4', '--series-5', '--series-6'];
 const OTHERS_COLOR = 'var(--series-other)';
 const UNATTRIBUTED_COLOR = 'var(--series-unattributed)';
 const REFRESH_MS = 60_000;
+const EVENTS_PREVIEW = 8;
+const CURSOR_EVENTS = 3;
+
+const SHAPE: Record<ContainerEventKind, MarkerShape> = { start: 'up', unpause: 'up', stop: 'down', pause: 'down' };
 
 function useDataTheme(): string {
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme ?? '');
@@ -78,6 +84,7 @@ export function DiskPage(): ReactNode {
   const [top, setTop] = useState(5);
   const [containers, setContainers] = useState<string[]>([]);
   const [cursor, setCursor] = useState<number | null>(null);
+  const [showMarkers, setShowMarkers] = useState<'on' | 'off'>('on');
 
   const { data: statusData, isLoading } = useQuery({
     queryKey: ['disk-io', 'status'],
@@ -183,6 +190,16 @@ export function DiskPage(): ReactNode {
                   ]}
                 />
               </FilterGroup>
+              <FilterGroup label={t('disk.markers')}>
+                <FilterPills
+                  value={showMarkers}
+                  onChange={setShowMarkers}
+                  options={[
+                    { key: 'on', label: t('disk.markersOn') },
+                    { key: 'off', label: t('disk.markersOff') },
+                  ]}
+                />
+              </FilterGroup>
             </div>
 
             <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
@@ -254,11 +271,14 @@ export function DiskPage(): ReactNode {
                 colorFor={colorFor}
                 cursor={cursor}
                 onCursor={setCursor}
+                showMarkers={showMarkers === 'on'}
               />
             ) : (
               <Skeleton className="h-64 w-full" />
             )}
           </Card>
+
+          {series && showMarkers === 'on' ? <EventList events={series.events} truncated={series.eventsTruncated} /> : null}
 
           <p className="text-[0.75rem] text-[var(--text-muted)] leading-snug max-w-prose">{t('disk.approxNote')}</p>
         </>
@@ -415,6 +435,7 @@ function SeriesChart({
   colorFor,
   cursor,
   onCursor,
+  showMarkers,
 }: {
   series: DiskIoSeriesResponse;
   view: DiskIoView;
@@ -422,8 +443,14 @@ function SeriesChart({
   colorFor: (key: string) => string;
   cursor: number | null;
   onCursor: (index: number | null) => void;
+  showMarkers: boolean;
 }): ReactNode {
   const { t } = useTranslation();
+
+  const markers: ChartMarker[] = useMemo(
+    () => (showMarkers ? series.events.map((event) => ({ at: event.at, shape: SHAPE[event.kind] })) : []),
+    [series.events, showMarkers],
+  );
 
   const rows: Row[] = useMemo(() => {
     if (view === 'stacked' && series.stack) {
@@ -466,6 +493,10 @@ function SeriesChart({
   const stackTotal = view === 'stacked' && series.stack ? series.stack : null;
   const totalAverage = stackTotal ? rows.reduce((sum, row) => sum + (average(row.values) ?? 0), 0) : null;
   const atCursor = cursor !== null ? series.timestamps[cursor] : null;
+  const cursorEvents =
+    showMarkers && atCursor
+      ? series.events.filter((event) => event.at >= atCursor && event.at < atCursor + series.stepSeconds * 1000)
+      : [];
 
   return (
     <div className="space-y-3">
@@ -477,11 +508,20 @@ function SeriesChart({
         structureKey={`${theme}|${rows.map((row) => `${row.key}=${row.color}`).join(',')}`}
         formatValue={(value) => mbMin(value)}
         onCursor={onCursor}
+        markers={markers}
       />
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-[0.75rem] text-[var(--text-muted)]">
-        <span>{t('disk.unit')}</span>
-        {atCursor ? <span className="tabular-nums">{formatDateTime(atCursor)}</span> : null}
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>{t('disk.unit')}</span>
+          {markers.length > 0 ? <MarkerLegend /> : null}
+        </span>
+        {atCursor ? (
+          <span className="tabular-nums">
+            {formatDateTime(atCursor)}
+            {cursorEvents.length > 0 ? <CursorEvents events={cursorEvents} /> : null}
+          </span>
+        ) : null}
       </div>
 
       <div className="overflow-x-auto">
@@ -528,6 +568,87 @@ function SeriesChart({
         </p>
       ) : null}
     </div>
+  );
+}
+
+function MarkerGlyph({ shape }: { shape: MarkerShape | 'mixed' }): ReactNode {
+  const points = shape === 'up' ? '5,1 9,9 1,9' : shape === 'down' ? '1,1 9,1 5,9' : '5,1 9,5 5,9 1,5';
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" className="shrink-0">
+      <polygon points={points} fill="var(--text-muted)" />
+    </svg>
+  );
+}
+
+function MarkerLegend(): ReactNode {
+  const { t } = useTranslation();
+  return (
+    <>
+      <span className="inline-flex items-center gap-1">
+        <MarkerGlyph shape="up" />
+        {t('disk.legendUp')}
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <MarkerGlyph shape="down" />
+        {t('disk.legendDown')}
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <MarkerGlyph shape="mixed" />
+        {t('disk.legendMixed')}
+      </span>
+    </>
+  );
+}
+
+function eventLabel(event: ContainerEvent, t: (key: string, options?: Record<string, unknown>) => string): string {
+  const action = t(`disk.eventKind_${event.kind}`);
+  const exit = event.exitCode !== null && event.exitCode !== 0 ? ` (${t('disk.eventExit', { code: event.exitCode })})` : '';
+  return `${event.container} ${action}${exit}`;
+}
+
+function CursorEvents({ events }: { events: ContainerEvent[] }): ReactNode {
+  const { t } = useTranslation();
+  const shown = events.slice(0, CURSOR_EVENTS).map((event) => eventLabel(event, t));
+  const rest = events.length - shown.length;
+  return <span>{` · ${shown.join(', ')}${rest > 0 ? ` +${rest}` : ''}`}</span>;
+}
+
+function EventList({ events, truncated }: { events: ContainerEvent[]; truncated: boolean }): ReactNode {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const newest = useMemo(() => [...events].reverse(), [events]);
+  const visible = expanded ? newest : newest.slice(0, EVENTS_PREVIEW);
+
+  return (
+    <Card className="p-5 space-y-3">
+      <div>
+        <h2 className="text-[0.9375rem] font-semibold">{t('disk.eventsTitle')}</h2>
+        <p className="text-[0.75rem] text-[var(--text-muted)] mt-0.5">{t('disk.eventsHint')}</p>
+      </div>
+      {newest.length === 0 ? (
+        <p className="text-[0.8125rem] text-[var(--text-muted)]">{t('disk.eventsEmpty')}</p>
+      ) : (
+        <ul className="divide-y divide-[var(--border)] text-[0.8125rem]">
+          {visible.map((event) => (
+            <li key={`${event.at}|${event.container}|${event.kind}`} className="flex items-baseline gap-3 py-1.5">
+              <span className="shrink-0 tabular-nums text-[var(--text-muted)]">{formatEventTime(event.at)}</span>
+              <span className="flex min-w-0 items-baseline gap-2">
+                <MarkerGlyph shape={SHAPE[event.kind]} />
+                <span className="min-w-0 break-words">{eventLabel(event, t)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {newest.length > EVENTS_PREVIEW ? (
+        <Button variant="ghost" onClick={() => setExpanded((value) => !value)}>
+          {expanded ? t('disk.eventsLess') : t('disk.eventsMore', { count: newest.length })}
+        </Button>
+      ) : null}
+      {truncated ? (
+        <p className="text-[0.75rem] text-[var(--text-muted)]">{t('disk.eventsTruncated', { count: events.length })}</p>
+      ) : null}
+    </Card>
   );
 }
 
