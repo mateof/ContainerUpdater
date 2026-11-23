@@ -15,7 +15,7 @@ import {
 import type { DiskDeviceRow, DiskIoRepository } from '../../db/repositories/disk-io.js';
 import { BUCKET_MS, bucketOf, type Tick } from './model.js';
 import { attributedShare } from './attribution.js';
-import { remainingBytes, windowRate, yearsLeft } from './lifetime.js';
+import { remainingBytes, usedBytes, windowRate, yearsLeft } from './lifetime.js';
 
 export const STEP_SECONDS: Record<DiskIoRange, number> = {
   '1h': 60,
@@ -375,11 +375,8 @@ export function buildDiskSummaries(input: {
     const sample = lastTick?.disks.find((d) => d.disk === disk);
     const tbwTb = row?.tbw_tb ?? null;
     const writtenTb = row?.written_tb ?? null;
-    const remaining = remainingBytes({
-      tbwTb,
-      writtenTb,
-      writtenSinceBytes: row?.written_at ? input.writtenSince(disk, row.written_at) : 0,
-    });
+    const writtenSinceBytes = row?.written_at ? input.writtenSince(disk, row.written_at) : 0;
+    const remaining = remainingBytes({ tbwTb, writtenTb, writtenSinceBytes });
 
     const lifetime: DiskLifetime[] = windows.map(({ window, ms, totals }) => {
       const entry = totals.get(disk);
@@ -414,6 +411,7 @@ export function buildDiskSummaries(input: {
       hourWriteBps: hourTotals && hourTotals.seconds > 0 ? hourTotals.writeBytes / hourTotals.seconds : null,
       lifetime,
       remainingTb: remaining === null ? null : remaining / BYTES_PER_TB,
+      usedTb: tbwTb === null ? null : usedBytes({ writtenTb, writtenSinceBytes }) / BYTES_PER_TB,
       tbwTb,
       writtenTb,
       thresholdMbPerMin: row?.threshold_mb_min ?? input.settings.diskAlertThresholdMbPerMin,

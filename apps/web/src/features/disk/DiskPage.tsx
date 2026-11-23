@@ -745,6 +745,13 @@ function DiskCard({ disk, color }: { disk: DiskSummary; color: string }): ReactN
         </p>
         {disk.tbwTb === null ? (
           <p className="text-[0.75rem] text-[var(--text-muted)]">{t('disk.noTbw')}</p>
+        ) : disk.usedTb !== null && disk.usedTb >= disk.tbwTb ? (
+          <div className="space-y-1 text-[0.8125rem]">
+            <p className="font-medium tabular-nums">
+              {t('disk.tbwExceeded', { used: disk.usedTb.toFixed(1), tbw: disk.tbwTb })}
+            </p>
+            <p className="text-[0.75rem] text-[var(--text-muted)]">{t('disk.tbwExceededHint')}</p>
+          </div>
         ) : (
           <>
             {disk.lifetime.map((entry) => {

@@ -74,6 +74,10 @@ function DeviceRow({
     onSave({ [field]: field === 'thresholdMbPerMin' && value === 0 ? null : value });
   };
 
+  const tbwValue = parseNumber(tbw);
+  const writtenValue = parseNumber(written);
+  const writtenOverTbw = tbwValue !== null && tbwValue > 0 && writtenValue !== null && writtenValue > tbwValue;
+
   const below = device.kind !== 'physical' && device.disks.length > 0 ? device.disks.join(', ') : null;
 
   return (
@@ -107,6 +111,7 @@ function DeviceRow({
             id={`written-${device.name}`}
             label={t('settings.diskWritten')}
             hint={t('settings.diskWrittenHelp')}
+            warning={writtenOverTbw ? t('settings.diskWrittenOverTbw', { tbw: tbwValue }) : undefined}
             value={written}
             onChange={setWritten}
             onBlur={() => commit('writtenTb', written, device.writtenTb)}
@@ -129,6 +134,7 @@ function NumberField({
   id,
   label,
   hint,
+  warning,
   value,
   placeholder,
   onChange,
@@ -137,6 +143,7 @@ function NumberField({
   id: string;
   label: string;
   hint?: string;
+  warning?: string;
   value: string;
   placeholder?: string;
   onChange: (value: string) => void;
@@ -156,6 +163,11 @@ function NumberField({
         onBlur={onBlur}
         className="w-28"
       />
+      {warning ? (
+        <p role="alert" className="text-[0.6875rem] font-medium text-[var(--warn)] leading-snug">
+          {warning}
+        </p>
+      ) : null}
       {hint ? <p className="text-[0.6875rem] text-[var(--text-muted)] leading-snug">{hint}</p> : null}
     </div>
   );

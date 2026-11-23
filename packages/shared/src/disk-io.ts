@@ -98,6 +98,7 @@ export interface DiskSummary {
   hourWriteBps: number | null;
   lifetime: DiskLifetime[];
   remainingTb: number | null;
+  usedTb: number | null;
   tbwTb: number | null;
   writtenTb: number | null;
   thresholdMbPerMin: number;

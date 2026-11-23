@@ -198,6 +198,7 @@ export const MCP_TOOLS: McpTool[] = [
           alertActive: disk.alert.active,
           tbwTb: disk.tbwTb,
           remainingTb: disk.remainingTb === null ? null : Math.round(disk.remainingTb * 10) / 10,
+          usedTb: disk.usedTb === null ? null : Math.round(disk.usedTb * 10) / 10,
           yearsLeft: Object.fromEntries(
             disk.lifetime.map((l) => [l.window, l.years === null ? null : Math.round(l.years * 10) / 10]),
           ),

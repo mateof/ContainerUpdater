@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BYTES_PER_TB, mbPerMinuteToBytesPerSecond } from '@cu/shared';
-import { SECONDS_PER_YEAR, remainingBytes, windowRate, yearsLeft } from './lifetime.js';
+import { SECONDS_PER_YEAR, remainingBytes, usedBytes, windowRate, yearsLeft } from './lifetime.js';
 
 describe('estimacion de vida util', () => {
   it('cuadra con el diagnostico: 512 TBW a 170 MB/min por disco son unos 5,7 años', () => {
@@ -16,6 +16,10 @@ describe('estimacion de vida util', () => {
 
   it('nunca estima vida negativa para un disco que ya paso su TBW', () => {
     expect(remainingBytes({ tbwTb: 100, writtenTb: 150, writtenSinceBytes: 0 })).toBe(0);
+  });
+
+  it('sigue contando lo escrito por encima del TBW para poder decir cuanto se ha pasado', () => {
+    expect(usedBytes({ writtenTb: 600, writtenSinceBytes: 0.5 * BYTES_PER_TB })).toBe(600.5 * BYTES_PER_TB);
   });
 
   it('no estima nada sin TBW ni con un disco que no escribe', () => {
