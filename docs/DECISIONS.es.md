@@ -216,30 +216,37 @@ una. La versión actual es la opción con menos exposición real.
 
 Revisar cuando publiquen un parche hacia delante.
 
-## Recrear un servicio en dos pasos, no con `--force-recreate`
+## Recrear un servicio con `up --force-recreate`, no con `rm` y `up`
 
 La acción "recrear" ejecuta:
 
 ```bash
-docker compose rm -f -s <servicio>
-docker compose up -d <servicio>
+docker compose up -d --force-recreate <servicio>
 ```
 
-y no el aparentemente equivalente `docker compose up -d --force-recreate
-<servicio>`. La diferencia no es de estilo:
+Hasta la 0.30.1 ejecutaba `rm -f -s <servicio>` y luego `up -d <servicio>`, creyendo
+que `--force-recreate` recreaba también las dependencias. Medido en Podman con
+Compose v2.32.4 (la versión de la imagen), no lo hace si se nombra el servicio:
 
-- `--force-recreate` recrea **también las dependencias** del servicio.
-- La secuencia en dos pasos solo destruye el servicio pedido. Sus dependencias
-  se quedan como están y `up` únicamente las arranca si estaban paradas.
+- Una dependencia en marcha conserva su contenedor, también con `network_mode:
+  service:vpn` y con `depends_on` más `restart: true`.
+- Una dependencia parada se arranca; una cuya definición ha cambiado se recrea. La
+  secuencia en dos pasos hace exactamente lo mismo en los dos casos.
+- **La diferencia son los volúmenes anónimos.** Compose los hereda del contenedor
+  que existe. Tras `rm` no hay ninguno, así que el nuevo arranca con volúmenes
+  vacíos y los anteriores quedan huérfanos, sin aviso.
 
-En un stack donde un servicio va detrás de una VPN (`network_mode:
-service:vpn`) o depende de una base de datos, `--force-recreate` tumbaría esa
-VPN y con ella la conectividad de todo lo que cuelgue de ella. La secuencia
-larga es lo que se hace a mano por algo.
+Descartado `--no-deps`: no arranca las dependencias si estaban caídas.
 
-Descartado `--no-deps` como alternativa: evita recrear las dependencias, pero
-tampoco las arranca si estaban caídas, que es justo lo que se quiere al levantar
-un servicio a mano.
+## Las ediciones del compose se comprueban antes de escribirlas
+
+Hasta la 0.30.1, editar un compose reescribía los números sin comillas de todo el
+fichero: `mode: 0700` pasaba a `700` y `UMASK: 022` a `22`. YAML 1.2 los lee en
+decimal y la librería `yaml` imprime el valor, mientras que Compose los lee en
+octal. Ahora los números conservan su escritura original y el resultado se compara
+con el original: si cambia algo fuera del healthcheck y el logging del servicio
+(incluido otro servicio que comparta un bloque con un ancla), no se escribe nada.
+El espaciado todavía puede cambiar; los comentarios y los valores, no.
 
 ## Las acciones de servicio comparten cola con las actualizaciones
 

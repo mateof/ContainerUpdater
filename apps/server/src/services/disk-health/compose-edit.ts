@@ -1,4 +1,4 @@
-import { isAlias, isMap, isScalar, isSeq, parseDocument, Scalar, YAMLMap, type Document } from 'yaml';
+import { isAlias, isMap, isScalar, isSeq, parseDocument, Scalar, visit, YAMLMap, type Document, type ScalarTag, type Tags } from 'yaml';
 import { formatComposeDuration, type HealthcheckInfo, type LoggingRule, type TuningRule } from '@cu/shared';
 
 export type ComposeEditReason =
@@ -8,7 +8,8 @@ export type ComposeEditReason =
   | 'extends'
   | 'merge-key'
   | 'alias'
-  | 'needs-command';
+  | 'needs-command'
+  | 'unsafe-edit';
 
 export class ComposeEditError extends Error {
   constructor(readonly reason: ComposeEditReason) {
@@ -119,13 +120,79 @@ function hasExistingTest(node: YAMLMap): boolean {
   return false;
 }
 
+const NUMBER_TAGS = new Set(['tag:yaml.org,2002:int', 'tag:yaml.org,2002:float']);
+
+function keepNumberSpelling(tags: Tags): Tags {
+  return tags.map((tag) => {
+    if (typeof tag === 'string' || !NUMBER_TAGS.has(tag.tag)) return tag;
+    const original = tag as ScalarTag;
+    return {
+      ...original,
+      stringify: (item, ctx, onComment, onChompKeep) =>
+        item.source ?? original.stringify?.(item, ctx, onComment, onChompKeep) ?? String(item.value),
+    } satisfies ScalarTag;
+  });
+}
+
+function parseForEdit(text: string): Document {
+  return parseDocument(text, { customTags: keepNumberSpelling });
+}
+
+function setScalar(map: YAMLMap, key: string, value: string | number): void {
+  const current = map.get(key, true);
+  if (isScalar(current)) {
+    current.value = value;
+    current.source = undefined;
+  } else {
+    map.set(key, value);
+  }
+}
+
+function spelling(doc: Document, service: string): string {
+  const edited = new Set<unknown>();
+  const node = serviceNode(doc, service);
+  for (const pair of node.items) {
+    if (isScalar(pair.key) && (pair.key.value === 'healthcheck' || pair.key.value === 'logging')) edited.add(pair);
+  }
+  const parts: unknown[] = [];
+  visit(doc, {
+    Pair: (_key, pair) => (edited.has(pair) ? visit.SKIP : undefined),
+    Scalar: (_key, scalar) => {
+      parts.push([scalar.type, scalar.tag, scalar.anchor, scalar.source]);
+    },
+    Alias: (_key, alias) => {
+      parts.push(['alias', alias.source]);
+    },
+    Collection: (_key, collection) => {
+      parts.push([isMap(collection) ? 'map' : 'seq', collection.tag, collection.anchor]);
+    },
+  });
+  return JSON.stringify(parts);
+}
+
+function meaning(text: string, service: string): string {
+  const plain = JSON.parse(
+    JSON.stringify(parseDocument(text, { schema: 'failsafe', logLevel: 'silent' }).toJS({ maxAliasCount: 1000 })),
+  ) as { services: Record<string, Record<string, unknown>> };
+  delete plain.services[service]!.healthcheck;
+  delete plain.services[service]!.logging;
+  return JSON.stringify(plain);
+}
+
+function changesOnlyTheService(before: string, after: string, service: string): boolean {
+  return (
+    spelling(parseDocument(before), service) === spelling(parseDocument(after), service) &&
+    meaning(before, service) === meaning(after, service)
+  );
+}
+
 export function applyRuleToService(
   text: string,
   service: string,
   rule: TuningRule,
   image: HealthcheckInfo | null,
 ): { text: string; changed: boolean } {
-  const doc = parseDocument(text);
+  const doc = parseForEdit(text);
   const node = serviceNode(doc, service);
   if (node.has('extends')) throw new ComposeEditError('extends');
   if (hasMergeKey(node)) throw new ComposeEditError('merge-key');
@@ -149,14 +216,14 @@ export function applyRuleToService(
       target.delete('test');
       target.items.unshift(doc.createPair('test', doc.createNode(test, { flow: true })));
     }
-    target.set('interval', formatComposeDuration(healthcheck.intervalSeconds));
+    setScalar(target, 'interval', formatComposeDuration(healthcheck.intervalSeconds));
     const timeout = healthcheck.timeoutSeconds ?? (target.has('timeout') ? null : (inherited?.timeoutSeconds ?? null));
-    if (timeout !== null) target.set('timeout', formatComposeDuration(timeout));
+    if (timeout !== null) setScalar(target, 'timeout', formatComposeDuration(timeout));
     const retries = healthcheck.retries ?? (target.has('retries') ? null : (inherited?.retries ?? null));
-    if (retries !== null) target.set('retries', retries);
+    if (retries !== null) setScalar(target, 'retries', retries);
     const startPeriod =
       healthcheck.startPeriodSeconds ?? (target.has('start_period') ? null : (inherited?.startPeriodSeconds ?? null));
-    if (startPeriod !== null) target.set('start_period', formatComposeDuration(startPeriod));
+    if (startPeriod !== null) setScalar(target, 'start_period', formatComposeDuration(startPeriod));
     node.set('healthcheck', target);
   }
 
@@ -173,6 +240,7 @@ export function applyRuleToService(
   }
 
   const next = doc.toString({ lineWidth: 0, minContentWidth: 0, flowCollectionPadding: false, ...detectStyle(text) });
+  if (next !== text && !changesOnlyTheService(text, next, service)) throw new ComposeEditError('unsafe-edit');
   return { text: next, changed: next !== text };
 }
 

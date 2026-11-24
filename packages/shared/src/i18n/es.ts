@@ -733,6 +733,7 @@ export const es = {
     reason_alias: 'el valor es un alias YAML',
     reason_service_not_found: 'el servicio no esta en el fichero',
     reason_invalid_yaml: 'el YAML no se puede leer',
+    reason_unsafe_edit: 'el cambio alteraria algo mas del fichero; no se ha escrito nada',
     reason_no_services: 'el fichero no tiene services',
     reason_invalid_before: 'el compose ya no validaba antes de tocarlo',
     reason_invalid_after: 'el compose no validaba despues del cambio y se ha dejado como estaba',

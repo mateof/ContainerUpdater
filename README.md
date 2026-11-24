@@ -241,16 +241,16 @@ used to fix like this:
 
 ```bash
 cd /volume1/docker/media
-docker compose rm -f -s player
-docker compose up -d player
+docker compose up -d --force-recreate player
 ```
 
-It does exactly those two steps, and not `up --force-recreate`, for one specific
-reason: `--force-recreate` **would also recreate the dependencies**. If your
-service sits behind a VPN or depends on a database, with this sequence those are
-left untouched and are only started if they were stopped.
+With the service named, only that service is recreated. If it sits behind a VPN or
+depends on a database, those are started if they were stopped, and recreated only
+if their own definition changed in the file. The container is not removed first
+(`rm` and then `up`): Compose carries anonymous volumes over from the existing
+container, so the new one would start with empty ones.
 
-An example of a project where the difference matters:
+An example of a project where leaving dependencies alone matters:
 
 ```yaml
 # /volume1/docker/media/docker-compose.yml
@@ -267,8 +267,7 @@ services:
       - vpn
 ```
 
-Recreating `player` from the panel does not touch `vpn`. A `--force-recreate`
-would take it down, and with it the connection of everything sitting behind it.
+Recreating `player` from the panel does not touch `vpn`.
 
 All these actions go through the same queue as the updates: they run one at a
 time, they stay in the history and you can watch their output live.
@@ -379,7 +378,7 @@ The **Disk health** tab is about what can be cut, not just measured:
 - **Change them** per container, for several at once or with a **rule per
   image**: healthcheck every N seconds or minutes (or off) and rotated
   `json-file` (15m × 3 by default), `local` or no logs. Compose projects are
-  edited in their YAML keeping comments and format; standalone containers are
+  edited in their YAML keeping comments and every other value; standalone containers are
   recreated through the API without pulling. Since Docker cannot change that
   on an existing container, running ones are offered a **Recreate now**.
 - **Measure a container's impact**: it pauses it for a few minutes and compares

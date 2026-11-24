@@ -735,6 +735,7 @@ export const gl: Translated<Catalog> = {
     reason_alias: 'o valor e un alias YAML',
     reason_service_not_found: 'o servizo non esta no ficheiro',
     reason_invalid_yaml: 'o YAML non se pode ler',
+    reason_unsafe_edit: 'o cambio alteraria algo mais do ficheiro; non se escribiu nada',
     reason_no_services: 'o ficheiro non ten services',
     reason_invalid_before: 'o compose xa non validaba antes de tocalo',
     reason_invalid_after: 'o compose non validaba despois do cambio e deixouse como estaba',

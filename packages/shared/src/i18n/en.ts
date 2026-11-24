@@ -726,6 +726,7 @@ export const en: Translated<Catalog> = {
     reason_alias: 'the value is a YAML alias',
     reason_service_not_found: 'the service is not in the file',
     reason_invalid_yaml: 'the YAML cannot be parsed',
+    reason_unsafe_edit: 'the change would alter something else in the file; nothing was written',
     reason_no_services: 'the file has no services',
     reason_invalid_before: 'the compose file was already invalid before touching it',
     reason_invalid_after: 'the compose file was invalid after the change and has been left as it was',

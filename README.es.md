@@ -237,16 +237,16 @@ que arreglabas así:
 
 ```bash
 cd /volume1/docker/medios
-docker compose rm -f -s reproductor
-docker compose up -d reproductor
+docker compose up -d --force-recreate reproductor
 ```
 
-Hace exactamente esos dos pasos, y no `up --force-recreate`, por un motivo
-concreto: `--force-recreate` **también recrearía las dependencias**. Si tu
-servicio va detrás de una VPN o depende de una base de datos, con esta secuencia
-esas quedan intactas y solo se arrancan si estaban paradas.
+Al nombrar el servicio, solo se recrea ese. Si va detrás de una VPN o depende de
+una base de datos, esas se arrancan si estaban paradas y solo se recrean si su
+propia definición ha cambiado en el fichero. El contenedor no se borra antes (`rm`
+y luego `up`): Compose hereda los volúmenes anónimos del contenedor que existe, y
+el nuevo arrancaría con otros vacíos.
 
-Ejemplo de un proyecto donde la diferencia importa:
+Ejemplo de un proyecto donde importa no tocar las dependencias:
 
 ```yaml
 # /volume1/docker/medios/docker-compose.yml
@@ -263,8 +263,7 @@ services:
       - vpn
 ```
 
-Recrear `reproductor` desde el panel no toca `vpn`. Un `--force-recreate` sí la
-tumbaría, y con ella la conexión de todo lo que vaya por detrás.
+Recrear `reproductor` desde el panel no toca `vpn`.
 
 Todas estas acciones pasan por la misma cola que las actualizaciones: se ejecutan
 de una en una, quedan en el historial y puedes ver su salida en directo.
@@ -376,7 +375,7 @@ La pestaña **Salud del disco** va de lo que se puede recortar, no solo medir:
 - **Cambiarlos** por contenedor, para varios a la vez o con una **regla por
   imagen**: healthcheck cada N segundos o minutos (o desactivado) y `json-file`
   rotado (15m × 3 por defecto), `local` o sin logs. Los proyectos Compose se
-  editan en su YAML conservando comentarios y formato; los contenedores sueltos
+  editan en su YAML conservando los comentarios y los demás valores; los contenedores sueltos
   se recrean por API sin descargar nada. Como Docker no puede cambiar eso en un
   contenedor que ya existe, a los que están en marcha se les ofrece **Recrear
   ahora**.

@@ -201,17 +201,17 @@ const es: HelpSection[] = [
       },
       {
         type: 'code',
-        text: 'cd /volume1/docker/medios\ndocker compose rm -f -s reproductor\ndocker compose up -d reproductor',
+        text: 'cd /volume1/docker/medios\ndocker compose up -d --force-recreate reproductor',
       },
       {
         type: 'p',
-        text: 'Eso es exactamente lo que hace Recrear, con los mismos dos pasos.',
+        text: 'Eso es exactamente lo que hace Recrear.',
       },
       {
         type: 'note',
         tone: 'info',
         title: 'Las dependencias no se tocan',
-        text: 'Se usa esa secuencia y no "up --force-recreate" precisamente por esto: --force-recreate tambien recrearia las dependencias. Si tu servicio va detras de una VPN o depende de una base de datos, esas siguen intactas y solo se arrancan si estaban paradas.',
+        text: 'Al nombrar el servicio, --force-recreate solo lo recrea a el. Si va detras de una VPN o depende de una base de datos, esas se arrancan si estaban paradas y solo se recrean si su definicion ha cambiado en el compose. No se borra antes el contenedor ("rm" y luego "up") porque el nuevo perderia los volumenes anonimos.',
       },
     ],
   },
@@ -543,7 +543,7 @@ const es: HelpSection[] = [
       },
       { type: 'h', text: 'Cambiarlos' },
       { type: 'p', text: 'Configurar abre un dialogo para un contenedor, para los marcados o para todos los de una imagen (regla por imagen). Se puede fijar el intervalo en segundos o minutos, desactivarlo, y elegir los logs: json-file rotado (15m x 3 por defecto), local o sin logs. Si el contenedor no tiene healthcheck ni en el compose ni en la imagen, hace falta escribir el comando.' },
-      { type: 'p', text: 'En un proyecto Compose se escribe en su YAML, conservando comentarios y formato, y se guarda la version anterior. Un contenedor suelto se recrea por API con la misma imagen, sin descargar nada.' },
+      { type: 'p', text: 'En un proyecto Compose se escribe en su YAML, conservando los comentarios y el valor de todo lo demas (puede cambiar algun espacio), y se guarda la version anterior. Un contenedor suelto se recrea por API con la misma imagen, sin descargar nada.' },
       {
         type: 'note',
         tone: 'info',
@@ -760,14 +760,14 @@ const en: HelpSection[] = [
       },
       {
         type: 'code',
-        text: 'cd /volume1/docker/media\ndocker compose rm -f -s player\ndocker compose up -d player',
+        text: 'cd /volume1/docker/media\ndocker compose up -d --force-recreate player',
       },
-      { type: 'p', text: 'That is exactly what Recreate does, in the same two steps.' },
+      { type: 'p', text: 'That is exactly what Recreate does.' },
       {
         type: 'note',
         tone: 'info',
         title: 'Dependencies are left alone',
-        text: 'That sequence is used instead of "up --force-recreate" precisely for this: --force-recreate would recreate the dependencies too. If your service sits behind a VPN or depends on a database, those stay untouched and are only started if they were down.',
+        text: 'With the service named, --force-recreate recreates only that one. If it sits behind a VPN or depends on a database, those are started if they were down and only recreated if their definition changed in the compose file. The container is not removed first ("rm" and then "up") because the new one would lose the anonymous volumes.',
       },
     ],
   },
@@ -1096,7 +1096,7 @@ const en: HelpSection[] = [
       },
       { type: 'h', text: 'Changing them' },
       { type: 'p', text: 'Configure opens a dialog for one container, the ticked ones or every container of an image (rule per image). You can set the interval in seconds or minutes, turn it off, and choose the logging: rotated json-file (15m x 3 by default), local or no logs. If the container has no healthcheck in the compose file or the image, a command has to be written.' },
-      { type: 'p', text: 'In a Compose project it is written to its YAML, keeping comments and format, and the previous version is kept. A standalone container is recreated through the API with the same image, without pulling anything.' },
+      { type: 'p', text: 'In a Compose project it is written to its YAML, keeping comments and every other value (some spacing may change), and the previous version is kept. A standalone container is recreated through the API with the same image, without pulling anything.' },
       {
         type: 'note',
         tone: 'info',
@@ -1298,14 +1298,14 @@ const gl: HelpSection[] = [
       { type: 'p', text: 'Se un servizo queda en mal estado e o arranxabas asi por consola:' },
       {
         type: 'code',
-        text: 'cd /volume1/docker/medios\ndocker compose rm -f -s reprodutor\ndocker compose up -d reprodutor',
+        text: 'cd /volume1/docker/medios\ndocker compose up -d --force-recreate reprodutor',
       },
-      { type: 'p', text: 'Iso e exactamente o que fai Recrear, cos mesmos dous pasos.' },
+      { type: 'p', text: 'Iso e exactamente o que fai Recrear.' },
       {
         type: 'note',
         tone: 'info',
         title: 'As dependencias non se tocan',
-        text: 'Usase esa secuencia e non "up --force-recreate" precisamente por isto: --force-recreate tamen recrearia as dependencias. Se o teu servizo vai detras dunha VPN ou depende dunha base de datos, esas seguen intactas e so se arrincan se estaban paradas.',
+        text: 'Ao nomear o servizo, --force-recreate so recrea ese. Se vai detras dunha VPN ou depende dunha base de datos, esas arrincanse se estaban paradas e so se recrean se a sua definicion cambiou no compose. Non se borra antes o contedor ("rm" e logo "up") porque o novo perderia os volumes anonimos.',
       },
     ],
   },
@@ -1631,7 +1631,7 @@ const gl: HelpSection[] = [
       },
       { type: 'h', text: 'Cambialos' },
       { type: 'p', text: 'Configurar abre un dialogo para un contedor, para os marcados ou para todos os dunha imaxe (regra por imaxe). Podese fixar o intervalo en segundos ou minutos, desactivalo, e escoller os logs: json-file rotado (15m x 3 por defecto), local ou sen logs. Se o contedor non ten healthcheck nin no compose nin na imaxe, fai falta escribir o comando.' },
-      { type: 'p', text: 'Nun proxecto Compose escribese no seu YAML, conservando comentarios e formato, e gardase a version anterior. Un contedor solto recrease pola API coa mesma imaxe, sen descargar nada.' },
+      { type: 'p', text: 'Nun proxecto Compose escribese no seu YAML, conservando os comentarios e o valor de todo o demais (pode cambiar algun espazo), e gardase a version anterior. Un contedor solto recrease pola API coa mesma imaxe, sen descargar nada.' },
       {
         type: 'note',
         tone: 'info',

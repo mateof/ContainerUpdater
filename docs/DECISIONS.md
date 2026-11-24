@@ -213,30 +213,37 @@ version is the option with the least real exposure.
 
 Revisit when they publish a forward fix.
 
-## Recreating a service in two steps, not with `--force-recreate`
+## Recreating a service with `up --force-recreate`, not `rm` and `up`
 
 The "recreate" action runs:
 
 ```bash
-docker compose rm -f -s <service>
-docker compose up -d <service>
+docker compose up -d --force-recreate <service>
 ```
 
-and not the apparently equivalent `docker compose up -d --force-recreate
-<service>`. The difference is not stylistic:
+Until 0.30.1 it ran `rm -f -s <service>` and then `up -d <service>`, on the belief
+that `--force-recreate` also recreated the dependencies. Measured on Podman with
+Compose v2.32.4 (the version in the image), it does not when the service is named:
 
-- `--force-recreate` recreates **the service's dependencies too**.
-- The two-step sequence only destroys the requested service. Its dependencies are
-  left as they are and `up` only starts them if they were stopped.
+- A running dependency keeps its container, also with `network_mode: service:vpn`
+  and with `depends_on` plus `restart: true`.
+- A stopped dependency is started; one whose definition changed is recreated. The
+  two-step sequence does exactly the same in both cases.
+- **Anonymous volumes are the difference.** Compose carries them over from the
+  existing container. After `rm` there is none, so the new container starts with
+  empty volumes and the previous ones are left orphaned, with no warning.
 
-In a stack where a service sits behind a VPN (`network_mode: service:vpn`) or
-depends on a database, `--force-recreate` would take that VPN down and with it
-the connectivity of everything hanging off it. The long sequence is what people
-do by hand for a reason.
+`--no-deps` was ruled out: it does not start the dependencies if they were down.
 
-`--no-deps` was ruled out as an alternative: it avoids recreating the
-dependencies, but it does not start them either if they were down, which is
-exactly what you want when bringing a service up by hand.
+## Compose edits are checked before they are written
+
+Up to 0.30.1, editing a compose file rewrote unquoted numbers across the whole
+file: `mode: 0700` became `700` and `UMASK: 022` became `22`. YAML 1.2 reads them
+as decimal and the `yaml` library prints the value, while Compose reads them as
+octal. Numbers now keep their original spelling, and the result is compared with
+the original: if anything outside the service's healthcheck and logging changes
+(including another service sharing a block through an anchor), nothing is written.
+Spacing may still change, comments and values do not.
 
 ## Service actions share a queue with the updates
 

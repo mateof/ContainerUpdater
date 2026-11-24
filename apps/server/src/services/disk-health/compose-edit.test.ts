@@ -164,6 +164,71 @@ describe('applyRuleToService', () => {
     );
   });
 
+  it('no reescribe los numeros de ningun servicio, porque Compose lee 0700 en octal y 700 en decimal', () => {
+    const tricky = [
+      'services:',
+      '  a:',
+      '    image: x',
+      '    user: 0100:0100',
+      '    environment:',
+      '      UMASK: 022',
+      '      QUOTED: "022"',
+      '      BIG: 12345678901234567890',
+      '      HEX: 0x1F',
+      '      OCT: 0o17',
+      '      PLUS: +5',
+      '      FLOAT: 1.10',
+      '      EXP: 1E3',
+      '      INF: .INF',
+      '      YES: yes',
+      '      UPPER: TRUE',
+      '      NOTHING:',
+      '      TILDE: ~',
+      '      DATE: 2026-11-24',
+      '      SEXAGESIMAL: 22:22',
+      '      UNDERSCORE: 1_000',
+      '    configs:',
+      '      - source: c',
+      '        mode: 0440',
+      '  b:',
+      '    image: y',
+      '    volumes:',
+      '      - type: tmpfs',
+      '        target: /t',
+      '        tmpfs:',
+      '          mode: 0700',
+      'volumes:',
+      '  data:',
+      '',
+    ].join('\n');
+    const { text } = applyRuleToService(tricky, 'a', ROTATED, null);
+    const after = lines(text);
+    expect(lines(tricky).filter((line) => !after.includes(line))).toEqual([]);
+    expect(after.filter((line) => !lines(tricky).includes(line))).toEqual([
+      '    logging:',
+      '      driver: json-file',
+      '      options:',
+      '        max-size: "15m"',
+      '        max-file: "3"',
+    ]);
+  });
+
+  it('cambia unos reintentos que ya estaban sin perder su comentario', () => {
+    const text = 'services:\n  a:\n    image: x\n    healthcheck:\n      test: ["CMD", "true"]\n      retries: 3 # pocos\n';
+    const rule: TuningRule = {
+      healthcheck: { mode: 'set', command: null, intervalSeconds: 300, timeoutSeconds: null, retries: 7, startPeriodSeconds: null },
+      logging: null,
+    };
+    expect(applyRuleToService(text, 'a', rule, null).text).toContain('      retries: 7 # pocos');
+  });
+
+  it('se niega si el cambio se colaria en otro servicio que comparte el bloque con un ancla', () => {
+    const shared = 'services:\n  a:\n    image: x\n    healthcheck: &hc\n      test: ["CMD", "true"]\n      interval: 10s\n  b:\n    image: y\n    healthcheck: *hc\n';
+    expect(() => applyRuleToService(shared, 'a', EVERY_5_MIN, null)).toThrow(expect.objectContaining({ reason: 'unsafe-edit' }));
+    const whole = 'services:\n  a: &a\n    image: x\n  b:\n    <<: *a\n    command: y\n';
+    expect(() => applyRuleToService(whole, 'a', ROTATED, null)).toThrow(expect.objectContaining({ reason: 'unsafe-edit' }));
+  });
+
   it('rechaza un YAML roto en vez de reescribirlo', () => {
     expect(() => applyRuleToService('services:\n  a: [\n', 'a', ROTATED, IMAGE_HC)).toThrow(
       expect.objectContaining({ reason: 'invalid-yaml' }),
